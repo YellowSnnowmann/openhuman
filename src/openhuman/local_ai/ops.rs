@@ -460,10 +460,12 @@ pub async fn local_ai_chat(
 
     let ollama_messages: Vec<crate::openhuman::local_ai::ollama_api::OllamaChatMessage> = messages
         .into_iter()
-        .map(|m| crate::openhuman::local_ai::ollama_api::OllamaChatMessage {
-            role: m.role,
-            content: m.content,
-        })
+        .map(
+            |m| crate::openhuman::local_ai::ollama_api::OllamaChatMessage {
+                role: m.role,
+                content: m.content,
+            },
+        )
         .collect();
 
     let service = local_ai::global(config);
@@ -471,6 +473,9 @@ pub async fn local_ai_chat(
         .chat_with_history(config, ollama_messages, max_tokens)
         .await?;
 
-    tracing::debug!(reply_len = reply.len(), "[local_ai:chat] local_ai_chat op: done");
+    tracing::debug!(
+        reply_len = reply.len(),
+        "[local_ai:chat] local_ai_chat op: done"
+    );
     Ok(RpcOutcome::single_log(reply, "local ai chat completed"))
 }

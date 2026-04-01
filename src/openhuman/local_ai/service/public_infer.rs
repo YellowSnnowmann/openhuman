@@ -153,17 +153,22 @@ impl LocalAiService {
             model: crate::openhuman::local_ai::model_ids::effective_chat_model_id(config),
             messages,
             stream: false,
-            options: Some(crate::openhuman::local_ai::ollama_api::OllamaGenerateOptions {
-                temperature: Some(config.default_temperature as f32),
-                top_k: Some(40),
-                top_p: Some(0.9),
-                num_predict: max_tokens.map(|v| v as i32),
-            }),
+            options: Some(
+                crate::openhuman::local_ai::ollama_api::OllamaGenerateOptions {
+                    temperature: Some(config.default_temperature as f32),
+                    top_k: Some(40),
+                    top_p: Some(0.9),
+                    num_predict: max_tokens.map(|v| v as i32),
+                },
+            ),
         };
 
         let response = self
             .http
-            .post(format!("{}/api/chat", crate::openhuman::local_ai::ollama_api::OLLAMA_BASE_URL))
+            .post(format!(
+                "{}/api/chat",
+                crate::openhuman::local_ai::ollama_api::OLLAMA_BASE_URL
+            ))
             .json(&body)
             .send()
             .await

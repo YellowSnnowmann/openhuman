@@ -865,8 +865,7 @@ fn handle_local_ai_chat(params: Map<String, Value>) -> ControllerFuture {
             })
             .collect();
         to_json(
-            crate::openhuman::local_ai::rpc::local_ai_chat(&config, messages, p.max_tokens)
-                .await?,
+            crate::openhuman::local_ai::rpc::local_ai_chat(&config, messages, p.max_tokens).await?,
         )
     })
 }
