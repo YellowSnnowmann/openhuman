@@ -92,10 +92,12 @@ pub fn team_schemas(function: &str) -> ControllerSchema {
             function: "list_members",
             description: "List members for a team.",
             inputs: vec![required_string("teamId", "Team id.")],
-            outputs: vec![json_output(
-                "members",
-                "Member list payload from /teams/:teamId/members.",
-            )],
+            outputs: vec![FieldSchema {
+                name: "result",
+                ty: TypeSchema::Array(Box::new(TypeSchema::Json)),
+                comment: "Raw member array returned by /teams/:teamId/members.",
+                required: true,
+            }],
         },
         "team_create_invite" => ControllerSchema {
             namespace: "team",
@@ -107,8 +109,8 @@ pub fn team_schemas(function: &str) -> ControllerSchema {
                 optional_u64("expiresInDays", "Optional expiry in days."),
             ],
             outputs: vec![json_output(
-                "invite",
-                "Invite payload from /teams/:teamId/invites.",
+                "result",
+                "Raw invite object returned by /teams/:teamId/invites.",
             )],
         },
         "team_remove_member" => ControllerSchema {
@@ -143,10 +145,12 @@ pub fn team_schemas(function: &str) -> ControllerSchema {
             function: "list_invites",
             description: "List active invites for a team.",
             inputs: vec![required_string("teamId", "Team id.")],
-            outputs: vec![json_output(
-                "invites",
-                "Invite list payload from /teams/:teamId/invites.",
-            )],
+            outputs: vec![FieldSchema {
+                name: "result",
+                ty: TypeSchema::Array(Box::new(TypeSchema::Json)),
+                comment: "Raw invite array returned by /teams/:teamId/invites.",
+                required: true,
+            }],
         },
         "team_revoke_invite" => ControllerSchema {
             namespace: "team",
@@ -297,6 +301,30 @@ mod tests {
         assert_eq!(
             all_team_controller_schemas().len(),
             all_team_registered_controllers().len()
+        );
+    }
+
+    #[test]
+    fn schemas_match_unwrapped_team_payload_shapes() {
+        let members = team_schemas("team_list_members");
+        assert_eq!(members.outputs.len(), 1);
+        assert_eq!(members.outputs[0].name, "result");
+        assert_eq!(
+            members.outputs[0].ty,
+            TypeSchema::Array(Box::new(TypeSchema::Json))
+        );
+
+        let create_invite = team_schemas("team_create_invite");
+        assert_eq!(create_invite.outputs.len(), 1);
+        assert_eq!(create_invite.outputs[0].name, "result");
+        assert_eq!(create_invite.outputs[0].ty, TypeSchema::Json);
+
+        let invites = team_schemas("team_list_invites");
+        assert_eq!(invites.outputs.len(), 1);
+        assert_eq!(invites.outputs[0].name, "result");
+        assert_eq!(
+            invites.outputs[0].ty,
+            TypeSchema::Array(Box::new(TypeSchema::Json))
         );
     }
 }

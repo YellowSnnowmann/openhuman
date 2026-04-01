@@ -84,19 +84,28 @@ pub fn billing_schemas(function: &str) -> ControllerSchema {
                 "plan",
                 "Plan identifier (backend contract).",
             )],
-            outputs: vec![json_output(
-                "session",
-                "Purchase session payload from /payments/stripe/purchasePlan.",
-            )],
+            outputs: vec![
+                output_field(
+                    "checkoutUrl",
+                    TypeSchema::Option(Box::new(TypeSchema::String)),
+                    "Stripe Checkout URL returned by /payments/stripe/purchasePlan.",
+                ),
+                output_field(
+                    "sessionId",
+                    TypeSchema::String,
+                    "Stripe Checkout session ID returned by /payments/stripe/purchasePlan.",
+                ),
+            ],
         },
         "billing_create_portal_session" => ControllerSchema {
             namespace: "billing",
             function: "create_portal_session",
             description: "Create Stripe customer portal session.",
             inputs: vec![],
-            outputs: vec![json_output(
-                "session",
-                "Portal session payload from /payments/stripe/portal.",
+            outputs: vec![output_field(
+                "portalUrl",
+                TypeSchema::String,
+                "Stripe customer portal URL returned by /payments/stripe/portal.",
             )],
         },
         "billing_top_up" => ControllerSchema {
@@ -112,10 +121,28 @@ pub fn billing_schemas(function: &str) -> ControllerSchema {
                 },
                 optional_string("gateway", "Payment gateway (stripe|coinbase)."),
             ],
-            outputs: vec![json_output(
-                "topUp",
-                "Top-up initiation payload from /payments/credits/top-up.",
-            )],
+            outputs: vec![
+                output_field(
+                    "url",
+                    TypeSchema::String,
+                    "Hosted payment URL returned by /payments/credits/top-up.",
+                ),
+                output_field(
+                    "gatewayTransactionId",
+                    TypeSchema::String,
+                    "Gateway transaction identifier returned by /payments/credits/top-up.",
+                ),
+                output_field(
+                    "amountUsd",
+                    TypeSchema::F64,
+                    "Top-up amount in USD returned by /payments/credits/top-up.",
+                ),
+                output_field(
+                    "gateway",
+                    TypeSchema::String,
+                    "Payment gateway used for the top-up.",
+                ),
+            ],
         },
         "billing_create_coinbase_charge" => ControllerSchema {
             namespace: "billing",
@@ -125,10 +152,28 @@ pub fn billing_schemas(function: &str) -> ControllerSchema {
                 required_string("plan", "Plan tier (e.g. pro, enterprise)."),
                 optional_string("interval", "Billing interval; defaults to 'annual'."),
             ],
-            outputs: vec![json_output(
-                "charge",
-                "Coinbase charge payload from /payments/coinbase/charge.",
-            )],
+            outputs: vec![
+                output_field(
+                    "gatewayTransactionId",
+                    TypeSchema::String,
+                    "Coinbase Commerce charge identifier returned by /payments/coinbase/charge.",
+                ),
+                output_field(
+                    "hostedUrl",
+                    TypeSchema::String,
+                    "Hosted Coinbase Commerce payment URL returned by /payments/coinbase/charge.",
+                ),
+                output_field(
+                    "status",
+                    TypeSchema::String,
+                    "Coinbase charge status returned by /payments/coinbase/charge.",
+                ),
+                output_field(
+                    "expiresAt",
+                    TypeSchema::String,
+                    "Charge expiration timestamp returned by /payments/coinbase/charge.",
+                ),
+            ],
         },
         _ => ControllerSchema {
             namespace: "billing",
@@ -228,6 +273,15 @@ fn json_output(name: &'static str, comment: &'static str) -> FieldSchema {
     }
 }
 
+fn output_field(name: &'static str, ty: TypeSchema, comment: &'static str) -> FieldSchema {
+    FieldSchema {
+        name,
+        ty,
+        comment,
+        required: true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +298,49 @@ mod tests {
         assert_eq!(
             all_billing_controller_schemas().len(),
             all_billing_registered_controllers().len()
+        );
+    }
+
+    #[test]
+    fn schemas_match_unwrapped_backend_payload_keys() {
+        let purchase = billing_schemas("billing_purchase_plan");
+        assert_eq!(
+            purchase
+                .outputs
+                .iter()
+                .map(|field| field.name)
+                .collect::<Vec<_>>(),
+            vec!["checkoutUrl", "sessionId"]
+        );
+
+        let portal = billing_schemas("billing_create_portal_session");
+        assert_eq!(
+            portal
+                .outputs
+                .iter()
+                .map(|field| field.name)
+                .collect::<Vec<_>>(),
+            vec!["portalUrl"]
+        );
+
+        let top_up = billing_schemas("billing_top_up");
+        assert_eq!(
+            top_up
+                .outputs
+                .iter()
+                .map(|field| field.name)
+                .collect::<Vec<_>>(),
+            vec!["url", "gatewayTransactionId", "amountUsd", "gateway"]
+        );
+
+        let coinbase = billing_schemas("billing_create_coinbase_charge");
+        assert_eq!(
+            coinbase
+                .outputs
+                .iter()
+                .map(|field| field.name)
+                .collect::<Vec<_>>(),
+            vec!["gatewayTransactionId", "hostedUrl", "status", "expiresAt"]
         );
     }
 }

@@ -58,6 +58,21 @@ fn normalize_id(input: &str, field: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+fn build_api_path(segments: &[&str]) -> Result<String, String> {
+    let mut url = Url::parse("https://openhuman.invalid")
+        .map_err(|e| format!("failed to initialize URL path builder: {e}"))?;
+    {
+        let mut path_segments = url
+            .path_segments_mut()
+            .map_err(|_| "failed to initialize URL path builder".to_string())?;
+        path_segments.clear();
+        for segment in segments {
+            path_segments.push(segment);
+        }
+    }
+    Ok(url.path().to_string())
+}
+
 async fn authed_request(
     client: &Client,
     base: &Url,
@@ -83,7 +98,10 @@ async fn authed_request(
         .await
         .map_err(|e| format!("request failed: {e}"))?;
     let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("failed to read backend response body: {e}"))?;
 
     debug!("{LOG_PREFIX} {} {} -> {}", method, url, status);
 
@@ -142,7 +160,7 @@ async fn get_authed_value(
 
 pub async fn list_members(config: &Config, team_id: &str) -> Result<RpcOutcome<Value>, String> {
     let team_id = normalize_id(team_id, "teamId")?;
-    let path = format!("/teams/{}/members", team_id);
+    let path = build_api_path(&["teams", &team_id, "members"])?;
     let data = get_authed_value(config, Method::GET, &path, None).await?;
     Ok(RpcOutcome::single_log(
         data,
@@ -166,7 +184,7 @@ pub async fn create_invite(
     expires_in_days: Option<u64>,
 ) -> Result<RpcOutcome<Value>, String> {
     let team_id = normalize_id(team_id, "teamId")?;
-    let path = format!("/teams/{}/invites", team_id);
+    let path = build_api_path(&["teams", &team_id, "invites"])?;
     let body = json!(InviteBody {
         max_uses,
         expires_in_days,
@@ -185,7 +203,7 @@ pub async fn remove_member(
 ) -> Result<RpcOutcome<Value>, String> {
     let team_id = normalize_id(team_id, "teamId")?;
     let user_id = normalize_id(user_id, "userId")?;
-    let path = format!("/teams/{}/members/{}", team_id, user_id);
+    let path = build_api_path(&["teams", &team_id, "members", &user_id])?;
     let data = get_authed_value(config, Method::DELETE, &path, None).await?;
     Ok(RpcOutcome::single_log(
         data,
@@ -202,7 +220,7 @@ pub async fn change_member_role(
     let team_id = normalize_id(team_id, "teamId")?;
     let user_id = normalize_id(user_id, "userId")?;
     let role = normalize_id(role, "role")?;
-    let path = format!("/teams/{}/members/{}/role", team_id, user_id);
+    let path = build_api_path(&["teams", &team_id, "members", &user_id, "role"])?;
     let body = json!({ "role": role });
     let data = get_authed_value(config, Method::PUT, &path, Some(body)).await?;
     Ok(RpcOutcome::single_log(
@@ -215,7 +233,7 @@ pub async fn change_member_role(
 /// Maps to `GET /teams/:teamId/invites` — matches `teamApi.getInvites`.
 pub async fn list_invites(config: &Config, team_id: &str) -> Result<RpcOutcome<Value>, String> {
     let team_id = normalize_id(team_id, "teamId")?;
-    let path = format!("/teams/{}/invites", team_id);
+    let path = build_api_path(&["teams", &team_id, "invites"])?;
     let data = get_authed_value(config, Method::GET, &path, None).await?;
     Ok(RpcOutcome::single_log(
         data,
@@ -232,10 +250,23 @@ pub async fn revoke_invite(
 ) -> Result<RpcOutcome<Value>, String> {
     let team_id = normalize_id(team_id, "teamId")?;
     let invite_id = normalize_id(invite_id, "inviteId")?;
-    let path = format!("/teams/{}/invites/{}", team_id, invite_id);
+    let path = build_api_path(&["teams", &team_id, "invites", &invite_id])?;
     let data = get_authed_value(config, Method::DELETE, &path, None).await?;
     Ok(RpcOutcome::single_log(
         data,
         "team invite revoked via backend",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_api_path_encodes_reserved_characters_in_segments() {
+        let path = build_api_path(&["teams", "team/with?reserved", "members", "user#frag"])
+            .expect("path should build");
+
+        assert_eq!(path, "/teams/team%2Fwith%3Freserved/members/user%23frag");
+    }
 }

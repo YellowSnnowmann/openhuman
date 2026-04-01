@@ -62,7 +62,11 @@ async fn authed_request(
         .await
         .map_err(|e| format!("request failed: {e}"))?;
     let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
+
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("failed to read response body: {e}"))?;
 
     debug!("{LOG_PREFIX} {} {} -> {}", method, url, status);
 
@@ -192,8 +196,8 @@ pub async fn top_up_credits(
     amount_usd: f64,
     gateway: Option<String>,
 ) -> Result<RpcOutcome<Value>, String> {
-    if amount_usd <= 0.0 {
-        return Err("amountUsd must be greater than 0".to_string());
+    if !amount_usd.is_finite() || amount_usd <= 0.0 {
+        return Err("amountUsd must be a finite number greater than 0".to_string());
     }
 
     let body = TopUpBody {

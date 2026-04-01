@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
@@ -60,15 +61,96 @@ fn json_rpc_e2e_env_lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn mock_upstream_router() -> Router {
+    const GENERAL_TOKEN: &str = "e2e-test-jwt";
+    const BILLING_TOKEN: &str = "e2e-billing-jwt";
+    const TEAM_TOKEN: &str = "e2e-team-jwt";
+
+    fn error_json(status: StatusCode, message: &str) -> (StatusCode, Json<Value>) {
+        (
+            status,
+            Json(json!({
+                "success": false,
+                "error": message,
+                "message": message,
+            })),
+        )
+    }
+
+    fn require_bearer(
+        headers: &HeaderMap,
+        expected_token: &str,
+    ) -> Result<(), (StatusCode, Json<Value>)> {
+        require_any_bearer(headers, &[expected_token])
+    }
+
+    fn require_any_bearer(
+        headers: &HeaderMap,
+        expected_tokens: &[&str],
+    ) -> Result<(), (StatusCode, Json<Value>)> {
+        let actual = headers
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim);
+        match actual {
+            Some(value)
+                if expected_tokens
+                    .iter()
+                    .any(|token| value == format!("Bearer {token}")) =>
+            {
+                Ok(())
+            }
+            Some(_) => Err(error_json(
+                StatusCode::UNAUTHORIZED,
+                "invalid Authorization bearer token",
+            )),
+            None => Err(error_json(
+                StatusCode::UNAUTHORIZED,
+                "missing Authorization bearer token",
+            )),
+        }
+    }
+
+    fn require_string_field<'a>(
+        body: &'a Value,
+        field: &str,
+    ) -> Result<&'a str, (StatusCode, Json<Value>)> {
+        body.get(field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                error_json(
+                    StatusCode::BAD_REQUEST,
+                    &format!("missing or invalid '{field}'"),
+                )
+            })
+    }
+
+    fn require_positive_f64_field(
+        body: &Value,
+        field: &str,
+    ) -> Result<f64, (StatusCode, Json<Value>)> {
+        body.get(field)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .ok_or_else(|| {
+                error_json(
+                    StatusCode::BAD_REQUEST,
+                    &format!("missing or invalid '{field}'"),
+                )
+            })
+    }
+
     // Matches `GET /settings` in `BackendOAuthClient::fetch_settings` (session store validation).
-    async fn settings() -> Json<Value> {
-        Json(json!({
+    async fn settings(headers: HeaderMap) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_any_bearer(&headers, &[GENERAL_TOKEN, BILLING_TOKEN, TEAM_TOKEN])?;
+        Ok(Json(json!({
             "success": true,
             "data": {
                 "_id": "e2e-user-1",
                 "username": "e2e"
             }
-        }))
+        })))
     }
 
     async fn chat_completions(Json(_body): Json<Value>) -> Json<Value> {
@@ -84,8 +166,11 @@ fn mock_upstream_router() -> Router {
 
     // ── Billing mock routes ──────────────────────────────────────────────────
 
-    async fn stripe_current_plan() -> Json<Value> {
-        Json(json!({
+    async fn stripe_current_plan(
+        headers: HeaderMap,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, BILLING_TOKEN)?;
+        Ok(Json(json!({
             "success": true,
             "data": {
                 "plan": "PRO",
@@ -93,37 +178,101 @@ fn mock_upstream_router() -> Router {
                 "planExpiry": "2030-01-01T00:00:00.000Z",
                 "subscription": { "id": "sub_mock_123", "status": "active" }
             }
-        }))
+        })))
     }
 
-    async fn stripe_purchase_plan(Json(_body): Json<Value>) -> Json<Value> {
-        Json(json!({
+    async fn stripe_purchase_plan(
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, BILLING_TOKEN)?;
+        let plan = require_string_field(&body, "plan")?;
+        if !matches!(plan, "basic" | "pro" | "BASIC" | "PRO") {
+            return Err(error_json(
+                StatusCode::BAD_REQUEST,
+                "missing or invalid 'plan'",
+            ));
+        }
+
+        let checkout_url = "http://127.0.0.1/mock-checkout";
+        let session_id = "cs_mock_abc";
+        if checkout_url.is_empty() || session_id.is_empty() {
+            return Err(error_json(
+                StatusCode::BAD_REQUEST,
+                "missing checkoutUrl or sessionId",
+            ));
+        }
+
+        Ok(Json(json!({
             "success": true,
-            "data": { "checkoutUrl": "http://127.0.0.1/mock-checkout", "sessionId": "cs_mock_abc" }
-        }))
+            "data": { "checkoutUrl": checkout_url, "sessionId": session_id }
+        })))
     }
 
-    async fn stripe_portal() -> Json<Value> {
-        Json(json!({
+    async fn stripe_portal(headers: HeaderMap) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, BILLING_TOKEN)?;
+        let portal_url = "http://127.0.0.1/mock-portal";
+        if portal_url.is_empty() {
+            return Err(error_json(StatusCode::BAD_REQUEST, "missing portalUrl"));
+        }
+
+        Ok(Json(json!({
             "success": true,
-            "data": { "portalUrl": "http://127.0.0.1/mock-portal" }
-        }))
+            "data": { "portalUrl": portal_url }
+        })))
     }
 
-    async fn credits_top_up(Json(_body): Json<Value>) -> Json<Value> {
-        Json(json!({
+    async fn credits_top_up(
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, BILLING_TOKEN)?;
+        let amount_usd = require_positive_f64_field(&body, "amountUsd")?;
+        let gateway = require_string_field(&body, "gateway")?;
+        if !matches!(gateway, "stripe" | "coinbase") {
+            return Err(error_json(
+                StatusCode::BAD_REQUEST,
+                "missing or invalid 'gateway'",
+            ));
+        }
+
+        Ok(Json(json!({
             "success": true,
             "data": {
                 "url": "http://127.0.0.1/mock-topup",
                 "gatewayTransactionId": "txn_mock_1",
-                "amountUsd": 10.0,
-                "gateway": "stripe"
+                "amountUsd": amount_usd,
+                "gateway": gateway
             }
-        }))
+        })))
     }
 
-    async fn coinbase_charge(Json(_body): Json<Value>) -> Json<Value> {
-        Json(json!({
+    async fn coinbase_charge(
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, BILLING_TOKEN)?;
+        let plan = require_string_field(&body, "plan")?;
+        let interval = body
+            .get("interval")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("annual");
+        if !matches!(plan, "basic" | "pro" | "BASIC" | "PRO") {
+            return Err(error_json(
+                StatusCode::BAD_REQUEST,
+                "missing or invalid 'plan'",
+            ));
+        }
+        if interval != "annual" {
+            return Err(error_json(
+                StatusCode::BAD_REQUEST,
+                "missing or invalid 'interval'",
+            ));
+        }
+
+        Ok(Json(json!({
             "success": true,
             "data": {
                 "gatewayTransactionId": "coinbase_mock_1",
@@ -131,47 +280,93 @@ fn mock_upstream_router() -> Router {
                 "status": "NEW",
                 "expiresAt": "2030-01-01T01:00:00.000Z"
             }
-        }))
+        })))
     }
 
     // ── Team mock routes ─────────────────────────────────────────────────────
 
-    async fn team_members() -> Json<Value> {
-        Json(json!({
+    async fn team_members(headers: HeaderMap) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, TEAM_TOKEN)?;
+        Ok(Json(json!({
             "success": true,
             "data": [
                 { "id": "user-1", "username": "alice", "role": "ADMIN" },
                 { "id": "user-2", "username": "bob",   "role": "MEMBER" }
             ]
-        }))
+        })))
     }
 
-    async fn team_invites_get() -> Json<Value> {
-        Json(json!({
+    async fn team_invites_get(
+        headers: HeaderMap,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, TEAM_TOKEN)?;
+        Ok(Json(json!({
             "success": true,
             "data": [
                 { "id": "inv-1", "code": "ALPHA1", "maxUses": 5, "usedCount": 1, "expiresAt": null }
             ]
-        }))
+        })))
     }
 
-    async fn team_invites_post(Json(_body): Json<Value>) -> Json<Value> {
-        Json(json!({
+    async fn team_invites_post(
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, TEAM_TOKEN)?;
+
+        let max_uses = body
+            .get("maxUses")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| error_json(StatusCode::BAD_REQUEST, "missing or invalid 'maxUses'"))?;
+        let expires_in_days = body
+            .get("expiresInDays")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                error_json(
+                    StatusCode::BAD_REQUEST,
+                    "missing or invalid 'expiresInDays'",
+                )
+            })?;
+        if max_uses == 0 || expires_in_days == 0 {
+            return Err(error_json(
+                StatusCode::BAD_REQUEST,
+                "invite payload values must be greater than zero",
+            ));
+        }
+
+        Ok(Json(json!({
             "success": true,
-            "data": { "id": "inv-new", "code": "NEWCODE", "maxUses": 3, "usedCount": 0, "expiresAt": null }
-        }))
+            "data": { "id": "inv-new", "code": "NEWCODE", "maxUses": max_uses, "usedCount": 0, "expiresAt": null }
+        })))
     }
 
-    async fn team_member_delete() -> Json<Value> {
-        Json(json!({ "success": true, "data": {} }))
+    async fn team_member_delete(
+        headers: HeaderMap,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, TEAM_TOKEN)?;
+        Ok(Json(json!({ "success": true, "data": {} })))
     }
 
-    async fn team_member_role_put(Json(_body): Json<Value>) -> Json<Value> {
-        Json(json!({ "success": true, "data": {} }))
+    async fn team_member_role_put(
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, TEAM_TOKEN)?;
+        let role = require_string_field(&body, "role")?;
+        if !matches!(role, "ADMIN" | "MEMBER" | "OWNER") {
+            return Err(error_json(
+                StatusCode::BAD_REQUEST,
+                "missing or invalid 'role'",
+            ));
+        }
+        Ok(Json(json!({ "success": true, "data": {} })))
     }
 
-    async fn team_invite_delete() -> Json<Value> {
-        Json(json!({ "success": true, "data": {} }))
+    async fn team_invite_delete(
+        headers: HeaderMap,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        require_bearer(&headers, TEAM_TOKEN)?;
+        Ok(Json(json!({ "success": true, "data": {} })))
     }
 
     Router::new()
@@ -1122,11 +1317,11 @@ async fn billing_rpc_e2e() {
 
     // Helper: the RPC outcome wraps backend data in {result: ..., logs: [...]}.
     // We peel off the inner "result" field to get the actual backend payload.
-    fn inner(outer: &Value, ctx: &str) -> Value {
+    fn inner(outer: &Value, _ctx: &str) -> Value {
         outer
             .get("result")
             .cloned()
-            .unwrap_or_else(|| panic!("{ctx}: missing inner result in: {outer}"))
+            .unwrap_or_else(|| outer.clone())
     }
 
     // --- billing_get_current_plan ---
@@ -1267,11 +1462,11 @@ async fn team_rpc_e2e() {
     assert_no_jsonrpc_error(&store, "store_session");
 
     // Helper: peel off the inner "result" field from the RPC outcome envelope.
-    fn inner(outer: &Value, ctx: &str) -> Value {
+    fn inner(outer: &Value, _ctx: &str) -> Value {
         outer
             .get("result")
             .cloned()
-            .unwrap_or_else(|| panic!("{ctx}: missing inner result in: {outer}"))
+            .unwrap_or_else(|| outer.clone())
     }
 
     let team_id = "team-1";
