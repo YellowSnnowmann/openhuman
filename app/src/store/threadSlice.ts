@@ -322,9 +322,7 @@ const threadSlice = createSlice({
     },
     addReaction: (
       state,
-      action: {
-        payload: { threadId: string; messageId: string; emoji: string };
-      }
+      action: { payload: { threadId: string; messageId: string; emoji: string } }
     ) => {
       const { threadId, messageId, emoji } = action.payload;
       const stored = state.messagesByThreadId[threadId];

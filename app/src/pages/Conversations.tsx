@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
 
+import { useLocalModelStatus } from '../hooks/useLocalModelStatus';
 import { creditsApi, type TeamUsage } from '../services/api/creditsApi';
 import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
 import {
@@ -27,17 +28,16 @@ import {
   setSelectedThread,
 } from '../store/threadSlice';
 import type { ThreadMessage } from '../types/thread';
-import { useLocalModelStatus } from '../hooks/useLocalModelStatus';
+import { getSegmentDelay, segmentMessage } from '../utils/messageSegmentation';
 import {
   isTauri,
+  type LocalAiChatMessage,
   openhumanAutocompleteAccept,
   openhumanAutocompleteCurrent,
   openhumanLocalAiChat,
   openhumanLocalAiTranscribeBytes,
   openhumanLocalAiTts,
-  type LocalAiChatMessage,
 } from '../utils/tauriCommands';
-import { getSegmentDelay, segmentMessage } from '../utils/messageSegmentation';
 
 const DEFAULT_THREAD_ID = 'default-thread';
 const DEFAULT_THREAD_TITLE = 'Conversation';
@@ -351,7 +351,9 @@ const Conversations = () => {
 
         // Multi-bubble delivery gate: only when local model is active
         if (!isLocalModelActiveRef.current) {
-          dispatch(addInferenceResponse({ content: event.full_response, threadId: event.thread_id }));
+          dispatch(
+            addInferenceResponse({ content: event.full_response, threadId: event.thread_id })
+          );
           setIsSending(false);
           dispatch(setActiveThread(null));
           return;
@@ -360,7 +362,9 @@ const Conversations = () => {
         const segments = segmentMessage(event.full_response);
 
         if (segments.length <= 1) {
-          dispatch(addInferenceResponse({ content: event.full_response, threadId: event.thread_id }));
+          dispatch(
+            addInferenceResponse({ content: event.full_response, threadId: event.thread_id })
+          );
           setIsSending(false);
           dispatch(setActiveThread(null));
           return;
@@ -382,9 +386,7 @@ const Conversations = () => {
 
             if (!deliveryActiveRef.current) break;
 
-            dispatch(
-              addInferenceResponse({ content: segments[i], threadId: event.thread_id })
-            );
+            dispatch(addInferenceResponse({ content: segments[i], threadId: event.thread_id }));
           }
 
           deliveryActiveRef.current = false;
@@ -457,9 +459,7 @@ const Conversations = () => {
       if (!deliveryActiveRef.current) break;
 
       if (i > 0) {
-        await new Promise<void>(resolve =>
-          setTimeout(resolve, getSegmentDelay(segments[i - 1]))
-        );
+        await new Promise<void>(resolve => setTimeout(resolve, getSegmentDelay(segments[i - 1])));
       }
 
       if (!deliveryActiveRef.current) break;
@@ -510,14 +510,19 @@ const Conversations = () => {
     if (isLocalModelActiveRef.current) {
       try {
         // Build message history: convert stored messages + the new user turn
-        const storedMessages = (store.getState() as {
-          thread: { messagesByThreadId: Record<string, import('../types/thread').ThreadMessage[]> };
-        }).thread.messagesByThreadId[sendingThreadId] ?? [];
+        const storedMessages =
+          (
+            store.getState() as {
+              thread: {
+                messagesByThreadId: Record<string, import('../types/thread').ThreadMessage[]>;
+              };
+            }
+          ).thread.messagesByThreadId[sendingThreadId] ?? [];
 
         const history: LocalAiChatMessage[] = storedMessages
           .filter(m => m.sender === 'user' || m.sender === 'agent')
           .map(m => ({
-            role: m.sender === 'user' ? 'user' as const : 'assistant' as const,
+            role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
             content: m.content,
           }));
 
@@ -862,14 +867,19 @@ const Conversations = () => {
                     {msg.sender === 'agent' && (
                       <div className="mt-1 flex items-center gap-1 flex-wrap min-h-[20px]">
                         {(() => {
-                          const myReactions = (msg.extraMetadata?.myReactions as string[] | undefined) ?? [];
+                          const myReactions =
+                            (msg.extraMetadata?.myReactions as string[] | undefined) ?? [];
                           return myReactions.map(emoji => (
                             <button
                               key={emoji}
                               onClick={() =>
                                 selectedThreadId &&
                                 dispatch(
-                                  addReaction({ threadId: selectedThreadId, messageId: msg.id, emoji })
+                                  addReaction({
+                                    threadId: selectedThreadId,
+                                    messageId: msg.id,
+                                    emoji,
+                                  })
                                 )
                               }
                               className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary-600/20 border border-primary-500/30 text-xs transition-colors hover:bg-primary-600/30"
@@ -919,7 +929,7 @@ const Conversations = () => {
                   </div>
                 </div>
               ))}
-              {(activeThreadId === selectedThreadId && isSending || isDelivering) && (
+              {((activeThreadId === selectedThreadId && isSending) || isDelivering) && (
                 <div className="flex justify-start">
                   <div className="bg-white/5 rounded-2xl rounded-bl-md px-4 py-3">
                     <div className="flex items-center gap-1">
