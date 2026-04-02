@@ -203,7 +203,21 @@ const DictationOverlay = () => {
 
     console.debug('[dictation] no DOM target found, trying accessibility action');
     try {
-      await openhumanAccessibilityInputAction({ action: 'type', text: transcript });
+      const response = await openhumanAccessibilityInputAction({ action: 'type', text: transcript });
+      const accepted = response.result.accepted === true;
+      const blocked = response.result.blocked === true;
+      if (accepted && !blocked) {
+        resetLauncherPosition();
+        dispatch(resetDictation());
+        return;
+      }
+
+      console.debug(
+        '[dictation] accessibility insert not accepted (accepted=%s blocked=%s), falling back to clipboard',
+        accepted,
+        blocked
+      );
+      await navigator.clipboard.writeText(transcript).catch(() => {});
       resetLauncherPosition();
       dispatch(resetDictation());
     } catch {

@@ -61,6 +61,12 @@ const threadPersistConfig = {
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 const persistedAiReducer = persistReducer(aiPersistConfig, aiReducer);
 const persistedThreadReducer = persistReducer(threadPersistConfig, threadReducer);
+const dictationPersistConfig = {
+  key: 'dictation',
+  storage,
+  whitelist: ['hotkey', 'showFloatingLauncher'],
+};
+const persistedDictationReducer = persistReducer(dictationPersistConfig, dictationReducer);
 const channelConnectionsPersistConfig = {
   key: 'channelConnections',
   storage,
@@ -132,7 +138,7 @@ export const store = configureStore({
     intelligence: intelligenceReducer,
     invite: inviteReducer,
     accessibility: accessibilityReducer,
-    dictation: dictationReducer,
+    dictation: persistedDictationReducer,
     channelConnections: persistedChannelConnectionsReducer,
     webhooks: webhooksReducer,
   },

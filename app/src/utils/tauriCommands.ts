@@ -2185,9 +2185,8 @@ export async function openhumanVoiceTts(
  */
 export async function registerDictationHotkey(shortcut: string): Promise<void> {
   if (!isTauri()) {
-    console.debug(
-      '[dictation] registerDictationHotkey: runtime check says not Tauri; attempting invoke anyway'
-    );
+    console.debug('[dictation] registerDictationHotkey: skipped — not running in Tauri');
+    return;
   }
   const normalizedShortcut = shortcut
     .trim()
@@ -2204,12 +2203,11 @@ export async function registerDictationHotkey(shortcut: string): Promise<void> {
   try {
     await invoke<void>('register_dictation_hotkey', { shortcut: normalizedShortcut });
   } catch (err) {
-    // Backward-compatible fallback for environments expecting the original tokens.
     console.warn(
-      '[dictation] registerDictationHotkey normalized registration failed, retrying raw value',
+      '[dictation] registerDictationHotkey normalized registration failed',
       err
     );
-    await invoke<void>('register_dictation_hotkey', { shortcut });
+    throw err;
   }
   console.debug('[dictation] registerDictationHotkey: done');
 }

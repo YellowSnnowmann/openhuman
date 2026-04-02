@@ -252,7 +252,26 @@ export function useDictation() {
             );
             const buffer = await blob.arrayBuffer();
             bytes = Array.from(new Uint8Array(buffer));
-            ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+            const lowerMimeType = mimeType.toLowerCase();
+            if (lowerMimeType.includes('ogg') || lowerMimeType.includes('webm')) {
+              ext = 'ogg';
+            } else if (lowerMimeType.includes('wav')) {
+              ext = 'wav';
+            } else if (lowerMimeType.includes('mpeg') || lowerMimeType.includes('mp3')) {
+              ext = 'mp3';
+            } else if (
+              lowerMimeType.includes('mp4') ||
+              lowerMimeType.includes('m4a') ||
+              lowerMimeType.includes('aac')
+            ) {
+              ext = 'm4a';
+            } else if (lowerMimeType.includes('flac')) {
+              ext = 'flac';
+            } else {
+              throw new Error(
+                `Unsupported audio container for dictation fallback path: ${mimeType || 'unknown'}`
+              );
+            }
           }
 
           console.debug(
@@ -260,7 +279,9 @@ export function useDictation() {
             ext,
             bytes.length
           );
-          const response = await callCoreRpc<TranscribeResult>({
+          const response = await callCoreRpc<
+            { result?: TranscribeResult; logs?: string[] } | TranscribeResult
+          >({
             method: 'openhuman.voice_transcribe_bytes',
             params: { audio_bytes: bytes, extension: ext, skip_cleanup: false },
           });
@@ -272,7 +293,10 @@ export function useDictation() {
             return;
           }
 
-          const text = response.text.trim();
+          const text =
+            response && typeof response === 'object' && 'result' in response
+              ? response.result?.text?.trim() ?? ''
+              : (response as TranscribeResult | null)?.text?.trim() ?? '';
           console.debug('[dictation] transcription result: %s', text || '(empty)');
           if (text) {
             dispatch(setTranscript(text));
@@ -328,14 +352,27 @@ export function useDictation() {
 
   // Re-register persisted hotkey on startup / change.
   useEffect(() => {
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
     void registerDictationHotkey(hotkey).catch(err => {
+      if (disposed) return;
       console.warn('[dictation] auto register hotkey failed:', err);
-      setTimeout(() => {
+      retryTimer = setTimeout(() => {
+        if (disposed) return;
         void registerDictationHotkey(hotkey).catch(retryErr => {
+          if (disposed) return;
           console.warn('[dictation] hotkey retry failed:', retryErr);
         });
       }, 2000);
     });
+
+    return () => {
+      disposed = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
+    };
   }, [hotkey]);
 
   // Listen for global hotkey event from Tauri

@@ -6,7 +6,7 @@ import {
   setShowFloatingLauncher,
 } from '../../../store/dictationSlice';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
-import { isTauri, registerDictationHotkey } from '../../../utils/tauriCommands';
+import { isTauri, openhumanGetConfig, registerDictationHotkey } from '../../../utils/tauriCommands';
 import SettingsBackButton from '../components/SettingsBackButton';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 
@@ -19,11 +19,34 @@ const DictationPanel = () => {
   const [isSavingHotkey, setIsSavingHotkey] = useState(false);
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
   const [hotkeySuccess, setHotkeySuccess] = useState(false);
+  const [sttModelDirectory, setSttModelDirectory] = useState<string | null>(null);
 
   useEffect(() => {
     console.debug('[dictation-panel] mounting — checking availability');
     void dispatch(checkDictationAvailability());
   }, [dispatch]);
+
+  useEffect(() => {
+    let disposed = false;
+    if (!isTauri()) return;
+    void openhumanGetConfig()
+      .then(response => {
+        if (disposed) return;
+        const workspaceDir = response.result.workspace_dir?.trim();
+        if (!workspaceDir) return;
+        const separator = workspaceDir.includes('\\') ? '\\' : '/';
+        const normalizedRoot = workspaceDir.replace(/[\\/]+$/, '');
+        setSttModelDirectory(
+          [normalizedRoot, 'models', 'local-ai', 'stt'].join(separator)
+        );
+      })
+      .catch(err => {
+        console.debug('[dictation-panel] failed to resolve model directory from config', err);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   // Keep local input in sync if hotkey changes externally
   useEffect(() => {
@@ -34,6 +57,33 @@ const DictationPanel = () => {
     const trimmed = hotkeyInput.trim();
     if (!trimmed) {
       setHotkeyError('Hotkey cannot be empty');
+      return;
+    }
+
+    // Validate that the shortcut contains at least one recognized modifier and one key token.
+    const MODIFIERS = [
+      'cmdorctrl',
+      'commandorcontrol',
+      'ctrl',
+      'control',
+      'cmd',
+      'command',
+      'alt',
+      'option',
+      'shift',
+      'super',
+      'meta',
+    ];
+    const tokens = trimmed
+      .split('+')
+      .map(t => t.trim().toLowerCase())
+      .filter(Boolean);
+    const hasModifier = tokens.some(t => MODIFIERS.includes(t));
+    const hasKey = tokens.some(t => !MODIFIERS.includes(t));
+    if (!hasModifier || !hasKey) {
+      setHotkeyError(
+        'Invalid format. Use e.g. CmdOrCtrl+Shift+D — must include a modifier and a key.'
+      );
       return;
     }
 
@@ -64,7 +114,7 @@ const DictationPanel = () => {
     if (statusCheckError) return `Check failed: ${statusCheckError}`;
     if (!voiceStatus) return 'Not checked';
     if (voiceStatus.stt_available) return 'Ready (model loaded)';
-    if (voiceStatus.stt_model_path) return 'Model found — will load on first use';
+    if (voiceStatus.stt_model_path) return 'Model found — backend unavailable';
     return 'Model not found';
   };
 
@@ -72,7 +122,8 @@ const DictationPanel = () => {
     if (isCheckingStatus) return 'bg-stone-500 animate-pulse';
     if (statusCheckError) return 'bg-amber-400';
     if (!voiceStatus) return 'bg-stone-500';
-    if (voiceStatus.stt_available || voiceStatus.stt_model_path) return 'bg-green-400';
+    if (voiceStatus.stt_available) return 'bg-green-400';
+    if (voiceStatus.stt_model_path) return 'bg-amber-400';
     return 'bg-red-400';
   };
 
@@ -137,7 +188,9 @@ const DictationPanel = () => {
               found. Go to <strong className="text-amber-300">Settings → Local AI Model</strong> to
               download it, or place the file at{' '}
               <code className="text-amber-300 break-all">
-                ~/.openhuman/models/local-ai/stt/{voiceStatus.stt_model_id}
+                {(sttModelDirectory ?? '<workspace>/models/local-ai/stt') +
+                  (sttModelDirectory?.includes('\\') ? '\\' : '/') +
+                  voiceStatus.stt_model_id}
               </code>
             </p>
           </div>

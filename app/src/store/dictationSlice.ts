@@ -35,14 +35,8 @@ const initialState: DictationState = {
   status: 'idle',
   transcript: null,
   error: null,
-  hotkey:
-    typeof window !== 'undefined'
-      ? (localStorage.getItem('dictation_hotkey') ?? DEFAULT_HOTKEY)
-      : DEFAULT_HOTKEY,
-  showFloatingLauncher:
-    typeof window !== 'undefined'
-      ? (localStorage.getItem('dictation_show_floating_launcher') ?? 'true') === 'true'
-      : true,
+  hotkey: DEFAULT_HOTKEY,
+  showFloatingLauncher: true,
   sttAvailable: false,
   voiceStatus: null,
   statusCheckError: null,
@@ -96,11 +90,9 @@ const dictationSlice = createSlice({
     },
     setHotkey(state, action: PayloadAction<string>) {
       state.hotkey = action.payload;
-      localStorage.setItem('dictation_hotkey', action.payload);
     },
     setShowFloatingLauncher(state, action: PayloadAction<boolean>) {
       state.showFloatingLauncher = action.payload;
-      localStorage.setItem('dictation_show_floating_launcher', String(action.payload));
     },
     reset(state) {
       state.status = 'idle';
