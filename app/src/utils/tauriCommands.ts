@@ -2203,10 +2203,7 @@ export async function registerDictationHotkey(shortcut: string): Promise<void> {
   try {
     await invoke<void>('register_dictation_hotkey', { shortcut: normalizedShortcut });
   } catch (err) {
-    console.warn(
-      '[dictation] registerDictationHotkey normalized registration failed',
-      err
-    );
+    console.warn('[dictation] registerDictationHotkey normalized registration failed', err);
     throw err;
   }
   console.debug('[dictation] registerDictationHotkey: done');

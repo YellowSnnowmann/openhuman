@@ -45,7 +45,9 @@ impl LocalAiService {
                         warn!("{LOG_PREFIX} lazy in-process whisper load failed: {e}");
                     }
                 } else {
-                    debug!("{LOG_PREFIX} lazy in-process load skipped: STT model path not resolved");
+                    debug!(
+                        "{LOG_PREFIX} lazy in-process load skipped: STT model path not resolved"
+                    );
                 }
             }
         }

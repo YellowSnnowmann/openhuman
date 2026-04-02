@@ -36,9 +36,7 @@ const DictationPanel = () => {
         if (!workspaceDir) return;
         const separator = workspaceDir.includes('\\') ? '\\' : '/';
         const normalizedRoot = workspaceDir.replace(/[\\/]+$/, '');
-        setSttModelDirectory(
-          [normalizedRoot, 'models', 'local-ai', 'stt'].join(separator)
-        );
+        setSttModelDirectory([normalizedRoot, 'models', 'local-ai', 'stt'].join(separator));
       })
       .catch(err => {
         console.debug('[dictation-panel] failed to resolve model directory from config', err);

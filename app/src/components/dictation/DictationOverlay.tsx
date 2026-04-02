@@ -203,7 +203,10 @@ const DictationOverlay = () => {
 
     console.debug('[dictation] no DOM target found, trying accessibility action');
     try {
-      const response = await openhumanAccessibilityInputAction({ action: 'type', text: transcript });
+      const response = await openhumanAccessibilityInputAction({
+        action: 'type',
+        text: transcript,
+      });
       const accepted = response.result.accepted === true;
       const blocked = response.result.blocked === true;
       if (accepted && !blocked) {

@@ -295,8 +295,8 @@ export function useDictation() {
 
           const text =
             response && typeof response === 'object' && 'result' in response
-              ? response.result?.text?.trim() ?? ''
-              : (response as TranscribeResult | null)?.text?.trim() ?? '';
+              ? (response.result?.text?.trim() ?? '')
+              : ((response as TranscribeResult | null)?.text?.trim() ?? '');
           console.debug('[dictation] transcription result: %s', text || '(empty)');
           if (text) {
             dispatch(setTranscript(text));
