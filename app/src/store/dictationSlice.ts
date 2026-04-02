@@ -117,9 +117,15 @@ const dictationSlice = createSlice({
       .addCase(checkDictationAvailability.fulfilled, (state, action) => {
         state.isCheckingStatus = false;
         state.voiceStatus = action.payload;
-        // Consider STT available if model file exists, even if not yet loaded in-process.
-        // Transcription will trigger lazy loading on first call.
-        state.sttAvailable = action.payload.stt_available || action.payload.stt_model_path !== null;
+        // Consider STT available only when the model file exists AND there is a way to run
+        // inference: either the in-process engine is already loaded, or a whisper binary is
+        // present for the subprocess fallback.  Showing the overlay ready when only the model
+        // file exists but no binary/engine is available would let the user attempt recording
+        // that then fails at transcription time with a confusing error.
+        state.sttAvailable =
+          action.payload.stt_available ||
+          (action.payload.stt_model_path !== null &&
+            (action.payload.whisper_in_process || action.payload.whisper_binary !== null));
       })
       .addCase(checkDictationAvailability.rejected, (state, action) => {
         state.isCheckingStatus = false;
