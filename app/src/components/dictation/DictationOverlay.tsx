@@ -72,6 +72,7 @@ const DictationOverlay = () => {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
   const lastEditableRef = useRef<EditableTarget | null>(null);
+  const previousStatusRef = useRef(status);
 
   const getActiveDefaultPosition = () => {
     if (typeof window === 'undefined') return { x: 24, y: 24 };
@@ -141,6 +142,14 @@ const DictationOverlay = () => {
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, [status]);
+
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current;
+    previousStatusRef.current = status;
+    if (previousStatus === 'idle' && status !== 'idle') {
+      setPosition(getActiveDefaultPosition());
+    }
   }, [status]);
 
   const handleDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
