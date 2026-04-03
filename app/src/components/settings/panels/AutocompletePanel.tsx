@@ -30,6 +30,8 @@ const DEFAULT_CONFIG: AutocompleteConfig = {
   accept_with_tab: true,
 };
 
+const MAX_LOG_ENTRIES = 200;
+
 const parseAutocompleteConfig = (raw: unknown): AutocompleteConfig => {
   if (!raw || typeof raw !== 'object') {
     return DEFAULT_CONFIG;
@@ -87,15 +89,24 @@ const AutocompletePanel = () => {
 
   const appendLogs = (entries: string[]) => {
     if (entries.length === 0) return;
-    const now = new Date().toLocaleTimeString();
-    setLogs(current => [...current, ...entries.map(entry => `${now}  ${entry}`)].slice(-120));
+    const now = new Date();
+    const stamp = `${now.toLocaleTimeString()}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+    setLogs(current =>
+      [...current, ...entries.map(entry => `${stamp}  ${entry}`)].slice(-MAX_LOG_ENTRIES)
+    );
+  };
+
+  const appendUiLog = (entry: string) => {
+    appendLogs([`[ui-flow] ${entry}`]);
   };
 
   const trackStatusChanges = (next: AutocompleteStatus) => {
     const previous = previousStatusRef.current;
     if (!previous) {
       previousStatusRef.current = next;
-      appendLogs([`phase=${next.phase}`]);
+      appendLogs([
+        `[runtime] phase=${next.phase} running=${next.running ? 'yes' : 'no'} enabled=${next.enabled ? 'yes' : 'no'}`,
+      ]);
       return;
     }
 
@@ -181,15 +192,27 @@ const AutocompletePanel = () => {
     }
   };
 
-  const refreshStatus = async () => {
+  const refreshStatus = async (showSpinner = false) => {
     if (!isTauri()) return;
+    if (showSpinner) {
+      setIsLoading(true);
+      setError(null);
+    }
     try {
       const response = await openhumanAutocompleteStatus();
       setStatus(response.result);
       trackStatusChanges(response.result);
       appendLogs(response.logs);
+      return response.result;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh autocomplete status');
+      const message = err instanceof Error ? err.message : 'Failed to refresh autocomplete status';
+      appendUiLog(`refresh status failed: ${message}`);
+      setError(message);
+      return null;
+    } finally {
+      if (showSpinner) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -199,6 +222,7 @@ const AutocompletePanel = () => {
     setError(null);
     setMessage(null);
     try {
+      appendUiLog('saving autocomplete settings');
       const debounce = Number(debounceMs);
       const max = Number(maxChars);
       const response = await openhumanAutocompleteSetStyle({
@@ -230,7 +254,9 @@ const AutocompletePanel = () => {
       setMessage('Autocomplete settings saved.');
       await refreshStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save autocomplete settings');
+      const message = err instanceof Error ? err.message : 'Failed to save autocomplete settings';
+      appendUiLog(`save settings failed: ${message}`);
+      setError(message);
     } finally {
       setIsSaving(false);
     }
@@ -239,36 +265,61 @@ const AutocompletePanel = () => {
   const start = async () => {
     if (!isTauri()) return;
     setError(null);
+    setMessage(null);
     try {
       const debounce = Number(debounceMs);
+      appendUiLog(`start requested (debounce=${String(debounce)}ms)`);
       const response = await openhumanAutocompleteStart({
         debounce_ms: Number.isFinite(debounce) ? Math.min(Math.max(debounce, 50), 2000) : 120,
       });
       appendLogs(response.logs);
-      await refreshStatus();
-      setMessage('Autocomplete started.');
+      const latestStatus = await refreshStatus();
+      if (response.result.started) {
+        setMessage('Autocomplete started.');
+      } else if (latestStatus?.enabled === false) {
+        setMessage('Autocomplete is disabled in settings. Enable it and save first.');
+      } else if (latestStatus?.running) {
+        setMessage('Autocomplete is already running.');
+      } else {
+        setMessage('Autocomplete did not start.');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start autocomplete');
+      const message = err instanceof Error ? err.message : 'Failed to start autocomplete';
+      appendUiLog(`start failed: ${message}`);
+      setError(message);
     }
   };
 
   const stop = async () => {
     if (!isTauri()) return;
     setError(null);
+    setMessage(null);
     try {
+      appendUiLog('stop requested');
       const response = await openhumanAutocompleteStop({ reason: 'manual_stop_from_settings' });
       appendLogs(response.logs);
-      await refreshStatus();
+      const latestStatus = await refreshStatus();
       setMessage('Autocomplete stopped.');
+      if (latestStatus?.running) {
+        appendUiLog('runtime still reports running after stop');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to stop autocomplete');
+      const message = err instanceof Error ? err.message : 'Failed to stop autocomplete';
+      appendUiLog(`stop failed: ${message}`);
+      setError(message);
     }
   };
 
   const testCurrent = async () => {
     if (!isTauri()) return;
     setError(null);
+    setMessage(null);
     try {
+      appendUiLog(
+        contextOverride.trim()
+          ? `get suggestion requested (override chars=${String(contextOverride.trim().length)})`
+          : 'get suggestion requested (focused app context)'
+      );
       const response = await openhumanAutocompleteCurrent({
         context: contextOverride.trim() || undefined,
       });
@@ -280,15 +331,21 @@ const AutocompletePanel = () => {
       );
       await refreshStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch current suggestion');
+      const message = err instanceof Error ? err.message : 'Failed to fetch current suggestion';
+      appendUiLog(`get suggestion failed: ${message}`);
+      setError(message);
     }
   };
 
   const acceptSuggestion = async () => {
     if (!isTauri()) return;
     setError(null);
+    setMessage(null);
     try {
-      const response = await openhumanAutocompleteAccept();
+      appendUiLog('accept suggestion requested');
+      const response = await openhumanAutocompleteAccept({
+        suggestion: status?.suggestion?.value ?? undefined,
+      });
       appendLogs(response.logs);
       if (response.result.applied && response.result.value) {
         setMessage(`Accepted: ${response.result.value}`);
@@ -296,8 +353,11 @@ const AutocompletePanel = () => {
         setMessage(response.result.reason ?? 'No suggestion was applied.');
       }
       await refreshStatus();
+      await loadHistory();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to accept suggestion');
+      const message = err instanceof Error ? err.message : 'Failed to accept suggestion';
+      appendUiLog(`accept failed: ${message}`);
+      setError(message);
     }
   };
 
@@ -305,11 +365,17 @@ const AutocompletePanel = () => {
     if (!isTauri()) return;
     setError(null);
     try {
+      appendUiLog('debug focus requested');
       const response = await openhumanAutocompleteDebugFocus();
       appendLogs(response.logs);
       setFocusDebug(JSON.stringify(response.result, null, 2));
+      appendUiLog(
+        `focus app=${response.result.app_name ?? 'n/a'} role=${response.result.role ?? 'n/a'} chars=${String(response.result.context.length)}`
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to inspect focused element');
+      const message = err instanceof Error ? err.message : 'Failed to inspect focused element';
+      appendUiLog(`debug focus failed: ${message}`);
+      setError(message);
     }
   };
 
@@ -321,6 +387,11 @@ const AutocompletePanel = () => {
     return () => window.clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const clearLogs = () => {
+    setLogs([]);
+    previousStatusRef.current = status;
+  };
 
   return (
     <div className="overflow-hidden h-full flex flex-col z-10 relative">
@@ -343,7 +414,7 @@ const AutocompletePanel = () => {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => void refreshStatus()}
+              onClick={() => void refreshStatus(true)}
               disabled={isLoading}
               className="rounded-lg border border-stone-600 bg-stone-800/60 px-3 py-2 text-sm text-stone-200 disabled:opacity-50">
               {isLoading ? 'Refreshing…' : 'Refresh Status'}
@@ -351,12 +422,14 @@ const AutocompletePanel = () => {
             <button
               type="button"
               onClick={() => void start()}
+              disabled={!status?.platform_supported || Boolean(status?.running)}
               className="rounded-lg border border-green-500/60 bg-green-500/20 px-3 py-2 text-sm text-green-200 disabled:opacity-50">
               Start
             </button>
             <button
               type="button"
               onClick={() => void stop()}
+              disabled={!status?.running}
               className="rounded-lg border border-red-500/60 bg-red-500/20 px-3 py-2 text-sm text-red-200 disabled:opacity-50">
               Stop
             </button>
@@ -545,7 +618,7 @@ const AutocompletePanel = () => {
             <h3 className="text-sm font-semibold text-white">Live Logs</h3>
             <button
               type="button"
-              onClick={() => setLogs([])}
+              onClick={clearLogs}
               className="rounded-lg border border-stone-600 bg-stone-800/60 px-3 py-1.5 text-xs text-stone-200">
               Clear
             </button>
