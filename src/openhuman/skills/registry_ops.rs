@@ -667,6 +667,12 @@ mod tests {
         let src = tempfile::TempDir::new().unwrap();
         let manifest_source_path = src.path().join("manifest.json");
         let js_source_path = src.path().join("index.js");
+        let manifest_source_url = reqwest::Url::from_file_path(&manifest_source_path)
+            .expect("manifest source path must convert to file:// URL")
+            .to_string();
+        let js_source_url = reqwest::Url::from_file_path(&js_source_path)
+            .expect("js source path must convert to file:// URL")
+            .to_string();
         std::fs::write(
             &manifest_source_path,
             serde_json::to_string(&manifest).unwrap(),
@@ -690,8 +696,8 @@ mod tests {
                     platforms: None,
                     setup: None,
                     ignore_in_production: false,
-                    download_url: js_source_path.to_string_lossy().into_owned(),
-                    manifest_url: manifest_source_path.to_string_lossy().into_owned(),
+                    download_url: js_source_url.clone(),
+                    manifest_url: manifest_source_url.clone(),
                     checksum_sha256: None,
                     author: None,
                     repository: None,
@@ -729,6 +735,12 @@ mod tests {
         let src = tempfile::TempDir::new().unwrap();
         let manifest_source_path = src.path().join("manifest.json");
         let js_source_path = src.path().join("index.js");
+        let manifest_source_url = reqwest::Url::from_file_path(&manifest_source_path)
+            .expect("manifest source path must convert to file:// URL")
+            .to_string();
+        let js_source_url = reqwest::Url::from_file_path(&js_source_path)
+            .expect("js source path must convert to file:// URL")
+            .to_string();
         std::fs::write(
             &manifest_source_path,
             r#"{"id":"cs-skill","name":"CS Skill","version":"1.0.0"}"#,
@@ -752,8 +764,8 @@ mod tests {
                     platforms: None,
                     setup: None,
                     ignore_in_production: false,
-                    download_url: js_source_path.to_string_lossy().into_owned(),
-                    manifest_url: manifest_source_path.to_string_lossy().into_owned(),
+                    download_url: js_source_url.clone(),
+                    manifest_url: manifest_source_url.clone(),
                     checksum_sha256: Some(correct_checksum.clone()),
                     author: None,
                     repository: None,

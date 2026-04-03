@@ -21,6 +21,7 @@ const Home = () => {
   const initialBootstrapHandledRef = useRef(false);
   const initialBootstrapInFlightRef = useRef(false);
   const initialBootstrapPendingDownloadRef = useRef(false);
+  const initialBootstrapAttemptsRef = useRef(0);
 
   // Get greeting based on time
   const getGreeting = () => {
@@ -58,6 +59,7 @@ const Home = () => {
 
   useEffect(() => {
     if (!isTauri()) return;
+    const MAX_INITIAL_BOOTSTRAP_ATTEMPTS = 3;
     let mounted = true;
     const load = async () => {
       try {
@@ -108,8 +110,20 @@ const Home = () => {
                 await triggerLocalAiAssetBootstrap(false, '[Home first-run]');
                 initialBootstrapPendingDownloadRef.current = false;
                 initialBootstrapHandledRef.current = true;
+                initialBootstrapAttemptsRef.current = 0;
               })
               .catch(error => {
+                initialBootstrapAttemptsRef.current += 1;
+                const attempts = initialBootstrapAttemptsRef.current;
+                if (attempts >= MAX_INITIAL_BOOTSTRAP_ATTEMPTS) {
+                  initialBootstrapPendingDownloadRef.current = false;
+                  initialBootstrapHandledRef.current = true;
+                  console.warn(
+                    '[Home] first-run local AI bootstrap failed permanently; stopping retries',
+                    { attempts, error }
+                  );
+                  return;
+                }
                 console.warn('[Home] first-run local AI bootstrap failed:', error);
               })
               .finally(() => {
