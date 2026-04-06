@@ -266,7 +266,10 @@ describe('AutocompletePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Accept Suggestion' }));
 
     await waitFor(() => {
-      expect(openhumanAutocompleteAccept).toHaveBeenCalledWith({ suggestion: 'completion draft' });
+      expect(openhumanAutocompleteAccept).toHaveBeenCalledWith({
+        suggestion: 'completion draft',
+        skip_apply: true,
+      });
     });
     await waitFor(() => {
       expect(screen.getByText('Current suggestion: none')).toBeInTheDocument();

@@ -166,16 +166,42 @@ const AutocompletePanel = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadHistory = async () => {
-    if (!isTauri()) return;
+  const loadHistory = async (): Promise<AcceptedCompletion[]> => {
+    if (!isTauri()) return [];
     setIsHistoryLoading(true);
     try {
       const response = await openhumanAutocompleteHistory({ limit: 20 });
       setHistoryEntries(response.result.entries);
+      return response.result.entries;
     } catch {
       // Non-critical — silently ignore
+      return [];
     } finally {
       setIsHistoryLoading(false);
+    }
+  };
+
+  const waitForAcceptedHistoryEntry = async (acceptedValue?: string | null) => {
+    if (!acceptedValue) {
+      await loadHistory();
+      return;
+    }
+    const normalized = acceptedValue.trim();
+    if (!normalized) {
+      await loadHistory();
+      return;
+    }
+
+    const maxAttempts = 6;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const entries = await loadHistory();
+      const found = entries.some(entry => entry.suggestion.trim() === normalized);
+      if (found) {
+        return;
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 180));
+      }
     }
   };
 
@@ -202,7 +228,9 @@ const AutocompletePanel = () => {
       const response = await openhumanAutocompleteStatus();
       setStatus(response.result);
       trackStatusChanges(response.result);
-      appendLogs(response.logs);
+      if (showSpinner) {
+        appendLogs(response.logs);
+      }
       return response.result;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to refresh autocomplete status';
@@ -345,15 +373,16 @@ const AutocompletePanel = () => {
       appendUiLog('accept suggestion requested');
       const response = await openhumanAutocompleteAccept({
         suggestion: status?.suggestion?.value ?? undefined,
+        skip_apply: true,
       });
       appendLogs(response.logs);
-      if (response.result.applied && response.result.value) {
+      if (response.result.accepted && response.result.value) {
         setMessage(`Accepted: ${response.result.value}`);
       } else {
         setMessage(response.result.reason ?? 'No suggestion was applied.');
       }
       await refreshStatus();
-      await loadHistory();
+      await waitForAcceptedHistoryEntry(response.result.value);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to accept suggestion';
       appendUiLog(`accept failed: ${message}`);
