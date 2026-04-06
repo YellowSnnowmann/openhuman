@@ -46,6 +46,7 @@ const status: AccessibilityStatus = {
     session_ttl_secs: 300,
     panic_stop_hotkey: 'Cmd+Shift+.',
     autocomplete_enabled: true,
+    keep_screenshots: false,
     allowlist: [],
     denylist: ['wallet'],
   },
@@ -95,6 +96,7 @@ describe('AccessibilityPanel', () => {
     expect(screen.getByText('Accessibility Automation')).toBeInTheDocument();
     expect(screen.getByText('Permissions')).toBeInTheDocument();
     expect(screen.getByText('Session')).toBeInTheDocument();
+    expect(screen.queryByText('Screen Recording')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start Session' })).toBeInTheDocument();
   });
 });

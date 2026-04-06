@@ -6,13 +6,18 @@
  */
 
 import { callCoreRpc } from "../../services/coreRpcClient";
+import { getCoreStateSnapshot, patchCoreStateSnapshot } from "../../lib/coreState/store";
 import { SkillRuntime } from "./runtime";
 import { emitSkillStateChange } from "./skillEvents";
 import {
   getSkillSnapshot,
   setSetupComplete as rpcSetSetupComplete,
+  stopSkill as rpcStopSkill,
   revokeOAuth as rpcRevokeOAuth,
   removePersistedOAuthCredential,
+  removePersistedClientKey,
+  revokeAuth as rpcRevokeAuth,
+  removePersistedAuthCredential,
 } from "./skillsApi";
 import { syncToolsToBackend } from "./sync";
 import type {
@@ -23,8 +28,6 @@ import type {
   SkillToolDefinition,
   SkillOptionDefinition,
 } from "./types";
-import { store } from "../../store";
-import { setPrimaryWalletAddressForUser } from "../../store/authSlice";
 import {
   runtimeSkillDataDir,
   runtimeSkillDataRead,
@@ -45,10 +48,7 @@ class SkillManager {
     const params: Record<string, unknown> = {};
 
     if (skillId === "wallet") {
-      const state = store.getState();
-      const userId = state.user.user?._id;
-      const primaryAddress =
-        userId && state.auth.primaryWalletAddressByUser?.[userId];
+      const primaryAddress = getCoreStateSnapshot().snapshot.localState.primaryWalletAddress;
       if (primaryAddress) {
         params.walletAddress = primaryAddress;
       }
@@ -293,12 +293,14 @@ class SkillManager {
    * Notify a skill that OAuth completed successfully.
    * Called by the deep link handler after backend OAuth callback.
    * For Gmail, pass extraCredential.accessToken so the skill uses the token directly.
+   * When the encrypted OAuth flow is used, pass extraCredential.clientKeyShare
+   * so the skill runtime can persist and use it for encrypted proxy requests.
    */
   async notifyOAuthComplete(
     skillId: string,
     integrationId: string,
     provider?: string,
-    extraCredential?: { accessToken?: string },
+    extraCredential?: { accessToken?: string; clientKeyShare?: string },
   ): Promise<void> {
     // Persist setup completion via RPC (always, regardless of runtime)
     await rpcSetSetupComplete(skillId, true).catch(() => {});
@@ -376,30 +378,40 @@ class SkillManager {
   }
 
   /**
-   * Disconnect a skill — revoke OAuth credentials, stop it, and reset setup state.
+   * Disconnect a skill — revoke OAuth and/or auth credentials, stop it, and reset setup state.
    */
   async disconnectSkill(skillId: string): Promise<void> {
-    // Read the stored credential ID so oauth/revoked clears the right memory bucket.
+    // Read the stored credential IDs so revoke handlers clear the right data.
     let credentialId: string | undefined;
+    let authMode: string | undefined;
     try {
       const snap = await getSkillSnapshot(skillId);
-      const cred = snap?.state?.__oauth_credential as
+      const oauthCred = snap?.state?.__oauth_credential as
         | { credentialId?: string }
         | string
         | undefined;
-      if (cred && typeof cred === "object") {
-        credentialId = cred.credentialId;
+      if (oauthCred && typeof oauthCred === "object") {
+        credentialId = oauthCred.credentialId;
+      }
+      const authCred = snap?.state?.__auth_credential as
+        | { mode?: string }
+        | string
+        | undefined;
+      if (authCred && typeof authCred === "object") {
+        authMode = authCred.mode;
       }
     } catch {
       // Snapshot may fail if skill isn't registered yet
     }
 
-    // Revoke OAuth credential before stopping so the running skill can clean up
-    // its in-memory state and the event loop deletes oauth_credential.json.
-    let revokeSucceeded = false;
+    // Revoke credentials before stopping so the running skill can clean up.
+    let oauthRevokeSucceeded = false;
+    let authRevokeSucceeded = false;
+
+    // Try revoking OAuth credential
     try {
       await rpcRevokeOAuth(skillId, credentialId ?? "default");
-      revokeSucceeded = true;
+      oauthRevokeSucceeded = true;
     } catch (err) {
       console.debug(
         "[SkillManager] oauth/revoked failed (runtime may be stopped):",
@@ -407,17 +419,57 @@ class SkillManager {
       );
     }
 
+    // Try revoking auth credential (attempt even if authMode is unknown)
     try {
+      await rpcRevokeAuth(skillId, authMode ?? "unknown");
+      authRevokeSucceeded = true;
+    } catch (err) {
+      console.debug(
+        "[SkillManager] auth/revoked failed (runtime may be stopped):",
+        err,
+      );
+    }
+
+    try {
+      // Stop the frontend-side runtime (if any)
       await this.stopSkill(skillId);
+      // Stop the core sidecar skill process
+      try {
+        await rpcStopSkill(skillId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("not found") || msg.includes("not registered")) {
+          console.debug("[SkillManager] core skills_stop: already stopped");
+        } else {
+          console.error("[SkillManager] core skills_stop failed:", err);
+          throw err;
+        }
+      }
     } finally {
-      if (!revokeSucceeded) {
+      // Host-side fallback cleanup if RPC revoke failed
+      if (!oauthRevokeSucceeded) {
         await removePersistedOAuthCredential(skillId).catch((err) => {
           console.debug(
-            "[SkillManager] host-side credential cleanup failed:",
+            "[SkillManager] host-side OAuth credential cleanup failed:",
             err,
           );
         });
       }
+      if (!authRevokeSucceeded) {
+        await removePersistedAuthCredential(skillId).catch((err) => {
+          console.debug(
+            "[SkillManager] host-side auth credential cleanup failed:",
+            err,
+          );
+        });
+      }
+      // Always clear the client-side encryption key
+      await removePersistedClientKey(skillId).catch((err) => {
+        console.debug(
+          "[SkillManager] host-side client key cleanup failed:",
+          err,
+        );
+      });
     }
 
     await rpcSetSetupComplete(skillId, false).catch(() => {});
@@ -493,12 +545,18 @@ class SkillManager {
    * sends load params so the skill receives onLoad({ walletAddress }).
    */
   async setWalletAddress(address: string): Promise<void> {
-    const state = store.getState();
-    const userId = state.user.user?._id;
-    if (!userId) {
-      return;
-    }
-    store.dispatch(setPrimaryWalletAddressForUser({ userId, address }));
+    await callCoreRpc({
+      method: "openhuman.app_state_update_local_state",
+      params: { primaryWalletAddress: address },
+    });
+    patchCoreStateSnapshot({
+      snapshot: {
+        localState: {
+          ...getCoreStateSnapshot().snapshot.localState,
+          primaryWalletAddress: address,
+        },
+      },
+    });
     const runtime = this.runtimes.get("wallet");
     if (runtime?.isRunning) {
       await runtime.load({ walletAddress: address });

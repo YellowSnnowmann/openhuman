@@ -41,35 +41,33 @@ irm https://raw.githubusercontent.com/tinyhumansai/openhuman/main/scripts/instal
 
 OpenHuman is an open-source agentic assistant that is designed to integrate with you in your daily life. Here's what makes OpenHuman special:
 
-- **One subscription, many providers** — One assistant wired to **skills** and backend models so you are not juggling a separate subscription stack for every integration surface.
+- **Simple, UI-first** — A **clean** desktop experience and short onboarding paths so you can go from install to a **working agent in a few clicks**, without a config-first setup. You don't need a terminal to run OpenHuman.
 
-- **Incredible memory** — **Rust-side memory** (store / recall / namespaces) plus optional **TinyHumans [Neocortex](https://github.com/tinyhumansai/neocortex)**-backed context when configured, so the agent can retain and retrieve more than a single chat window. **Channels** and ongoing **conversations** feed the same loop so day-to-day context does not reset every session.
+- **One subscription, many providers** — You only need **one** account to get access to many agentic APIs (AI Models, Search, Webhooks/Tunnels and other 3rd party APIs etc..), simplifying the experience to get a powerful agent going.
 
-- **Screen intelligence** — Regular **screen capture** (on a cadence or when triggered) feeds an on-device pipeline that **understands what is on screen**, distills it into **memory** (facts, UI state, workflows), and can propose **actions** the agent executes for you. OS permissions and capture APIs vary by platform; the goal is **your machine first**, not shipping raw frames to the cloud by default.
+- **Rich Skills** — Plug into **Gmail**, **Slack**, **Notion**, and the rest of your stack via **rich, feature-backed skills**. Connections are typically **one click** through setup wizards instead of wiring APIs by hand. Workflow data is kept **on device**, **encrypted locally**, and treated as **yours**: encryption and sensitive context stay **on your machine**. **Webhooks** give **instant feedback** into the agent when external systems or skills emit events, so the loop stays tight without constant polling.
 
-- **Voice & meetings** — A **Local-model** speech stack (listen / **TTS**) let the assistant **talk back** and **capture or work with meeting audio** with a privacy-first default when you route inference locally. Transcripts and summaries land in the same **memory + agent** loop so OpenHuman can **follow up**: tasks, drafts, calendar nudges, or skill-backed workflows—without treating a meeting as a one-off chat.
+- **Local knowledge base** — Built from **your data and your activity**. How you work across tools, sessions, and connected services—so the agent gets **rich, workflow-aware context**, not a one-off chat transcript. Everything is **stored on your machine** and compounding over time without becoming a cloud dossier. **Channels**, **skills** and ongoing **conversations** feed the same loop so day-to-day context does not reset every session.
 
-- **Memory-aware autocomplete** — **Keyboard autocomplete** is built for **right-context** suggestions: it consults **memory namespaces** and recent context so completions stay aligned with **you**, your workspace, and prior sessions—not a blank model every keystroke.
+- **Local AI model** — The **Rust core** exposes **local AI** paths (and the desktop bundle can ship **local/bundled runners** where applicable) for the workloads above—vision snippets, speech helpers, summarization, tooling—so sensitive steps can stay **off the cloud** when you choose.
 
-- **Runs a local AI model** — The **Rust core** exposes **local AI** paths (and the desktop bundle can ship **local/bundled runners** where applicable) for the workloads above—vision snippets, speech helpers, summarization, tooling—so sensitive steps can stay **off the cloud** when you choose.
-
-- **Simple or advanced** — **Skill setup wizards** and defaults for common tools, with room to go deeper via **settings, credentials, and core RPC** when you need control and privacy.
+- **Deep desktop integrations** — OpenHuman is a **native desktop** assistant, not a web-only chat: **memory-aware keyboard autocomplete**, **voice** (**STT** listening and **TTS** replies), **screen intelligence** that understands what is on screen and feeds your local context, plus windowing and OS-level permissions—so the agent meets you **on the machine**, not trapped in a browser tab.
 
 Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Contributor orientation: [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
-# Under the hood (Architecture)
+## OpenHuman vs other agents
 
-OpenHuman is a **desktop monorepo**: **Rust** owns **business logic and execution**; the **UI** owns **interaction, layout, and OS integration**.
+High-level comparison (products evolve—verify against each vendor). OpenHuman is built to **minimize vendor sprawl**, keep **workflow knowledge on-device**, and ship **deep desktop** features—not only chat.
 
-**Rust (`openhuman` / `openhuman_core`).** The repo root **`src/`** crate is the brain: **JSON-RPC over HTTP** (`core_server`), domain modules (auth, config, memory, skills, channels, screen intelligence, local AI, cron, …), and a **QuickJS** runtime for **sandboxed JavaScript skills**. The **`openhuman`** binary is built and **staged next to the Tauri app** so the desktop shell can spawn it as a **sidecar**. Heavy work—SQLite, sockets, crypto, skill lifecycle—runs there under **Tokio**, not in the WebView.
-
-**UI (`app/`).** **Vite + React** (TypeScript) implements screens, onboarding, settings, and realtime UX. **Redux Toolkit** holds client state; **Socket.io** and the **MCP-style** client stack stay in sync with the core’s realtime surface. **Tauri v2** (`app/src-tauri/`) is a thin **Rust host**: windowing, filesystem hooks where needed, and **`core_rpc_relay`**—forwarding JSON-RPC from the WebView to the **`openhuman`** process so the UI never re-implements domain rules.
-
-**Controllers and the RPC surface.** Features are exposed as **registered controllers**: each domain declares **schemas** (namespace, function name, parameter shapes) and a **handler**. At runtime, calls are **validated**, dispatched by **method name** (e.g. `openhuman.auth_get_state`, `openhuman.local_ai_agent_chat`), and return structured outcomes. **CLI** and **HTTP** share the same controller catalog, so automation, tests, and the app all hit one contract.
-
-**What ties it together:** one **registry** of controllers, one **sidecar** process for execution, **Tauri IPC** for shell-only capabilities, and **HTTP JSON-RPC** for everything else—plus **skills** and **dual-socket** behavior documented in the architecture guide.
-
-**Read more:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Frontend tree: [`docs/src/README.md`](docs/src/README.md) · Tauri commands: [`docs/src-tauri/README.md`](docs/src-tauri/README.md)
+|                                                                           | Claude Code/Cowork                                     | OpenClaw                                                              | Hermes Agent                                | OpenHuman                                                                                                 |
+| ------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Open-source**: Is the codebase open to review?                          | 🚫 Proprietary client                                  | ✅ MIT License                                                        | ✅ MIT License                              | ✅ GNU License                                                                                            |
+| **Simple**: Is it simple to get started?                                  | ✅ Simple Desktop App + CLI                            | ⚠️ Terminal first and often complex                                   | ⚠️ Terminal first and often complex         | ✅ Simple, Clean UI/UX. Get started within minutes                                                        |
+| **Cost**: How expensive is to run?                                        | ⚠️ Subscription + **add-on** tool/API costs            | ⚠️ Tied to **models & hosting** you choose                            | ⚠️ Tied to **models & hosting** you choose  | ✅ **Cost optimized** with the option to run many things locally for free                                 |
+| **Memory & Knowledge Base (KB)**: Does the agent know you and your world? | ✅ Built-in **memory**; mostly **chat/session** scoped | ⚠️ Has a local memory but often needs **plugins** for richer behavior | ✅ **Self-learning** / task loops (typical) | 🚀 **Local KB + Self-learning** from **your** activity & data (GMail, Notion etc... via skills) & prompts |
+| **API spagetti**: How complex is it to hook mulitple features together?   | 🚫 Claude bill + often **extra keys** for MCP/tools    | 🚫 **BYOK** / **multi-vendor** common                                 | 🚫 **Multiple providers** common            | ✅ **One account** get access to many **bundled** platform APIs                                           |
+| **Extensibility**: Can you add rich features into it?                     | ✅ **MCP** (different model than sandboxed skills)     | ✅ Plugin Architecture (SKILL.md)                                     | ✅ Plugin Architecture (SKILL.md)           | 🚀 **Rich Skills** with ability to have realtime updates, local DB & more                                 |
+| **Desktop integrations**: Can it integrate into your desktop completely?  | ⚠️ Desktop app & access to folders                     | ⚠️ Often **lighter** native surface                                   | ⚠️ Often **lighter** native surface         | ✅ **STT**, **TTS**, **screen intelligence**, **memory-aware autocomplete** and a whole lot more          |
 
 <!-- # Star us on GitHub
 

@@ -2,6 +2,7 @@ use crate::openhuman::config::{Config, ScreenIntelligenceConfig};
 use crate::openhuman::local_ai;
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -36,6 +37,7 @@ struct SessionRuntime {
     panic_hotkey: String,
     stop_reason: Option<String>,
     last_capture_at_ms: Option<i64>,
+    capture_count: u64,
     frames: VecDeque<CaptureFrame>,
     last_context: Option<AppContext>,
     task: Option<JoinHandle<()>>,
@@ -143,6 +145,7 @@ impl AccessibilityEngine {
                     panic_hotkey: state.config.panic_stop_hotkey.clone(),
                     stop_reason: None,
                     last_capture_at_ms: None,
+                    capture_count: 0,
                     frames: VecDeque::new(),
                     last_context: None,
                     task: None,
@@ -198,6 +201,14 @@ impl AccessibilityEngine {
         state.permissions = detect_permissions();
 
         let context = foreground_context();
+        let foreground_context = context.as_ref().map(|ctx| AppContextInfo {
+            app_name: ctx.app_name.clone(),
+            window_title: ctx.window_title.clone(),
+            bounds_x: ctx.bounds.map(|b| b.x),
+            bounds_y: ctx.bounds.map(|b| b.y),
+            bounds_width: ctx.bounds.map(|b| b.width),
+            bounds_height: ctx.bounds.map(|b| b.height),
+        });
         let blocked = context
             .as_ref()
             .map(|ctx| !self.should_capture_context(ctx, &state.config))
@@ -214,12 +225,17 @@ impl AccessibilityEngine {
                     ttl_secs: session.ttl_secs,
                     panic_hotkey: session.panic_hotkey.clone(),
                     stop_reason: session.stop_reason.clone(),
+                    capture_count: session.capture_count,
                     frames_in_memory: session.frames.len(),
                     last_capture_at_ms: session.last_capture_at_ms,
                     last_context: session
                         .last_context
                         .as_ref()
                         .and_then(|c| c.app_name.clone()),
+                    last_window_title: session
+                        .last_context
+                        .as_ref()
+                        .and_then(|c| c.window_title.clone()),
                     vision_enabled: session.vision_enabled,
                     vision_state: session.vision_state.clone(),
                     vision_queue_depth: session.vision_queue_depth,
@@ -234,9 +250,11 @@ impl AccessibilityEngine {
                     ttl_secs: state.config.session_ttl_secs,
                     panic_hotkey: state.config.panic_stop_hotkey.clone(),
                     stop_reason: None,
+                    capture_count: 0,
                     frames_in_memory: 0,
                     last_capture_at_ms: None,
                     last_context: None,
+                    last_window_title: None,
                     vision_enabled: state.config.vision_enabled,
                     vision_state: "idle".to_string(),
                     vision_queue_depth: 0,
@@ -259,6 +277,7 @@ impl AccessibilityEngine {
             permissions,
             features,
             session,
+            foreground_context,
             config,
             denylist,
             is_context_blocked: blocked,
@@ -277,8 +296,6 @@ impl AccessibilityEngine {
             });
         }
 
-        self.request_permission(PermissionKind::ScreenRecording)
-            .await?;
         self.request_permission(PermissionKind::Accessibility)
             .await?;
         self.request_permission(PermissionKind::InputMonitoring)
@@ -286,7 +303,7 @@ impl AccessibilityEngine {
 
         let mut state = self.inner.lock().await;
         state.permissions = detect_permissions();
-        state.last_event = Some("permissions_requested".to_string());
+        state.last_event = Some("permissions_requested:accessibility,input_monitoring".to_string());
         Ok(state.permissions.clone())
     }
 
@@ -371,6 +388,7 @@ impl AccessibilityEngine {
                 panic_hotkey: state.config.panic_stop_hotkey.clone(),
                 stop_reason: None,
                 last_capture_at_ms: None,
+                capture_count: 0,
                 frames: VecDeque::new(),
                 last_context: None,
                 task: None,
@@ -434,6 +452,7 @@ impl AccessibilityEngine {
         };
 
         push_ephemeral_frame(&mut session.frames, frame.clone());
+        session.capture_count = session.capture_count.saturating_add(1);
         session.last_capture_at_ms = Some(frame.captured_at_ms);
         session.last_context = context;
         if frame.image_ref.is_some() && session.vision_enabled {
@@ -797,6 +816,7 @@ impl AccessibilityEngine {
                     image_ref: capture_result.ok(),
                 };
                 push_ephemeral_frame(&mut session.frames, frame.clone());
+                session.capture_count = session.capture_count.saturating_add(1);
                 session.last_capture_at_ms = Some(now);
                 session.last_context = context;
                 if frame.image_ref.is_some() && session.vision_enabled {
@@ -813,6 +833,60 @@ impl AccessibilityEngine {
         }
     }
 
+    /// Save a screenshot PNG to `{workspace_dir}/screenshots/{timestamp}_{app}.png`.
+    /// Returns the file path on success.
+    pub fn save_screenshot_to_disk(
+        workspace_dir: &std::path::Path,
+        frame: &CaptureFrame,
+    ) -> Result<PathBuf, String> {
+        use base64::{engine::general_purpose::STANDARD as B64, Engine};
+
+        let image_ref = frame
+            .image_ref
+            .as_deref()
+            .ok_or_else(|| "frame has no image payload".to_string())?;
+
+        let b64_payload = if let Some(pos) = image_ref.find(";base64,") {
+            &image_ref[pos + 8..]
+        } else {
+            image_ref
+        };
+
+        let raw_bytes = B64
+            .decode(b64_payload)
+            .map_err(|e| format!("base64 decode for screenshot save failed: {e}"))?;
+
+        let screenshots_dir = workspace_dir.join("screenshots");
+        std::fs::create_dir_all(&screenshots_dir)
+            .map_err(|e| format!("failed to create screenshots dir: {e}"))?;
+
+        let app_slug = frame
+            .app_name
+            .as_deref()
+            .unwrap_or("unknown")
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        let filename = format!("{}_{}.png", frame.captured_at_ms, app_slug);
+        let file_path = screenshots_dir.join(&filename);
+
+        std::fs::write(&file_path, &raw_bytes)
+            .map_err(|e| format!("failed to write screenshot {filename}: {e}"))?;
+
+        tracing::debug!(
+            "[screen_intelligence] screenshot saved: {} ({} bytes)",
+            file_path.display(),
+            raw_bytes.len()
+        );
+        Ok(file_path)
+    }
+
     async fn run_vision_worker(
         self: Arc<Self>,
         mut rx: tokio::sync::mpsc::UnboundedReceiver<CaptureFrame>,
@@ -825,6 +899,32 @@ impl AccessibilityEngine {
                 frame.app_name,
                 frame.reason
             );
+
+            // Read config for keep_screenshots and workspace_dir.
+            let (keep_screenshots, workspace_dir) = match Config::load_or_init().await {
+                Ok(cfg) => (
+                    cfg.screen_intelligence.keep_screenshots,
+                    cfg.workspace_dir.clone(),
+                ),
+                Err(_) => (false, PathBuf::from(".")),
+            };
+
+            // Save screenshot to disk (always — we need it on disk for the workspace).
+            // If keep_screenshots is false, we delete after vision processing.
+            let saved_path = if frame.image_ref.is_some() {
+                match Self::save_screenshot_to_disk(&workspace_dir, &frame) {
+                    Ok(path) => Some(path),
+                    Err(err) => {
+                        tracing::debug!(
+                            "[screen_intelligence] screenshot save failed (non-fatal): {err}"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             {
                 let mut state = self.inner.lock().await;
                 if let Some(session) = state.session.as_mut() {
@@ -836,6 +936,18 @@ impl AccessibilityEngine {
             }
 
             let result = self.analyze_frame_with_vision(frame).await;
+
+            // Clean up screenshot file if keep_screenshots is false.
+            if !keep_screenshots {
+                if let Some(path) = saved_path {
+                    if let Err(err) = std::fs::remove_file(&path) {
+                        tracing::trace!(
+                            "[screen_intelligence] failed to remove temp screenshot {}: {err}",
+                            path.display()
+                        );
+                    }
+                }
+            }
 
             let mut state = self.inner.lock().await;
             let Some(session) = state.session.as_mut() else {
@@ -970,6 +1082,7 @@ mod tests {
                 panic_hotkey: state.config.panic_stop_hotkey.clone(),
                 stop_reason: None,
                 last_capture_at_ms: None,
+                capture_count: 0,
                 frames: VecDeque::new(),
                 last_context: None,
                 task: None,

@@ -1,5 +1,4 @@
-import type { ApiResponse } from '../../types/api';
-import { apiClient } from '../apiClient';
+import { callCoreCommand } from '../coreCommandClient';
 
 export interface CreditBalance {
   balanceUsd: number;
@@ -13,6 +12,16 @@ export interface TeamUsage {
   dailyUsage: number;
   totalInputTokensThisCycle: number;
   totalOutputTokensThisCycle: number;
+  /** 5-hour rolling window: amount spent (USD) */
+  fiveHourSpendUsd: number;
+  /** 5-hour rolling window: cap for the user's plan (USD) */
+  fiveHourCapUsd: number;
+  /** ISO timestamp when the oldest 5-hour window entry expires (null if window is empty) */
+  fiveHourResetsAt: string | null;
+  /** ISO timestamp when the current weekly cycle started */
+  cycleStartDate: string;
+  /** ISO timestamp when the current weekly cycle ends */
+  cycleEndsAt: string;
 }
 
 export interface TopUpResult {
@@ -101,6 +110,21 @@ export interface UpdateCardPayload {
   billingDetails?: CardBillingDetails;
 }
 
+// ── Coupon types ────────────────────────────────────────────────────────────
+
+export interface CouponRedeemResult {
+  success: boolean;
+  data: { code: string; amountUsd: number };
+}
+
+export interface RedeemedCoupon {
+  code: string;
+  amountUsd: number;
+  redeemedAt: string;
+  activationType: string;
+  fulfilled: boolean;
+}
+
 /**
  * Credits API endpoints
  */
@@ -110,8 +134,7 @@ export const creditsApi = {
    * GET /credits/balance
    */
   getBalance: async (): Promise<CreditBalance> => {
-    const response = await apiClient.get<ApiResponse<CreditBalance>>('/payments/credits/balance');
-    return response.data;
+    return await callCoreCommand<CreditBalance>('openhuman.billing_get_balance');
   },
 
   /**
@@ -119,8 +142,7 @@ export const creditsApi = {
    * GET /teams/me/usage
    */
   getTeamUsage: async (): Promise<TeamUsage> => {
-    const response = await apiClient.get<ApiResponse<TeamUsage>>('/teams/me/usage');
-    return response.data;
+    return await callCoreCommand<TeamUsage>('openhuman.team_get_usage');
   },
 
   /**
@@ -131,11 +153,7 @@ export const creditsApi = {
     amountUsd: number,
     gateway: 'stripe' | 'coinbase' = 'stripe'
   ): Promise<TopUpResult> => {
-    const response = await apiClient.post<ApiResponse<TopUpResult>>('/payments/credits/top-up', {
-      amountUsd,
-      gateway,
-    });
-    return response.data;
+    return await callCoreCommand<TopUpResult>('openhuman.billing_top_up', { amountUsd, gateway });
   },
 
   /**
@@ -143,10 +161,10 @@ export const creditsApi = {
    * GET /credits/transactions
    */
   getTransactions: async (limit = 20, offset = 0): Promise<PaginatedTransactions> => {
-    const response = await apiClient.get<ApiResponse<PaginatedTransactions>>(
-      `/credits/transactions?limit=${limit}&offset=${offset}`
-    );
-    return response.data;
+    return await callCoreCommand<PaginatedTransactions>('openhuman.billing_get_transactions', {
+      limit,
+      offset,
+    });
   },
 
   // ── Auto-Recharge ──────────────────────────────────────────────────────────
@@ -156,10 +174,7 @@ export const creditsApi = {
    * GET /payments/credits/auto-recharge
    */
   getAutoRecharge: async (): Promise<AutoRechargeSettings> => {
-    const response = await apiClient.get<ApiResponse<AutoRechargeSettings>>(
-      '/payments/credits/auto-recharge'
-    );
-    return response.data;
+    return await callCoreCommand<AutoRechargeSettings>('openhuman.billing_get_auto_recharge');
   },
 
   /**
@@ -167,11 +182,9 @@ export const creditsApi = {
    * PATCH /payments/credits/auto-recharge
    */
   updateAutoRecharge: async (payload: AutoRechargeUpdatePayload): Promise<AutoRechargeSettings> => {
-    const response = await apiClient.patch<ApiResponse<AutoRechargeSettings>>(
-      '/payments/credits/auto-recharge',
-      payload
-    );
-    return response.data;
+    return await callCoreCommand<AutoRechargeSettings>('openhuman.billing_update_auto_recharge', {
+      payload,
+    });
   },
 
   /**
@@ -179,10 +192,7 @@ export const creditsApi = {
    * GET /payments/credits/auto-recharge/cards
    */
   getCards: async (): Promise<CardsData> => {
-    const response = await apiClient.get<ApiResponse<CardsData>>(
-      '/payments/credits/auto-recharge/cards'
-    );
-    return response.data;
+    return await callCoreCommand<CardsData>('openhuman.billing_get_cards');
   },
 
   /**
@@ -191,10 +201,7 @@ export const creditsApi = {
    * POST /payments/credits/auto-recharge/cards/setup-intent
    */
   createSetupIntent: async (): Promise<SetupIntentData> => {
-    const response = await apiClient.post<ApiResponse<SetupIntentData>>(
-      '/payments/credits/auto-recharge/cards/setup-intent'
-    );
-    return response.data;
+    return await callCoreCommand<SetupIntentData>('openhuman.billing_create_setup_intent');
   },
 
   /**
@@ -202,11 +209,10 @@ export const creditsApi = {
    * PATCH /payments/credits/auto-recharge/cards/:paymentMethodId
    */
   updateCard: async (paymentMethodId: string, payload: UpdateCardPayload): Promise<CardsData> => {
-    const response = await apiClient.patch<ApiResponse<CardsData>>(
-      `/payments/credits/auto-recharge/cards/${encodeURIComponent(paymentMethodId)}`,
-      payload
-    );
-    return response.data;
+    return await callCoreCommand<CardsData>('openhuman.billing_update_card', {
+      paymentMethodId,
+      payload,
+    });
   },
 
   /**
@@ -214,9 +220,24 @@ export const creditsApi = {
    * DELETE /payments/credits/auto-recharge/cards/:paymentMethodId
    */
   deleteCard: async (paymentMethodId: string): Promise<CardsData> => {
-    const response = await apiClient.delete<ApiResponse<CardsData>>(
-      `/payments/credits/auto-recharge/cards/${encodeURIComponent(paymentMethodId)}`
-    );
-    return response.data;
+    return await callCoreCommand<CardsData>('openhuman.billing_delete_card', { paymentMethodId });
+  },
+
+  // ── Coupons ──────────────────────────────────────────────────────────────
+
+  /**
+   * Redeem a coupon code to add credits.
+   * POST /coupons/redeem
+   */
+  redeemCoupon: async (code: string): Promise<CouponRedeemResult> => {
+    return await callCoreCommand<CouponRedeemResult>('openhuman.billing_redeem_coupon', { code });
+  },
+
+  /**
+   * List coupons redeemed by the current user.
+   * GET /coupons/me
+   */
+  getUserCoupons: async (): Promise<RedeemedCoupon[]> => {
+    return await callCoreCommand<RedeemedCoupon[]>('openhuman.billing_get_coupons');
   },
 };

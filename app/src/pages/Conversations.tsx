@@ -6,7 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import { type ChatSendError, chatSendError } from '../chat/chatSendError';
 import { useLocalModelStatus } from '../hooks/useLocalModelStatus';
 import { creditsApi, type TeamUsage } from '../services/api/creditsApi';
-import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
 import {
   chatCancel,
   chatSend,
@@ -44,6 +43,7 @@ import {
 
 const DEFAULT_THREAD_ID = 'default-thread';
 const DEFAULT_THREAD_TITLE = 'Conversation';
+const AGENTIC_MODEL_ID = 'agentic-v1';
 type ToolTimelineEntryStatus = 'running' | 'success' | 'error';
 type InputMode = 'text' | 'voice';
 type ReplyMode = 'text' | 'voice';
@@ -80,6 +80,36 @@ function getInlineCompletionSuffix(input: string, suggestion: string): string {
   return '';
 }
 
+function formatResetTime(isoStr: string): string {
+  const ms = new Date(isoStr).getTime() - Date.now();
+  if (ms <= 0) return 'now';
+  const mins = Math.ceil(ms / 60_000);
+  if (mins < 60) return `in ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) return remMins > 0 ? `in ${hours}h ${remMins}m` : `in ${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `in ${days}d ${remHours}h` : `in ${days}d`;
+}
+
+function LimitPill({ label, usedPct }: { label: string; usedPct: number }) {
+  const barColor =
+    usedPct >= 1 ? 'bg-coral-500' : usedPct >= 0.8 ? 'bg-amber-500' : 'bg-primary-500';
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[9px] text-stone-400 font-medium uppercase">{label}</span>
+      <div className="w-8 h-1.5 rounded-full bg-stone-200 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+          style={{ width: `${Math.min(100, usedPct * 100)}%` }}
+        />
+      </div>
+      <span className="text-[9px] text-stone-500 tabular-nums">{Math.round(usedPct * 100)}%</span>
+    </div>
+  );
+}
+
 const Conversations = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
@@ -104,9 +134,6 @@ const Conversations = () => {
   const [isPlayingReply, setIsPlayingReply] = useState(false);
   const [inlineSuggestionValue, setInlineSuggestionValue] = useState('');
 
-  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [selectedModel, setSelectedModel] = useState('agentic-v1');
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<ChatSendError | null>(null);
   const socketStatus = useAppSelector(selectSocketStatus);
@@ -179,23 +206,6 @@ const Conversations = () => {
     dispatch(setSelectedThread(DEFAULT_THREAD_ID));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
-
-  useEffect(() => {
-    setIsLoadingModels(true);
-    inferenceApi
-      .listModels()
-      .then(data => {
-        if (data.data.length > 0) {
-          setAvailableModels(data.data);
-          const preferred = data.data.find(m => m.id === 'agentic-v1');
-          setSelectedModel(preferred ? preferred.id : data.data[0].id);
-        }
-      })
-      .catch(() => {
-        // Keep default model on failure
-      })
-      .finally(() => setIsLoadingModels(false));
-  }, []);
 
   useEffect(() => {
     setIsLoadingBudget(true);
@@ -308,6 +318,14 @@ const Conversations = () => {
       mediaRecorderRef.current?.stop();
     }
   }, [inputMode, isRecording]);
+
+  useEffect(() => {
+    if (inputMode === 'voice') {
+      setReplyMode('voice');
+    } else if (replyMode === 'voice') {
+      setReplyMode('text');
+    }
+  }, [inputMode, replyMode]);
 
   // Proactively check voice binary availability when switching to voice mode
   useEffect(() => {
@@ -671,7 +689,7 @@ const Conversations = () => {
 
     // ── Cloud socket path (unchanged) ────────────────────────────────────────
     try {
-      await chatSend({ threadId: sendingThreadId, message: trimmed, model: selectedModel });
+      await chatSend({ threadId: sendingThreadId, message: trimmed, model: AGENTIC_MODEL_ID });
 
       // setIsSending(false) and setActiveThread(null) happen in the onDone/onError event handlers
     } catch (err) {
@@ -892,42 +910,21 @@ const Conversations = () => {
     }
   };
 
-  const selectedThread = threads.find(t => t.id === selectedThreadId);
   const selectedThreadToolTimeline = selectedThreadId
     ? (toolTimelineByThread[selectedThreadId] ?? [])
     : [];
   const inlineCompletionSuffix = getInlineCompletionSuffix(inputValue, inlineSuggestionValue);
 
   return (
-    <div className="h-full relative z-10 flex overflow-hidden">
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold truncate">
-                {selectedThread?.title || DEFAULT_THREAD_TITLE}
-              </h3>
-              {selectedThread?.isActive && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sage-500/20 text-sage-500 flex-shrink-0">
-                  Active
-                </span>
-              )}
-            </div>
-            {selectedThread?.createdAt && (
-              <p className="text-xs text-stone-500 mt-0.5">
-                Created {formatRelativeTime(selectedThread.createdAt)}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+    <div className="h-full relative z-10 flex justify-center overflow-hidden p-4 pt-6">
+      <div className="flex-1 flex flex-col min-w-0 max-w-2xl bg-white rounded-2xl shadow-soft border border-stone-200 overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-5 py-4 bg-stone-50">
           {isLoadingMessages ? (
             <div className="space-y-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
                   <div
-                    className={`h-12 rounded-2xl animate-pulse bg-white/5 ${
+                    className={`h-12 rounded-2xl animate-pulse bg-stone-100 ${
                       i % 2 === 0 ? 'w-2/3' : 'w-1/2'
                     }`}
                   />
@@ -966,11 +963,11 @@ const Conversations = () => {
                     <div
                       className={`rounded-2xl px-4 py-2.5 ${
                         msg.sender === 'user'
-                          ? 'bg-primary-600/20 rounded-br-md'
-                          : 'bg-white/5 rounded-bl-md'
+                          ? 'bg-primary-500 text-white rounded-br-md'
+                          : 'bg-stone-200/80 text-stone-900 rounded-bl-md'
                       }`}>
                       {msg.sender === 'agent' ? (
-                        <div className="text-sm prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:my-2 prose-pre:bg-black/30 prose-pre:rounded-lg prose-code:text-primary-300 prose-code:text-xs prose-a:text-primary-400 prose-headings:text-sm prose-headings:font-semibold prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
+                        <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-pre:my-2 prose-pre:bg-stone-300/50 prose-pre:rounded-lg prose-code:text-primary-700 prose-code:text-xs prose-a:text-primary-500 prose-headings:text-sm prose-headings:font-semibold prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
                           <Markdown>{msg.content}</Markdown>
                         </div>
                       ) : (
@@ -978,14 +975,14 @@ const Conversations = () => {
                       )}
                       <p
                         className={`text-[10px] mt-1 ${
-                          msg.sender === 'user' ? 'text-primary-400/50' : 'text-stone-600'
+                          msg.sender === 'user' ? 'text-white/60' : 'text-stone-400'
                         }`}>
                         {formatRelativeTime(msg.createdAt)}
                       </p>
                     </div>
                     <button
                       onClick={() => handleCopyMessage(msg.id, msg.content)}
-                      className={`absolute -top-1 ${msg.sender === 'user' ? '-left-8' : '-right-8'} p-1 rounded-md opacity-0 group-hover/msg:opacity-100 hover:bg-white/10 text-stone-600 hover:text-stone-300 transition-all`}
+                      className={`absolute -top-1 ${msg.sender === 'user' ? '-left-8' : '-right-8'} p-1 rounded-md opacity-0 group-hover/msg:opacity-100 hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-all`}
                       title="Copy message">
                       {copiedMessageId === msg.id ? (
                         <svg
@@ -1037,14 +1034,14 @@ const Conversations = () => {
                                   })
                                 )
                               }
-                              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary-600/20 border border-primary-500/30 text-xs transition-colors hover:bg-primary-600/30"
+                              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary-100 border border-primary-200 text-xs transition-colors hover:bg-primary-200"
                               title={`Remove ${emoji}`}>
                               {emoji}
                             </button>
                           ))}
                           {msg.sender === 'agent' &&
                             (reactionPickerMsgId === msg.id ? (
-                              <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-white/10">
+                              <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-stone-100">
                                 {['👍', '❤️', '😂', '🔥', '👀', '🎯'].map(emoji => (
                                   <button
                                     key={emoji}
@@ -1074,7 +1071,7 @@ const Conversations = () => {
                             ) : (
                               <button
                                 onClick={() => setReactionPickerMsgId(msg.id)}
-                                className="opacity-0 group-hover/msg:opacity-100 flex items-center px-1.5 py-0.5 rounded-full bg-white/5 hover:bg-white/15 text-stone-500 hover:text-stone-300 text-xs transition-all"
+                                className="opacity-0 group-hover/msg:opacity-100 flex items-center px-1.5 py-0.5 rounded-full bg-stone-50 hover:bg-stone-200 text-stone-500 hover:text-stone-300 text-xs transition-all"
                                 title="Add reaction">
                                 +
                               </button>
@@ -1087,7 +1084,7 @@ const Conversations = () => {
               ))}
               {((activeThreadId === selectedThreadId && isSending) || isDelivering) && (
                 <div className="flex justify-start">
-                  <div className="bg-white/5 rounded-2xl rounded-bl-md px-4 py-3">
+                  <div className="bg-stone-200/80 rounded-2xl rounded-bl-md px-4 py-3">
                     <div className="flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-stone-500 animate-bounce [animation-delay:0ms]" />
                       <span className="w-1.5 h-1.5 rounded-full bg-stone-500 animate-bounce [animation-delay:150ms]" />
@@ -1104,10 +1101,10 @@ const Conversations = () => {
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] ${
                           entry.status === 'running'
-                            ? 'bg-amber-500/20 text-amber-300'
+                            ? 'bg-amber-100 text-amber-600'
                             : entry.status === 'success'
-                              ? 'bg-sage-500/20 text-sage-300'
-                              : 'bg-coral-500/20 text-coral-300'
+                              ? 'bg-sage-100 text-sage-600'
+                              : 'bg-coral-100 text-coral-600'
                         }`}>
                         {entry.status}
                       </span>
@@ -1121,7 +1118,7 @@ const Conversations = () => {
                     onClick={() => {
                       if (selectedThreadId) void chatCancel(selectedThreadId);
                     }}
-                    className="text-xs text-stone-400 hover:text-stone-200 transition-colors">
+                    className="text-xs text-stone-500 hover:text-stone-700 transition-colors">
                     Cancel
                   </button>
                 </div>
@@ -1146,7 +1143,7 @@ const Conversations = () => {
                     void handleSendMessage(s.text);
                   }}
                   disabled={isSending || !rustChat}
-                  className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[12px] whitespace-nowrap bg-white/5 text-stone-400 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                  className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[12px] whitespace-nowrap bg-white text-stone-500 border border-stone-200 hover:bg-stone-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   {s.text}
                 </button>
               ))}
@@ -1154,176 +1151,102 @@ const Conversations = () => {
           </div>
         )}
 
-        <div className="flex-shrink-0 border-t border-white/10 px-4 py-3">
-          {teamUsage && teamUsage.remainingUsd <= 0 && (
-            <div className="mb-3 p-3 rounded-xl bg-coral-500/10 border border-coral-500/20 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <svg
-                  className="w-4 h-4 text-coral-400 flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                <p className="text-xs text-coral-300 truncate">
-                  Daily inference budget exhausted. Top up to continue.
-                </p>
+        <div className="flex-shrink-0 border-t border-stone-200 px-4 py-3">
+          {teamUsage &&
+            (teamUsage.remainingUsd <= 0 ||
+              (teamUsage.fiveHourCapUsd > 0 &&
+                teamUsage.fiveHourSpendUsd >= teamUsage.fiveHourCapUsd)) && (
+              <div className="mb-3 p-3 rounded-xl bg-coral-50 border border-coral-200 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <svg
+                    className="w-4 h-4 text-coral-400 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <p className="text-xs text-coral-600 truncate">
+                    {teamUsage.remainingUsd <= 0
+                      ? 'Weekly inference budget exhausted. Top up to continue.'
+                      : `5-hour rate limit reached.${teamUsage.fiveHourResetsAt ? ` Resets ${formatResetTime(teamUsage.fiveHourResetsAt)}.` : ''}`}
+                  </p>
+                </div>
+                {teamUsage.remainingUsd <= 0 && (
+                  <button
+                    onClick={() => navigate('/settings/billing')}
+                    className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-400 text-white text-xs font-medium transition-colors">
+                    Top Up
+                  </button>
+                )}
               </div>
-              <button
-                onClick={() => navigate('/settings/billing')}
-                className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-400 text-white text-xs font-medium transition-colors">
-                Top Up
-              </button>
-            </div>
-          )}
-
-          <div className="flex items-center gap-2 mb-2">
-            {isLoadingModels ? (
-              <span className="text-xs text-stone-600">Loading models…</span>
-            ) : (
-              <>
-                <span className="text-xs text-stone-500">Model</span>
-                <select
-                  value={selectedModel}
-                  onChange={e => setSelectedModel(e.target.value)}
-                  disabled={isSending}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-stone-300 focus:outline-none focus:ring-1 focus:ring-primary-500/50 disabled:opacity-50 cursor-pointer">
-                  {availableModels.length > 0 ? (
-                    availableModels.map(m => (
-                      <option key={m.id} value={m.id} className="bg-stone-900">
-                        {m.id}
-                      </option>
-                    ))
-                  ) : (
-                    <option value={selectedModel} className="bg-stone-900">
-                      {selectedModel}
-                    </option>
-                  )}
-                </select>
-              </>
             )}
-            <div className="flex-1" />
-            <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
-              <span className="text-[10px] text-stone-500 px-1">Input</span>
-              <button
-                type="button"
-                onClick={() => setInputMode('text')}
-                disabled={isRecording || isTranscribing}
-                className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
-                  inputMode === 'text'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-stone-300 hover:bg-white/10'
-                }`}>
-                Text
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputMode('voice')}
-                disabled={isRecording || isTranscribing || !rustChat || !canUseMicrophoneApi}
-                className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
-                  inputMode === 'voice'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-stone-300 hover:bg-white/10'
-                }`}>
-                Voice
-              </button>
-            </div>
-            <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
-              <span className="text-[10px] text-stone-500 px-1">Reply</span>
-              <button
-                type="button"
-                onClick={() => setReplyMode('text')}
-                className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
-                  replyMode === 'text'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-stone-300 hover:bg-white/10'
-                }`}>
-                Text
-              </button>
-              <button
-                type="button"
-                onClick={() => setReplyMode('voice')}
-                disabled={!rustChat}
-                className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
-                  replyMode === 'voice'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-stone-300 hover:bg-white/10'
-                }`}>
-                Voice
-              </button>
-            </div>
-            {(isLoadingBudget || teamUsage) &&
-              (() => {
-                const size = 22;
-                const r = 9;
-                const circ = 2 * Math.PI * r;
-                const pct = teamUsage
-                  ? Math.min(1, teamUsage.remainingUsd / teamUsage.cycleBudgetUsd)
-                  : 0;
-                const dash = pct * circ;
-                return (
-                  <div
-                    className="flex items-center gap-1.5"
-                    title={
-                      teamUsage
-                        ? `$${teamUsage.remainingUsd.toFixed(2)} of $${teamUsage.cycleBudgetUsd.toFixed(2)} remaining`
-                        : 'Loading budget…'
-                    }>
-                    <svg
-                      width={size}
-                      height={size}
-                      viewBox={`0 0 ${size} ${size}`}
-                      className="-rotate-90">
-                      <circle
-                        cx={size / 2}
-                        cy={size / 2}
-                        r={r}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        className="text-white/10"
-                      />
-                      {teamUsage ? (
-                        <circle
-                          cx={size / 2}
-                          cy={size / 2}
-                          r={r}
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeDasharray={`${dash} ${circ}`}
-                          strokeLinecap="round"
-                          className={pct < 0.2 ? 'text-amber-500' : 'text-primary-500'}
-                          style={{ transition: 'stroke-dasharray 0.3s ease' }}
-                        />
-                      ) : (
-                        <circle
-                          cx={size / 2}
-                          cy={size / 2}
-                          r={r}
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeDasharray={`${circ * 0.25} ${circ}`}
-                          strokeLinecap="round"
-                          className="text-stone-600 animate-spin origin-center"
-                          style={{ transformOrigin: `${size / 2}px ${size / 2}px` }}
-                        />
-                      )}
-                    </svg>
-                    {teamUsage && (
-                      <span className="text-[10px] text-stone-500">
-                        ${teamUsage.remainingUsd.toFixed(2)}
-                      </span>
-                    )}
+
+          <div className="flex items-center justify-end gap-2 mb-2">
+            {(isLoadingBudget || teamUsage) && (
+              <div className="relative group">
+                {teamUsage ? (
+                  <div className="flex items-center gap-2">
+                    <LimitPill
+                      label="5h"
+                      usedPct={
+                        teamUsage.fiveHourCapUsd > 0
+                          ? Math.min(1, teamUsage.fiveHourSpendUsd / teamUsage.fiveHourCapUsd)
+                          : 0
+                      }
+                    />
+                    <LimitPill
+                      label="7d"
+                      usedPct={
+                        teamUsage.cycleBudgetUsd > 0
+                          ? Math.min(
+                              1,
+                              (teamUsage.cycleBudgetUsd - teamUsage.remainingUsd) /
+                                teamUsage.cycleBudgetUsd
+                            )
+                          : 0
+                      }
+                    />
                   </div>
-                );
-              })()}
+                ) : (
+                  <span className="text-[10px] text-stone-400 animate-pulse">loading…</span>
+                )}
+                {teamUsage && (
+                  <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50">
+                    <div className="bg-stone-900 text-white text-[10px] rounded-lg px-3 py-2 shadow-lg whitespace-nowrap space-y-1.5">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-stone-400">5-hour limit</span>
+                        <span>
+                          ${teamUsage.fiveHourSpendUsd.toFixed(2)} / $
+                          {teamUsage.fiveHourCapUsd.toFixed(2)}
+                          {teamUsage.fiveHourResetsAt && (
+                            <span className="text-stone-400 ml-1">
+                              — resets {formatResetTime(teamUsage.fiveHourResetsAt)}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-stone-400">Weekly limit</span>
+                        <span>
+                          ${teamUsage.remainingUsd.toFixed(2)} / $
+                          {teamUsage.cycleBudgetUsd.toFixed(2)} left
+                          {teamUsage.cycleEndsAt && (
+                            <span className="text-stone-400 ml-1">
+                              — resets {formatResetTime(teamUsage.cycleEndsAt)}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {sendError && (
@@ -1333,15 +1256,15 @@ const Conversations = () => {
               </p>
               <button
                 onClick={() => setSendError(null)}
-                className="text-xs text-stone-500 hover:text-stone-300 transition-colors ml-2 flex-shrink-0">
+                className="text-xs text-stone-500 hover:text-stone-700 transition-colors ml-2 flex-shrink-0">
                 Dismiss
               </button>
             </div>
           )}
 
           {inputMode === 'text' ? (
-            <div className="flex items-end gap-2">
-              <div className="relative flex-1 rounded-xl border border-white/10 bg-white/5 focus-within:ring-1 focus-within:ring-primary-500/50 focus-within:border-primary-500/50 transition-all">
+            <div className="flex items-end gap-3">
+              <div className="relative flex flex-1 items-center justify-center rounded-xl border border-stone-200 bg-white transition-all focus-within:border-primary-500/50 focus-within:ring-1 focus-within:ring-primary-500/50">
                 <div
                   aria-hidden
                   className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 py-2.5 text-sm leading-normal font-sans">
@@ -1356,15 +1279,31 @@ const Conversations = () => {
                   placeholder="Type a message..."
                   rows={1}
                   disabled={isSending || !rustChat}
-                  className="relative z-10 w-full resize-none border-0 bg-transparent px-4 py-2.5 text-sm leading-normal whitespace-pre-wrap break-words font-sans placeholder:text-stone-500 focus:outline-none focus:ring-0 max-h-32 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="relative z-10 w-full resize-none border-0 bg-transparent pl-4 pr-10 py-2.5 text-sm leading-normal whitespace-pre-wrap break-words font-sans text-stone-900 placeholder:text-stone-400 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 max-h-32 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
+                {/* Mic icon inside input */}
+                <button
+                  type="button"
+                  onClick={() => setInputMode('voice')}
+                  disabled={isRecording || isTranscribing || !rustChat}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 z-20 text-stone-400 hover:text-stone-600 transition-colors disabled:opacity-40"
+                  title="Switch to voice input">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.8}
+                      d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                    />
+                  </svg>
+                </button>
               </div>
               <button
                 onClick={() => {
                   void handleSendMessage();
                 }}
                 disabled={!inputValue.trim() || isSending || !rustChat}
-                className="p-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0">
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-primary-500 hover:bg-primary-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0">
                 {isSending ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle
@@ -1386,8 +1325,8 @@ const Conversations = () => {
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 12h14M12 5l7 7-7 7"
+                      strokeWidth={2.5}
+                      d="M9 5l7 7-7 7"
                     />
                   </svg>
                 )}
@@ -1395,6 +1334,21 @@ const Conversations = () => {
             </div>
           ) : (
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setInputMode('text')}
+                disabled={isRecording || isTranscribing}
+                className="w-10 h-10 flex items-center justify-center rounded-full border border-stone-200 bg-white text-stone-500 hover:text-stone-700 hover:border-stone-300 transition-colors disabled:opacity-40"
+                title="Switch to text input">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M4 6h16M4 12h10m-10 6h16"
+                  />
+                </svg>
+              </button>
               <button
                 type="button"
                 onClick={() => {

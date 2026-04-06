@@ -1,3 +1,11 @@
+//! JSON-RPC 2.0 server implementation for OpenHuman.
+//!
+//! This module provides:
+//! - An Axum-based HTTP server for handling JSON-RPC requests.
+//! - Method dispatching to registered controllers.
+//! - SSE (Server-Sent Events) for real-time event streaming.
+//! - Helper routes for health checks, schema discovery, and Telegram authentication.
+
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
@@ -12,6 +20,10 @@ use tokio_stream::StreamExt;
 use crate::core::all;
 use crate::core::types::{AppState, RpcError, RpcFailure, RpcRequest, RpcSuccess};
 
+/// Axum handler for JSON-RPC POST requests.
+///
+/// It parses the request, invokes the requested method, and returns a
+/// JSON-RPC 2.0 compliant success or failure response.
 pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcRequest>) -> Response {
     let id = req.id.clone();
     match invoke_method(state, req.method.as_str(), req.params).await {
@@ -40,7 +52,49 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
     }
 }
 
+/// Invokes a JSON-RPC method by name.
+///
+/// It first checks if the method is registered in the static schema registry.
+/// If not, it falls back to the dynamic dispatch system.
+///
+/// # Arguments
+///
+/// * `state` - The application state.
+/// * `method` - The name of the method to invoke.
+/// * `params` - The JSON parameters for the method.
 pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Result<Value, String> {
+    let result = invoke_method_inner(state, method, params).await;
+
+    // If the RPC call failed due to an expired/invalid session token (401 from
+    // the backend), automatically clear the stored session so the frontend
+    // detects the logged-out state and redirects to login.
+    if let Err(ref msg) = result {
+        if is_session_expired_error(msg) {
+            log::warn!(
+                "[jsonrpc] backend returned 401 for method '{}' — clearing stored session",
+                method
+            );
+            if let Ok(config) = crate::openhuman::config::rpc::load_config_with_timeout().await {
+                let _ = crate::openhuman::credentials::rpc::clear_session(&config).await;
+            }
+        }
+    }
+
+    result
+}
+
+fn is_session_expired_error(msg: &str) -> bool {
+    let lower = msg.to_lowercase();
+    (lower.contains("401") && lower.contains("unauthorized"))
+        || lower.contains("invalid token")
+        || msg.contains("SESSION_EXPIRED")
+}
+
+async fn invoke_method_inner(
+    state: AppState,
+    method: &str,
+    params: Value,
+) -> Result<Value, String> {
     if let Some(schema) = all::schema_for_rpc_method(method) {
         let params_obj = params_to_object(params)?;
         all::validate_params(&schema, &params_obj)?;
@@ -53,6 +107,7 @@ pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Resu
     crate::core::dispatch::dispatch(state, method, params).await
 }
 
+/// Converts JSON parameters into a map, ensuring they are in object format.
 fn params_to_object(params: Value) -> Result<Map<String, Value>, String> {
     match params {
         Value::Object(map) => Ok(map),
@@ -64,6 +119,7 @@ fn params_to_object(params: Value) -> Result<Map<String, Value>, String> {
     }
 }
 
+/// Returns a human-readable string representation of a JSON value's type.
 fn type_name(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
@@ -75,10 +131,12 @@ fn type_name(value: &Value) -> &'static str {
     }
 }
 
+/// Parses a JSON string into a `Value`.
 pub fn parse_json_params(raw: &str) -> Result<Value, String> {
     serde_json::from_str(raw).map_err(|e| format!("invalid JSON params: {e}"))
 }
 
+/// Returns the default application state.
 pub fn default_state() -> AppState {
     AppState {
         core_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -87,11 +145,14 @@ pub fn default_state() -> AppState {
 
 // --- HTTP server (Axum) ----------------------------------------------------
 
+/// Query parameters for the Telegram authentication callback.
 #[derive(Debug, serde::Deserialize)]
 struct TelegramAuthQuery {
+    /// The one-time login token received from the Telegram bot.
     token: Option<String>,
 }
 
+/// Returns the HTML for a successful connection page.
 fn success_html() -> String {
     r#"<!DOCTYPE html>
 <html lang="en">
@@ -119,6 +180,7 @@ fn success_html() -> String {
         .to_string()
 }
 
+/// Simple HTML escaping for error messages.
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -127,6 +189,7 @@ fn escape_html(s: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
+/// Returns the HTML for an error page.
 fn error_html(message: &str) -> String {
     let escaped_message = escape_html(message);
     format!(
@@ -156,6 +219,10 @@ fn error_html(message: &str) -> String {
     )
 }
 
+/// Handles the Telegram authentication callback.
+///
+/// It consumes a one-time token, exchanges it for a JWT from the backend,
+/// and stores the session locally.
 async fn telegram_auth_handler(Query(query): Query<TelegramAuthQuery>) -> impl IntoResponse {
     let html_response = |status: StatusCode, body: String| -> Response {
         (
@@ -207,6 +274,7 @@ async fn telegram_auth_handler(Query(query): Query<TelegramAuthQuery>) -> impl I
         }
     };
 
+    // Exchange the login token for a session JWT.
     let jwt_token = match client.consume_login_token(&token).await {
         Ok(jwt) => jwt,
         Err(e) => {
@@ -238,6 +306,7 @@ async fn telegram_auth_handler(Query(query): Query<TelegramAuthQuery>) -> impl I
         }
     };
 
+    // Store the resulting session token in the local configuration.
     match crate::openhuman::credentials::ops::store_session(&config, &jwt_token, None, None).await {
         Ok(outcome) => {
             for msg in &outcome.logs {
@@ -257,12 +326,17 @@ async fn telegram_auth_handler(Query(query): Query<TelegramAuthQuery>) -> impl I
     html_response(StatusCode::OK, success_html())
 }
 
+/// Builds the main Axum router for the core HTTP server.
+///
+/// Includes routes for health, schema, SSE events, JSON-RPC, and Telegram auth.
+/// Conditionally attaches Socket.IO if enabled.
 pub fn build_core_http_router(socketio_enabled: bool) -> Router {
     let router = Router::new()
         .route("/", get(root_handler))
         .route("/health", get(health_handler))
         .route("/schema", get(schema_handler))
         .route("/events", get(events_handler))
+        .route("/events/webhooks", get(webhook_events_handler))
         .route("/rpc", post(rpc_handler))
         .route("/auth/telegram", get(telegram_auth_handler))
         .fallback(not_found_handler)
@@ -281,6 +355,7 @@ pub fn build_core_http_router(socketio_enabled: bool) -> Router {
     router
 }
 
+/// Middleware for logging incoming HTTP requests.
 async fn http_request_log_middleware(req: Request, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
@@ -303,6 +378,7 @@ async fn http_request_log_middleware(req: Request, next: Next) -> Response {
     response
 }
 
+/// Middleware for handling Cross-Origin Resource Sharing (CORS).
 async fn cors_middleware(req: Request, next: Next) -> Response {
     if req.method() == Method::OPTIONS {
         return with_cors_headers(StatusCode::NO_CONTENT.into_response());
@@ -312,6 +388,7 @@ async fn cors_middleware(req: Request, next: Next) -> Response {
     with_cors_headers(response)
 }
 
+/// Injects CORS headers into a response.
 fn with_cors_headers(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(
@@ -333,19 +410,26 @@ fn with_cors_headers(mut response: Response) -> Response {
     response
 }
 
+/// Handler for the health check endpoint.
 async fn health_handler() -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "ok": true })))
 }
 
+/// Handler for the schema discovery endpoint.
 async fn schema_handler(State(_state): State<AppState>) -> impl IntoResponse {
     (StatusCode::OK, Json(build_http_schema_dump())).into_response()
 }
 
+/// Query parameters for the events SSE endpoint.
 #[derive(Debug, serde::Deserialize)]
 struct EventsQuery {
+    /// Unique identifier for the client requesting events.
     client_id: String,
 }
 
+/// Handler for the main events SSE endpoint.
+///
+/// Streams real-time events filtered by `client_id`.
 async fn events_handler(
     Query(query): Query<EventsQuery>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>> {
@@ -369,6 +453,40 @@ async fn events_handler(
     Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(10)))
 }
 
+/// Handler for the webhook debug events SSE endpoint.
+async fn webhook_events_handler() -> Response {
+    let Some(engine) = crate::openhuman::skills::global_engine() else {
+        let stream = tokio_stream::once(Ok::<Event, std::convert::Infallible>(
+            Event::default()
+                .event("webhooks_debug")
+                .data("{\"event_type\":\"runtime_unavailable\"}"),
+        ));
+        return Sse::new(stream)
+            .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(10)))
+            .into_response();
+    };
+
+    let rx = engine.webhook_router().subscribe_debug_events();
+    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(move |item| {
+        let event = match item {
+            Ok(ev) => ev,
+            Err(_) => return None,
+        };
+        let data = match serde_json::to_string(&event) {
+            Ok(data) => data,
+            Err(_) => return None,
+        };
+        Some(Ok::<Event, std::convert::Infallible>(
+            Event::default().event("webhooks_debug").data(data),
+        ))
+    });
+
+    Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(10)))
+        .into_response()
+}
+
+/// Handler for the root endpoint, returning server information and available endpoints.
 async fn root_handler() -> impl IntoResponse {
     let api_server = match crate::openhuman::config::Config::load_or_init().await {
         Ok(cfg) => crate::api::config::effective_api_url(&cfg.api_url),
@@ -398,6 +516,7 @@ async fn root_handler() -> impl IntoResponse {
     )
 }
 
+/// Fallback handler for unknown routes.
 async fn not_found_handler() -> impl IntoResponse {
     (
         StatusCode::NOT_FOUND,
@@ -409,6 +528,7 @@ async fn not_found_handler() -> impl IntoResponse {
     )
 }
 
+/// Resolves the port for the core server from environment variables or defaults.
 fn core_port() -> u16 {
     std::env::var("OPENHUMAN_CORE_PORT")
         .ok()
@@ -416,6 +536,7 @@ fn core_port() -> u16 {
         .unwrap_or(7788)
 }
 
+/// Resolves the bind address host for the core server from environment variables or defaults.
 fn core_host() -> String {
     std::env::var("OPENHUMAN_CORE_HOST")
         .ok()
@@ -423,11 +544,16 @@ fn core_host() -> String {
         .unwrap_or_else(|| "127.0.0.1".to_string())
 }
 
+/// Runs the HTTP/JSON-RPC server.
+///
+/// This function binds to the specified host and port, initializes the router,
+/// bootstraps the skill runtime, and starts serving requests.
 pub async fn run_server(
     host: Option<&str>,
     port: Option<u16>,
     socketio_enabled: bool,
 ) -> anyhow::Result<()> {
+    // Ensure all controllers are registered before starting.
     let _ = all::all_registered_controllers();
 
     let (resolved_port, port_source) = match port {
@@ -487,15 +613,24 @@ pub async fn run_server(
         log::info!("[rpc:socketio] disabled (--jsonrpc-only)");
     }
 
+    // Optional background bootstrap for local AI services.
     tokio::spawn(async {
         match crate::openhuman::config::Config::load_or_init().await {
-            Ok(config) if config.local_ai.enabled => {
-                let service = crate::openhuman::local_ai::global(&config);
-                service.bootstrap(&config).await;
+            Ok(config) => {
+                if config.local_ai.enabled {
+                    let service = crate::openhuman::local_ai::global(&config);
+                    service.bootstrap(&config).await;
+                }
+
+                // Launch the overlay Tauri app (transparent debug/voice panel) as a child process.
+                if config.overlay_enabled {
+                    crate::openhuman::overlay::spawn_overlay();
+                } else {
+                    log::info!("[overlay] overlay disabled by config (overlay_enabled = false)");
+                }
             }
-            Ok(_) => {}
             Err(err) => {
-                log::warn!("[core] local-ai bootstrap skipped: {err}");
+                log::warn!("[core] config load failed, skipping local-ai and overlay: {err}");
             }
         }
     });
@@ -504,16 +639,20 @@ pub async fn run_server(
     Ok(())
 }
 
-/// Initialize the QuickJS skill runtime and register it globally so RPC
-/// handlers (`openhuman.skills_*`) can reach it.
+/// Initializes the QuickJS skill runtime, socket manager, and registers them
+/// globally so RPC handlers (`openhuman.skills_*`, `openhuman.socket_*`) can
+/// reach them.
 pub async fn bootstrap_skill_runtime() {
     use crate::openhuman::skills::qjs_engine::{set_global_engine, RuntimeEngine};
+    use crate::openhuman::socket::{set_global_socket_manager, SocketManager};
     use std::sync::Arc;
 
     // Resolve the base directory (~/.openhuman or $OPENHUMAN_WORKSPACE).
     let base_dir = std::env::var("OPENHUMAN_WORKSPACE")
+        .ok()
+        .filter(|s| !s.is_empty())
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| {
+        .unwrap_or_else(|| {
             dirs::home_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join(".openhuman")
@@ -538,7 +677,12 @@ pub async fn bootstrap_skill_runtime() {
     let _ = std::fs::create_dir_all(&workspace_dir);
     engine.set_workspace_dir(workspace_dir);
 
-    // Register globally so RPC handlers can access it.
+    // --- Socket manager bootstrap ---
+    let socket_mgr = Arc::new(SocketManager::new());
+    set_global_socket_manager(socket_mgr.clone());
+    log::info!("[socket] SocketManager initialized and registered globally");
+
+    // Register engine globally so RPC handlers can access it.
     set_global_engine(engine.clone());
 
     // Start the ping scheduler (background health checks).
@@ -550,26 +694,73 @@ pub async fn bootstrap_skill_runtime() {
     log::info!("[runtime] Skill runtime initialized");
 
     // Auto-start skills in the background so it doesn't block server startup.
+    let engine_for_skills = engine.clone();
     tokio::spawn(async move {
-        engine.auto_start_skills().await;
+        engine_for_skills.auto_start_skills().await;
+    });
+
+    // Auto-connect socket to backend if a session token is already stored.
+    // This runs in the background so it doesn't block server startup.
+    tokio::spawn(async move {
+        log::info!("[socket] Checking for stored session to auto-connect...");
+        let config = match crate::openhuman::config::Config::load_or_init().await {
+            Ok(c) => c,
+            Err(e) => {
+                log::debug!("[socket] Config not available for auto-connect: {e}");
+                return;
+            }
+        };
+        let api_url = crate::api::config::effective_api_url(&config.api_url);
+        let token = match crate::api::jwt::get_session_token(&config) {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                log::info!("[socket] No session token stored — skipping auto-connect (will connect after login)");
+                return;
+            }
+            Err(e) => {
+                log::warn!("[socket] Failed to read session token: {e}");
+                return;
+            }
+        };
+        log::info!(
+            "[socket] Session token found — auto-connecting to {}",
+            api_url
+        );
+        if let Err(e) = socket_mgr.connect(&api_url, &token).await {
+            log::error!("[socket] Auto-connect failed: {e}");
+        } else {
+            log::info!("[socket] Auto-connect initiated successfully");
+        }
     });
 }
 
+/// JSON-serializable wrapper for the entire RPC schema dump.
 #[derive(Serialize)]
 struct HttpSchemaDump {
+    /// List of all available RPC methods and their schemas.
     methods: Vec<HttpMethodSchema>,
 }
 
+/// JSON-serializable schema for a single RPC method.
 #[derive(Serialize)]
 struct HttpMethodSchema {
+    /// Fully qualified JSON-RPC method name.
     method: String,
+    /// Namespace of the function.
     namespace: String,
+    /// Function name within the namespace.
     function: String,
+    /// Human-readable description of what the method does.
     description: String,
+    /// List of input parameters.
     inputs: Vec<crate::core::FieldSchema>,
+    /// List of output fields.
     outputs: Vec<crate::core::FieldSchema>,
 }
 
+/// Aggregates schemas from all registered controllers into a single dump.
+///
+/// Also includes built-in core methods like `core.ping` and `core.version`.
 fn build_http_schema_dump() -> HttpSchemaDump {
     let mut methods = vec![
         HttpMethodSchema {
@@ -613,6 +804,7 @@ fn build_http_schema_dump() -> HttpSchemaDump {
             }),
     );
 
+    // Sort methods alphabetically for consistent output.
     methods.sort_by(|a, b| a.method.cmp(&b.method));
 
     HttpSchemaDump { methods }
@@ -697,11 +889,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invoke_memory_init_missing_required_param_fails() {
-        let err = invoke_method(default_state(), "openhuman.memory_init", json!({}))
-            .await
-            .expect_err("missing jwt_token should fail");
-        assert!(err.contains("jwt_token"));
+    async fn invoke_memory_init_accepts_empty_params() {
+        // jwt_token is optional (accepted for backward compat but ignored).
+        // The call may still fail for workspace reasons in test, but must NOT
+        // fail with a missing-param error for jwt_token.
+        let result = invoke_method(default_state(), "openhuman.memory_init", json!({})).await;
+        if let Err(ref e) = result {
+            assert!(
+                !e.contains("missing required param") || !e.contains("jwt_token"),
+                "jwt_token should be optional, got: {e}"
+            );
+        }
     }
 
     #[tokio::test]

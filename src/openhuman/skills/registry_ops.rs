@@ -1,85 +1,20 @@
-use std::path::{Path, PathBuf};
+//! Core operations for the OpenHuman Skills registry.
+//!
+//! This module handles fetching the skill registry (from remote or local sources),
+//! searching available skills, and performing installation/uninstallation of
+//! skill bundles into the workspace.
+
+use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use super::registry_types::{
-    AvailableSkillEntry, CachedRegistry, InstalledSkillInfo, RegistrySkillEntry,
-    RemoteSkillRegistry, SkillCategory,
+use super::registry_cache::{
+    is_cache_fresh, is_local_path, local_skills_dir, read_cache, read_local_file, registry_url,
+    tag_categories, write_cache,
 };
-
-/// Cache TTL in seconds (1 hour).
-const CACHE_TTL_SECS: i64 = 3600;
-
-/// Default registry URL (GitHub raw on the `build` branch).
-const DEFAULT_REGISTRY_URL: &str = "https://raw.githubusercontent.com/tinyhumansai/openhuman-skills/refs/heads/build/skills/registry.json";
-
-fn registry_url() -> String {
-    std::env::var("SKILLS_REGISTRY_URL").unwrap_or_else(|_| DEFAULT_REGISTRY_URL.to_string())
-}
-
-/// If `SKILLS_LOCAL_DIR` is set, return the local skills directory path.
-/// This enables local development by reading skills directly from disk
-/// instead of downloading from the remote registry.
-fn local_skills_dir() -> Option<PathBuf> {
-    std::env::var("SKILLS_LOCAL_DIR").ok().map(PathBuf::from)
-}
-
-/// Check if a URL is a local file path (absolute path or file:// URI).
-fn is_local_path(url: &str) -> bool {
-    url.starts_with('/') || url.starts_with("file://")
-}
-
-/// Read a file from a local path or file:// URI.
-fn read_local_file(url: &str) -> Result<Vec<u8>, String> {
-    let path = if let Some(stripped) = url.strip_prefix("file://") {
-        PathBuf::from(stripped)
-    } else {
-        PathBuf::from(url)
-    };
-    std::fs::read(&path).map_err(|e| format!("failed to read local file {}: {e}", path.display()))
-}
-
-fn cache_path(workspace_dir: &Path) -> std::path::PathBuf {
-    workspace_dir.join("skills").join(".registry-cache.json")
-}
-
-fn is_cache_fresh(cached: &CachedRegistry) -> bool {
-    let Ok(fetched) = chrono::DateTime::parse_from_rfc3339(&cached.fetched_at) else {
-        return false;
-    };
-    let now = chrono::Utc::now();
-    (now - fetched.to_utc()).num_seconds() < CACHE_TTL_SECS
-}
-
-fn read_cache(workspace_dir: &Path) -> Option<CachedRegistry> {
-    let path = cache_path(workspace_dir);
-    let content = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&content).ok()
-}
-
-fn write_cache(workspace_dir: &Path, registry: &RemoteSkillRegistry) -> Result<(), String> {
-    let cached = CachedRegistry {
-        fetched_at: chrono::Utc::now().to_rfc3339(),
-        registry: registry.clone(),
-    };
-    let path = cache_path(workspace_dir);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("failed to create cache dir: {e}"))?;
-    }
-    let json = serde_json::to_string_pretty(&cached).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| format!("failed to write cache: {e}"))?;
-    Ok(())
-}
-
-/// Tag each entry with its category based on which list it came from.
-fn tag_categories(registry: &mut RemoteSkillRegistry) {
-    for entry in &mut registry.skills.core {
-        entry.category = SkillCategory::Core;
-    }
-    for entry in &mut registry.skills.third_party {
-        entry.category = SkillCategory::ThirdParty;
-    }
-}
+use super::registry_types::{
+    AvailableSkillEntry, InstalledSkillInfo, RegistrySkillEntry, RemoteSkillRegistry,
+};
 
 /// Fetch the skill registry. Supports both remote HTTP URLs and local file paths.
 ///
@@ -102,7 +37,10 @@ pub async fn registry_fetch(
             .map_err(|e| format!("registry file is not valid UTF-8: {e}"))?;
         let mut registry: RemoteSkillRegistry = serde_json::from_str(&body)
             .map_err(|e| format!("failed to parse local registry JSON: {e}"))?;
+
+        // Ensure category flags are set correctly based on the registry structure
         tag_categories(&mut registry);
+
         log::info!(
             "[registry] loaded {} core + {} third-party skills from local file",
             registry.skills.core.len(),
@@ -162,6 +100,8 @@ pub async fn registry_fetch(
 }
 
 /// Search the registry by query string, optionally filtering by category.
+///
+/// Matches against the skill ID, name, and description.
 pub async fn registry_search(
     workspace_dir: &Path,
     query: &str,
@@ -170,6 +110,7 @@ pub async fn registry_search(
     let registry = registry_fetch(workspace_dir, false).await?;
     let query_lower = query.to_lowercase();
 
+    // Closure to check if a skill entry matches the search query
     let matches_query = |entry: &RegistrySkillEntry| -> bool {
         entry.id.to_lowercase().contains(&query_lower)
             || entry.name.to_lowercase().contains(&query_lower)
@@ -237,6 +178,8 @@ async fn fetch_url_bytes(url: &str) -> Result<Vec<u8>, String> {
 /// This also works when registry entry URLs are local file paths.
 pub async fn skill_install(workspace_dir: &Path, skill_id: &str) -> Result<(), String> {
     // --- Fast path: SKILLS_LOCAL_DIR copies directly from local dev directory ---
+    // This allows developers to work on skills locally and see changes reflected instantly
+    // in the app without having to publish to a registry.
     if let Some(local_dir) = local_skills_dir() {
         let local_skill = local_dir.join(skill_id);
         if local_skill.exists() {
@@ -284,12 +227,13 @@ pub async fn skill_install(workspace_dir: &Path, skill_id: &str) -> Result<(), S
     );
     let js_bytes = fetch_url_bytes(&entry.download_url).await?;
 
-    // Verify checksum if present
+    // Verify checksum if present to ensure integrity of the downloaded bundle
     if let Some(expected) = &entry.checksum_sha256 {
         let mut hasher = Sha256::new();
         hasher.update(&js_bytes);
         let actual = format!("{:x}", hasher.finalize());
         if actual != *expected {
+            // Clean up the directory if verification fails
             let _ = std::fs::remove_dir_all(&skill_dir);
             return Err(format!(
                 "checksum mismatch for '{skill_id}': expected {expected}, got {actual}"
@@ -298,7 +242,7 @@ pub async fn skill_install(workspace_dir: &Path, skill_id: &str) -> Result<(), S
         log::debug!("[registry] checksum verified for '{skill_id}'");
     }
 
-    // Write files
+    // Write the fetched files to the local skill directory
     std::fs::write(skill_dir.join("manifest.json"), &manifest_bytes)
         .map_err(|e| format!("failed to write manifest: {e}"))?;
     std::fs::write(skill_dir.join(&entry.entry), &js_bytes)
@@ -309,6 +253,8 @@ pub async fn skill_install(workspace_dir: &Path, skill_id: &str) -> Result<(), S
 }
 
 /// Recursively copy a directory tree from `src` to `dst`.
+///
+/// Used primarily for local skill development to sync files from a source directory.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dst)
         .map_err(|e| format!("failed to create dir {}: {e}", dst.display()))?;
@@ -352,6 +298,8 @@ pub async fn skill_uninstall(workspace_dir: &Path, skill_id: &str) -> Result<(),
 }
 
 /// List all installed skills by scanning the workspace skills directory.
+///
+/// Parses the `manifest.json` in each subdirectory to gather skill information.
 pub async fn skills_list_installed(
     workspace_dir: &Path,
 ) -> Result<Vec<InstalledSkillInfo>, String> {
@@ -369,6 +317,7 @@ pub async fn skills_list_installed(
         }
 
         let dir_name = entry.file_name().to_string_lossy().to_string();
+        // Skip hidden directories
         if dir_name.starts_with('.') {
             continue;
         }
@@ -418,6 +367,9 @@ pub async fn skills_list_installed(
 }
 
 /// List all available skills from the registry, enriched with installed status.
+///
+/// Compares the remote registry with the locally installed skills to determine
+/// if a skill is installed and if updates are available.
 pub async fn skills_list_available(
     workspace_dir: &Path,
 ) -> Result<Vec<AvailableSkillEntry>, String> {
@@ -457,7 +409,8 @@ pub async fn skills_list_available(
 
 #[cfg(test)]
 mod tests {
-    use super::super::registry_types::RegistrySkillCategories;
+    use super::super::registry_cache::{cache_path, is_cache_fresh, write_cache};
+    use super::super::registry_types::{CachedRegistry, RegistrySkillCategories, SkillCategory};
     use super::*;
 
     fn make_workspace() -> tempfile::TempDir {
@@ -657,8 +610,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_skill_install_creates_files() {
-        use axum::{routing::get, Router};
-
         let manifest = serde_json::json!({
             "id": "test-skill",
             "name": "Test Skill",
@@ -666,28 +617,21 @@ mod tests {
             "runtime": "quickjs",
             "entry": "index.js"
         });
-        // let js_content = b"function init() { console.log('hello'); }";
-
-        let app = Router::new()
-            .route(
-                "/skills/test-skill/manifest.json",
-                get({
-                    let m = manifest.clone();
-                    move || async move { serde_json::to_string(&m).unwrap() }
-                }),
-            )
-            .route(
-                "/skills/test-skill/index.js",
-                get(|| async { "function init() { console.log('hello'); }" }),
-            );
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-
-        let base = format!("http://127.0.0.1:{port}");
+        let src = tempfile::TempDir::new().unwrap();
+        let manifest_source_path = src.path().join("manifest.json");
+        let js_source_path = src.path().join("index.js");
+        let manifest_source_url = reqwest::Url::from_file_path(&manifest_source_path)
+            .expect("manifest source path must convert to file:// URL")
+            .to_string();
+        let js_source_url = reqwest::Url::from_file_path(&js_source_path)
+            .expect("js source path must convert to file:// URL")
+            .to_string();
+        std::fs::write(
+            &manifest_source_path,
+            serde_json::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(&js_source_path, "function init() { console.log('hello'); }").unwrap();
 
         // Build a registry pointing at our mock server
         let registry = RemoteSkillRegistry {
@@ -705,8 +649,8 @@ mod tests {
                     platforms: None,
                     setup: None,
                     ignore_in_production: false,
-                    download_url: format!("{base}/skills/test-skill/index.js"),
-                    manifest_url: format!("{base}/skills/test-skill/manifest.json"),
+                    download_url: js_source_url.clone(),
+                    manifest_url: manifest_source_url.clone(),
                     checksum_sha256: None,
                     author: None,
                     repository: None,
@@ -737,30 +681,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_skill_install_checksum_verification() {
-        use axum::{routing::get, Router};
-
         let js_content = "function init() { return 42; }";
         let mut hasher = Sha256::new();
         hasher.update(js_content.as_bytes());
         let correct_checksum = format!("{:x}", hasher.finalize());
-
-        let app = Router::new()
-            .route(
-                "/skills/cs-skill/manifest.json",
-                get(|| async { r#"{"id":"cs-skill","name":"CS Skill","version":"1.0.0"}"# }),
-            )
-            .route(
-                "/skills/cs-skill/index.js",
-                get(move || async move { js_content }),
-            );
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-
-        let base = format!("http://127.0.0.1:{port}");
+        let src = tempfile::TempDir::new().unwrap();
+        let manifest_source_path = src.path().join("manifest.json");
+        let js_source_path = src.path().join("index.js");
+        let manifest_source_url = reqwest::Url::from_file_path(&manifest_source_path)
+            .expect("manifest source path must convert to file:// URL")
+            .to_string();
+        let js_source_url = reqwest::Url::from_file_path(&js_source_path)
+            .expect("js source path must convert to file:// URL")
+            .to_string();
+        std::fs::write(
+            &manifest_source_path,
+            r#"{"id":"cs-skill","name":"CS Skill","version":"1.0.0"}"#,
+        )
+        .unwrap();
+        std::fs::write(&js_source_path, js_content).unwrap();
 
         // Test with correct checksum
         let registry = RemoteSkillRegistry {
@@ -778,8 +717,8 @@ mod tests {
                     platforms: None,
                     setup: None,
                     ignore_in_production: false,
-                    download_url: format!("{base}/skills/cs-skill/index.js"),
-                    manifest_url: format!("{base}/skills/cs-skill/manifest.json"),
+                    download_url: js_source_url.clone(),
+                    manifest_url: manifest_source_url.clone(),
                     checksum_sha256: Some(correct_checksum.clone()),
                     author: None,
                     repository: None,

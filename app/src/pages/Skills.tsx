@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
+import ChannelSetupModal from '../components/channels/ChannelSetupModal';
 import {
   DefaultIcon,
   SKILL_ICONS,
@@ -9,6 +11,7 @@ import {
 } from '../components/skills/shared';
 import SkillDebugModal from '../components/skills/SkillDebugModal';
 import SkillSetupModal from '../components/skills/SkillSetupModal';
+import { useChannelDefinitions } from '../hooks/useChannelDefinitions';
 import {
   useAvailableSkills,
   useSkillConnectionStatus,
@@ -18,6 +21,8 @@ import {
 import { skillManager } from '../lib/skills/manager';
 import { installSkill } from '../lib/skills/skillsApi';
 import type { SkillConnectionStatus, SkillHostConnectionState } from '../lib/skills/types';
+import { useAppSelector } from '../store/hooks';
+import type { ChannelConnectionStatus, ChannelDefinition, ChannelType } from '../types/channels';
 import { IS_DEV } from '../utils/config';
 import {
   deriveSkillSyncSummaryText,
@@ -29,14 +34,101 @@ import {
 function statusDotClass(status: SkillConnectionStatus): string {
   switch (status) {
     case 'connected':
-      return 'bg-sage-400';
+      return 'bg-sage-500';
     case 'connecting':
-      return 'bg-amber-400 animate-pulse';
+      return 'bg-amber-500 animate-pulse';
     case 'error':
-      return 'bg-coral-400';
+      return 'bg-coral-500';
     default:
-      return 'bg-stone-600';
+      return 'bg-stone-400';
   }
+}
+
+// ─── Channel icons for the integration cards ────────────────────────────────
+
+const CHANNEL_ICONS: Record<string, string> = {
+  telegram: '\u2708\uFE0F',
+  discord: '\uD83C\uDFAE',
+  web: '\uD83C\uDF10',
+};
+
+function channelStatusDot(status: ChannelConnectionStatus): string {
+  switch (status) {
+    case 'connected':
+      return 'bg-sage-500';
+    case 'connecting':
+      return 'bg-amber-500 animate-pulse';
+    case 'error':
+      return 'bg-coral-500';
+    default:
+      return 'bg-stone-300';
+  }
+}
+
+function channelStatusLabel(status: ChannelConnectionStatus): string {
+  switch (status) {
+    case 'connected':
+      return 'Connected';
+    case 'connecting':
+      return 'Connecting';
+    case 'error':
+      return 'Error';
+    default:
+      return 'Not configured';
+  }
+}
+
+function channelStatusColor(status: ChannelConnectionStatus): string {
+  switch (status) {
+    case 'connected':
+      return 'text-sage-600';
+    case 'connecting':
+      return 'text-amber-600';
+    case 'error':
+      return 'text-coral-600';
+    default:
+      return 'text-stone-400';
+  }
+}
+
+// ─── Channel Integration Card ────────────────────────────────────────────────
+
+interface ChannelIntegrationCardProps {
+  definition: ChannelDefinition;
+  bestStatus: ChannelConnectionStatus;
+  onClick: () => void;
+}
+
+function ChannelIntegrationCard({ definition, bestStatus, onClick }: ChannelIntegrationCardProps) {
+  const icon = CHANNEL_ICONS[definition.icon] ?? '';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-xl border border-stone-200 bg-stone-50 p-4 text-left transition-colors hover:bg-white hover:border-stone-300">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white text-lg shadow-sm border border-stone-200">
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-stone-900">{definition.display_name}</h2>
+            <div
+              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${channelStatusDot(bestStatus)}`}
+            />
+            <span className={`text-xs flex-shrink-0 ${channelStatusColor(bestStatus)}`}>
+              {channelStatusLabel(bestStatus)}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-stone-500">{definition.description}</p>
+        </div>
+        <span className="rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-medium text-primary-700 flex-shrink-0">
+          Configure
+        </span>
+      </div>
+    </button>
+  );
 }
 
 // ─── Skill Card (used in the skills list) ───────────────────────────────────
@@ -44,6 +136,46 @@ function statusDotClass(status: SkillConnectionStatus): string {
 interface SkillCardProps {
   skill: SkillListEntry;
   onSetup: () => void;
+}
+
+interface BuiltInSkillCardProps {
+  title: string;
+  description: string;
+  route: string;
+  icon: React.ReactNode;
+  ctaLabel?: string;
+}
+
+function BuiltInSkillCard({
+  title,
+  description,
+  route,
+  icon,
+  ctaLabel = 'Open settings',
+}: BuiltInSkillCardProps) {
+  const navigate = useNavigate();
+
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(route)}
+      className="w-full rounded-xl border border-stone-200 bg-stone-50 p-4 text-left transition-colors hover:bg-white hover:border-stone-300">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white text-stone-700 shadow-sm border border-stone-200">
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-stone-900">{title}</h2>
+            <span className="rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-medium text-primary-700">
+              {ctaLabel}
+            </span>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-stone-600">{description}</p>
+        </div>
+      </div>
+    </button>
+  );
 }
 
 function SkillCard({ skill, onSetup }: SkillCardProps) {
@@ -97,16 +229,16 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
   };
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] transition-colors">
+    <div className="flex items-center gap-3 p-3 rounded-xl bg-white border border-stone-100 hover:bg-stone-50 transition-colors">
       {/* Icon */}
-      <div className="w-8 h-8 flex items-center justify-center text-white opacity-70 flex-shrink-0">
+      <div className="w-8 h-8 flex items-center justify-center text-stone-600 flex-shrink-0">
         {skill.icon || <DefaultIcon />}
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-white truncate">{skill.name}</span>
+          <span className="text-sm font-semibold text-stone-900 truncate">{skill.name}</span>
           <div
             className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDotClass(connectionStatus)}`}
           />
@@ -114,12 +246,17 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
             {statusDisplay.text}
           </span>
         </div>
+        {skill.description && (
+          <p className="mt-1 text-xs leading-relaxed text-stone-600 line-clamp-2">
+            {skill.description}
+          </p>
+        )}
         {syncSummaryText && (
-          <p className="text-[11px] text-stone-500 truncate mt-0.5">{syncSummaryText}</p>
+          <p className="text-[11px] text-stone-500 truncate mt-1">{syncSummaryText}</p>
         )}
         {isSyncing && (
           <div className="mt-1.5">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-800">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
               {syncUi.progressPercent != null ? (
                 <div
                   className="h-full rounded-full bg-primary-400 transition-all duration-300"
@@ -130,7 +267,7 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
               )}
             </div>
             {syncUi.progressMessage && (
-              <p className="text-[11px] text-primary-300 truncate mt-1">{syncUi.progressMessage}</p>
+              <p className="text-[11px] text-primary-600 truncate mt-1">{syncUi.progressMessage}</p>
             )}
             {syncUi.metricsText && (
               <p className="text-[11px] text-stone-500 truncate mt-0.5">{syncUi.metricsText}</p>
@@ -147,7 +284,7 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
             <button
               onClick={isSyncing ? undefined : handleSync}
               disabled={isSyncing}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors disabled:opacity-40"
               title="Sync">
               <svg
                 className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`}
@@ -168,7 +305,7 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
                 e.stopPropagation();
                 onSetup();
               }}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-white hover:bg-white/10 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
               title="Settings">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -191,7 +328,7 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
                 e.stopPropagation();
                 setDebugOpen(true);
               }}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
               title="Debug">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -225,15 +362,39 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
 // ─── Main Skills Page ───────────────────────────────────────────────────────
 
 export default function Skills() {
+  const navigate = useNavigate();
   // Skills from registry via RPC
   const { skills: availableSkills, loading: skillsLoading } = useAvailableSkills();
+  // Channel definitions
+  const { definitions: channelDefs } = useChannelDefinitions();
+  const channelConnections = useAppSelector(state => state.channelConnections);
 
-  // Modal state
+  // Modal state — skills
   const [setupModalOpen, setSetupModalOpen] = useState(false);
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null);
   const [activeSkillName, setActiveSkillName] = useState('');
   const [activeSkillDescription, setActiveSkillDescription] = useState('');
   const [activeSkillHasSetup, setActiveSkillHasSetup] = useState(false);
+
+  // Modal state — channels
+  const [channelModalDef, setChannelModalDef] = useState<ChannelDefinition | null>(null);
+
+  /** Resolve the best connection status across all auth modes for a channel. */
+  const bestChannelStatus = (channelId: ChannelType): ChannelConnectionStatus => {
+    const conns = channelConnections.connections[channelId];
+    if (!conns) return 'disconnected';
+    const statuses = Object.values(conns).map(c => c?.status ?? 'disconnected');
+    if (statuses.includes('connected')) return 'connected';
+    if (statuses.includes('connecting')) return 'connecting';
+    if (statuses.includes('error')) return 'error';
+    return 'disconnected';
+  };
+
+  // Only show configurable channels (telegram, discord — not web)
+  const configurableChannels = useMemo(
+    () => channelDefs.filter(d => d.id !== 'web'),
+    [channelDefs]
+  );
 
   // Transform registry entries to SkillListEntry
   const skillsList: SkillListEntry[] = useMemo(() => {
@@ -277,34 +438,138 @@ export default function Skills() {
     setSetupModalOpen(true);
   };
 
+  const builtInSkills = [
+    {
+      id: 'screen-intelligence',
+      title: 'Screen Intelligence',
+      description:
+        'Capture windows, summarize what is on screen, and feed useful context into memory.',
+      route: '/settings/screen-intelligence',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+            d="M3 5h18v12H3zM8 21h8m-4-4v4"
+          />
+        </svg>
+      ),
+    },
+    {
+      id: 'text-autocomplete',
+      title: 'Text Auto-Complete',
+      description:
+        'Suggest inline completions while you type and control where autocomplete is active.',
+      route: '/settings/autocomplete',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+            d="M4 7h16M4 12h10m-10 5h7m10 0l3 3m0 0l3-3m-3 3v-8"
+          />
+        </svg>
+      ),
+    },
+    {
+      id: 'voice-stt',
+      title: 'Voice Speech To Text',
+      description:
+        'Use the microphone for dictation and voice-driven chat with local speech recognition.',
+      route: '/settings/local-model',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+          />
+        </svg>
+      ),
+    },
+  ];
+
   return (
-    <div className="min-h-full relative">
-      <div className="relative z-10 min-h-full flex flex-col">
-        <div className="flex-1 p-6">
-          <div className="max-w-2xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-xl font-bold text-white">Skills</h1>
+    <div className="min-h-full">
+      <div className="min-h-full flex flex-col">
+        <div className="flex-1 flex items-start justify-center p-4 pt-6">
+          <div className="max-w-lg w-full">
+            <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-3 shadow-soft animate-fade-up">
+              <div className="px-1 pb-3 pt-1">
+                <h2 className="text-sm font-semibold text-stone-900">Built-in Skills</h2>
+                <p className="mt-1 text-xs text-stone-500">
+                  Core desktop capabilities configured from settings.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {builtInSkills.map(skill => (
+                  <BuiltInSkillCard
+                    key={skill.id}
+                    title={skill.title}
+                    description={skill.description}
+                    route={skill.route}
+                    icon={skill.icon}
+                  />
+                ))}
+              </div>
             </div>
 
-            {/* Active Skills */}
-            <div className="animate-fade-up" style={{ animationDelay: '100ms' }}>
-              <div className="mb-3">
-                <h2 className="text-sm font-semibold text-white opacity-80">Active Skills</h2>
+            {/* Channel Integrations */}
+            {configurableChannels.length > 0 && (
+              <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-3 shadow-soft animate-fade-up">
+                <div className="px-1 pb-3 pt-1">
+                  <h2 className="text-sm font-semibold text-stone-900">Channel Integrations</h2>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Connect messaging platforms to send and receive messages.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {configurableChannels.map(def => (
+                    <ChannelIntegrationCard
+                      key={def.id}
+                      definition={def}
+                      bestStatus={bestChannelStatus(def.id as ChannelType)}
+                      onClick={() => setChannelModalDef(def)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Main card */}
+            <div className="bg-white rounded-2xl shadow-soft border border-stone-200 p-6 animate-fade-up">
+              {/* Header */}
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-stone-900">3rd Party Skills</h2>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Third-party integrations and external data sources.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/settings/skills')}
+                  className="text-xs font-medium text-stone-500 transition-colors hover:text-stone-800">
+                  Skill settings
+                </button>
               </div>
 
+              {/* Skills list */}
               {skillsLoading || installing ? (
-                <div className="glass rounded-2xl p-6 text-center">
-                  <p className="text-sm text-stone-500">
+                <div className="py-8 text-center">
+                  <p className="text-sm text-stone-400">
                     {installing ? `Installing ${installing}...` : 'Loading skills...'}
                   </p>
                 </div>
               ) : sortedSkillsList.length === 0 ? (
-                <div className="glass rounded-2xl p-6 text-center">
-                  <p className="text-sm text-stone-500">No skills discovered</p>
+                <div className="py-8 text-center">
+                  <p className="text-sm text-stone-400">No skills discovered</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {sortedSkillsList.map(skill => (
                     <SkillCard key={skill.id} skill={skill} onSetup={() => openSkillSetup(skill)} />
                   ))}
@@ -315,7 +580,7 @@ export default function Skills() {
         </div>
       </div>
 
-      {/* Setup modal */}
+      {/* Skill setup modal */}
       {setupModalOpen && activeSkillId && (
         <SkillSetupModal
           skillId={activeSkillId}
@@ -327,6 +592,11 @@ export default function Skills() {
             setActiveSkillId(null);
           }}
         />
+      )}
+
+      {/* Channel setup modal */}
+      {channelModalDef && (
+        <ChannelSetupModal definition={channelModalDef} onClose={() => setChannelModalDef(null)} />
       )}
     </div>
   );

@@ -25,6 +25,12 @@ struct AuthConsumeLoginTokenParams {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct AuthCreateChannelLinkTokenParams {
+    channel: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AuthStoreProviderCredentialsParams {
     provider: String,
     #[serde(default)]
@@ -60,6 +66,8 @@ struct AuthOauthConnectParams {
     skill_id: Option<String>,
     #[serde(default)]
     response_type: Option<String>,
+    #[serde(default)]
+    encryption_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +75,12 @@ struct AuthOauthConnectParams {
 struct AuthOauthIntegrationTokensParams {
     integration_id: String,
     key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthOauthFetchClientKeyParams {
+    integration_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,13 +95,16 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         schemas("auth_clear_session"),
         schemas("auth_get_state"),
         schemas("auth_get_session_token"),
+        schemas("auth_get_me"),
         schemas("auth_consume_login_token"),
+        schemas("auth_create_channel_link_token"),
         schemas("auth_store_provider_credentials"),
         schemas("auth_remove_provider_credentials"),
         schemas("auth_list_provider_credentials"),
         schemas("auth_oauth_connect"),
         schemas("auth_oauth_list_integrations"),
         schemas("auth_oauth_fetch_integration_tokens"),
+        schemas("auth_oauth_fetch_client_key"),
         schemas("auth_oauth_revoke_integration"),
     ]
 }
@@ -111,8 +128,16 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
             handler: handle_auth_get_session_token,
         },
         RegisteredController {
+            schema: schemas("auth_get_me"),
+            handler: handle_auth_get_me,
+        },
+        RegisteredController {
             schema: schemas("auth_consume_login_token"),
             handler: handle_auth_consume_login_token,
+        },
+        RegisteredController {
+            schema: schemas("auth_create_channel_link_token"),
+            handler: handle_auth_create_channel_link_token,
         },
         RegisteredController {
             schema: schemas("auth_store_provider_credentials"),
@@ -137,6 +162,10 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: schemas("auth_oauth_fetch_integration_tokens"),
             handler: handle_auth_oauth_fetch_integration_tokens,
+        },
+        RegisteredController {
+            schema: schemas("auth_oauth_fetch_client_key"),
+            handler: handle_auth_oauth_fetch_client_key,
         },
         RegisteredController {
             schema: schemas("auth_oauth_revoke_integration"),
@@ -179,12 +208,26 @@ pub fn schemas(function: &str) -> ControllerSchema {
             inputs: vec![],
             outputs: vec![json_output("token", "Session token payload.")],
         },
+        "auth_get_me" => ControllerSchema {
+            namespace: "auth",
+            function: "get_me",
+            description: "Fetch the current authenticated backend user profile.",
+            inputs: vec![],
+            outputs: vec![json_output("user", "Current authenticated user payload.")],
+        },
         "auth_consume_login_token" => ControllerSchema {
             namespace: "auth",
             function: "consume_login_token",
             description: "Consume login handoff token and return session JWT.",
             inputs: vec![required_string("loginToken", "One-time login token.")],
             outputs: vec![json_output("result", "Consumed login token result.")],
+        },
+        "auth_create_channel_link_token" => ControllerSchema {
+            namespace: "auth",
+            function: "create_channel_link_token",
+            description: "Create a short-lived channel link token for Telegram or Discord.",
+            inputs: vec![required_string("channel", "Channel id (telegram|discord).")],
+            outputs: vec![json_output("result", "Created channel link token payload.")],
         },
         "auth_store_provider_credentials" => ControllerSchema {
             namespace: "auth",
@@ -224,6 +267,7 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 required_string("provider", "Provider id."),
                 optional_string("skillId", "Optional skill id."),
                 optional_string("responseType", "Optional OAuth response type."),
+                optional_string("encryptionMode", "Optional encryption mode ('encrypted')."),
             ],
             outputs: vec![json_output("result", "OAuth connect payload.")],
         },
@@ -243,6 +287,16 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 required_string("key", "Encryption key."),
             ],
             outputs: vec![json_output("tokens", "Integration tokens handoff payload.")],
+        },
+        "auth_oauth_fetch_client_key" => ControllerSchema {
+            namespace: "auth",
+            function: "oauth_fetch_client_key",
+            description: "Fetch one-time client key share for an encrypted OAuth integration.",
+            inputs: vec![required_string(
+                "integrationId",
+                "Integration id (24-char hex).",
+            )],
+            outputs: vec![json_output("result", "Client key share payload (base64).")],
         },
         "auth_oauth_revoke_integration" => ControllerSchema {
             namespace: "auth",
@@ -303,6 +357,13 @@ fn handle_auth_get_session_token(_params: Map<String, Value>) -> ControllerFutur
     })
 }
 
+fn handle_auth_get_me(_params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let config = config_rpc::load_config_with_timeout().await?;
+        to_json(crate::openhuman::credentials::rpc::auth_get_me(&config).await?)
+    })
+}
+
 fn handle_auth_consume_login_token(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let config = config_rpc::load_config_with_timeout().await?;
@@ -311,6 +372,20 @@ fn handle_auth_consume_login_token(params: Map<String, Value>) -> ControllerFutu
             crate::openhuman::credentials::rpc::consume_login_token(
                 &config,
                 payload.login_token.trim(),
+            )
+            .await?,
+        )
+    })
+}
+
+fn handle_auth_create_channel_link_token(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let config = config_rpc::load_config_with_timeout().await?;
+        let payload = deserialize_params::<AuthCreateChannelLinkTokenParams>(params)?;
+        to_json(
+            crate::openhuman::credentials::rpc::auth_create_channel_link_token(
+                &config,
+                payload.channel.trim(),
             )
             .await?,
         )
@@ -381,6 +456,7 @@ fn handle_auth_oauth_connect(params: Map<String, Value>) -> ControllerFuture {
                 payload.provider.trim(),
                 payload.skill_id.as_deref().map(str::trim),
                 payload.response_type.as_deref().map(str::trim),
+                payload.encryption_mode.as_deref().map(str::trim),
             )
             .await?,
         )
@@ -403,6 +479,20 @@ fn handle_auth_oauth_fetch_integration_tokens(params: Map<String, Value>) -> Con
                 &config,
                 payload.integration_id.trim(),
                 payload.key.trim(),
+            )
+            .await?,
+        )
+    })
+}
+
+fn handle_auth_oauth_fetch_client_key(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let config = config_rpc::load_config_with_timeout().await?;
+        let payload = deserialize_params::<AuthOauthFetchClientKeyParams>(params)?;
+        to_json(
+            crate::openhuman::credentials::rpc::oauth_fetch_client_key(
+                &config,
+                payload.integration_id.trim(),
             )
             .await?,
         )

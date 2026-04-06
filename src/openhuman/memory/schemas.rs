@@ -1,11 +1,18 @@
+//! RPC schemas and controller registration for the memory system.
+//!
+//! This module defines the metadata (schemas) for all memory-related RPC functions
+//! and registers their corresponding handlers. It serves as the bridge between
+//! the RPC system and the underlying memory operations.
+
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 use crate::openhuman::memory::rpc::{
-    self, DeleteDocParams, GraphQueryParams, GraphUpsertParams, IngestDocParams, KvGetDeleteParams,
-    KvSetParams, NamespaceOnlyParams, PutDocParams, QueryNamespaceParams, RecallNamespaceParams,
+    self, ClearNamespaceParams, DeleteDocParams, GraphQueryParams, GraphUpsertParams,
+    IngestDocParams, KvGetDeleteParams, KvSetParams, NamespaceOnlyParams, PutDocParams,
+    QueryNamespaceParams, RecallNamespaceParams,
 };
 use crate::openhuman::memory::{
     DeleteDocumentRequest, EmptyRequest, ListDocumentsRequest, ListMemoryFilesRequest,
@@ -18,6 +25,7 @@ use crate::rpc::RpcOutcome;
 // Public entry points
 // ---------------------------------------------------------------------------
 
+/// Returns all controller schemas for the memory system.
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
     vec![
         schemas("init"),
@@ -43,9 +51,11 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         schemas("kv_list_namespace"),
         schemas("graph_upsert"),
         schemas("graph_query"),
+        schemas("clear_namespace"),
     ]
 }
 
+/// Returns all registered controllers for the memory system, mapping schemas to handlers.
 pub fn all_registered_controllers() -> Vec<RegisteredController> {
     vec![
         RegisteredController {
@@ -140,6 +150,10 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
             schema: schemas("graph_query"),
             handler: handle_graph_query,
         },
+        RegisteredController {
+            schema: schemas("clear_namespace"),
+            handler: handle_clear_namespace,
+        },
     ]
 }
 
@@ -147,18 +161,19 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
 // Schema definitions
 // ---------------------------------------------------------------------------
 
+/// Defines the schema for a specific memory controller function.
 pub fn schemas(function: &str) -> ControllerSchema {
     match function {
         // ----- legacy envelope-style methods -----
         "init" => ControllerSchema {
             namespace: "memory",
             function: "init",
-            description: "Initialise the memory subsystem for the current workspace.",
+            description: "Initialise the local-only (SQLite) memory subsystem for the current workspace. The jwt_token parameter is accepted for backward compatibility but ignored — memory is entirely local.",
             inputs: vec![FieldSchema {
                 name: "jwt_token",
-                ty: TypeSchema::String,
-                comment: "JWT token for authenticating the memory session.",
-                required: true,
+                ty: TypeSchema::Option(Box::new(TypeSchema::String)),
+                comment: "Accepted for backward compatibility but ignored — memory is local-only. Remote sync is a future consideration.",
+                required: false,
             }],
             outputs: vec![FieldSchema {
                 name: "result",
@@ -872,6 +887,34 @@ pub fn schemas(function: &str) -> ControllerSchema {
             }],
         },
 
+        // ----- bulk operations -----
+        "clear_namespace" => ControllerSchema {
+            namespace: "memory",
+            function: "clear_namespace",
+            description:
+                "Delete all documents, vector chunks, KV entries, and graph relations for a namespace.",
+            inputs: vec![FieldSchema {
+                name: "namespace",
+                ty: TypeSchema::String,
+                comment: "Namespace to clear completely.",
+                required: true,
+            }],
+            outputs: vec![
+                FieldSchema {
+                    name: "cleared",
+                    ty: TypeSchema::Bool,
+                    comment: "True when the namespace was cleared.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "namespace",
+                    ty: TypeSchema::String,
+                    comment: "The namespace that was cleared.",
+                    required: true,
+                },
+            ],
+        },
+
         // ----- fallback -----
         _other => ControllerSchema {
             namespace: "memory",
@@ -1060,6 +1103,13 @@ fn handle_graph_query(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let payload = parse_params::<GraphQueryParams>(params)?;
         to_json(rpc::graph_query(payload).await?)
+    })
+}
+
+fn handle_clear_namespace(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let payload = parse_params::<ClearNamespaceParams>(params)?;
+        to_json(rpc::clear_namespace(payload).await?)
     })
 }
 

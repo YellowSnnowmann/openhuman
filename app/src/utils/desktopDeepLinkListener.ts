@@ -2,12 +2,12 @@ import { isTauri as coreIsTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
+import { getCoreStateSnapshot } from '../lib/coreState/store';
 import { skillManager } from '../lib/skills/manager';
 import { emitSkillStateChange } from '../lib/skills/skillEvents';
 import { startSkill } from '../lib/skills/skillsApi';
 import { consumeLoginToken } from '../services/api/authApi';
-import { store } from '../store';
-import { setToken } from '../store/authSlice';
+import { storeSession } from './tauriCommands';
 
 const focusMainWindow = async () => {
   try {
@@ -22,12 +22,12 @@ const focusMainWindow = async () => {
 
 const waitForAuthReadiness = async (maxAttempts = 10, delayMs = 150) => {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const authState = store.getState().auth;
-    if (authState.isAuthBootstrapComplete || authState.token) {
+    const coreState = getCoreStateSnapshot();
+    if (!coreState.isBootstrapping || coreState.snapshot.sessionToken) {
       console.log('[DeepLink][auth] app ready', {
         attempt,
-        hasToken: Boolean(authState.token),
-        authBootstrapComplete: authState.isAuthBootstrapComplete,
+        hasToken: Boolean(coreState.snapshot.sessionToken),
+        authBootstrapComplete: !coreState.isBootstrapping,
       });
       return;
     }
@@ -56,12 +56,12 @@ const handleAuthDeepLink = async (parsed: URL) => {
   await waitForAuthReadiness();
 
   if (key === 'auth') {
-    store.dispatch(setToken(token));
+    await storeSession(token, {});
     console.log('[DeepLink][auth] bypass token applied');
     window.location.hash = '/home';
   } else {
     const jwtToken = await consumeLoginToken(token);
-    store.dispatch(setToken(jwtToken));
+    await storeSession(jwtToken, {});
     console.log('[DeepLink][auth] login token consumed');
     window.location.hash = '/home';
   }
@@ -120,9 +120,14 @@ const handleOAuthDeepLink = async (parsed: URL) => {
       return;
     }
 
-    console.log(`[DeepLink] OAuth success for skill=${skillId} integration=${integrationId}`);
+    // Extract client key share from URL params (returned directly by backend in OAuth callback).
+    const clientKeyShare = parsed.searchParams.get('clientKey') || undefined;
 
-    // 1. Start the skill in the core QuickJS runtime (if not already running).
+    console.log(
+      `[DeepLink] OAuth success for skill=${skillId} integration=${integrationId} encrypted=${!!clientKeyShare}`
+    );
+
+    // 2. Start the skill in the core QuickJS runtime (if not already running).
     //    This also sets enabled=true via the preferences store.
     try {
       await startSkill(skillId);
@@ -131,20 +136,14 @@ const handleOAuthDeepLink = async (parsed: URL) => {
       console.warn(`[DeepLink] Could not start skill '${skillId}' in runtime:`, startErr);
     }
 
-    // 2. Notify the running skill of the OAuth credential, mark setup_complete,
+    // 3. Notify the running skill of the OAuth credential, mark setup_complete,
     //    and activate (list tools, sync to backend).
+    //    The Rust runtime automatically triggers an initial sync after auth succeeds.
     try {
-      await skillManager.notifyOAuthComplete(skillId, integrationId);
+      await skillManager.notifyOAuthComplete(skillId, integrationId, undefined, { clientKeyShare });
       console.log(`[DeepLink] OAuth complete sent to skill '${skillId}'`);
     } catch (runtimeErr) {
       console.warn('[DeepLink] Runtime notify failed:', runtimeErr);
-    }
-
-    // 3. Trigger initial data sync
-    try {
-      await skillManager.triggerSync(skillId);
-    } catch {
-      // Non-critical
     }
 
     emitSkillStateChange(skillId);

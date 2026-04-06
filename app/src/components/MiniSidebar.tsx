@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+import { useCoreState } from '../providers/CoreStateProvider';
 import { useAppSelector } from '../store/hooks';
 import { isTauri } from '../utils/tauriCommands';
 import DaemonHealthIndicator from './daemon/DaemonHealthIndicator';
@@ -106,7 +107,7 @@ const navItems = [
   {
     id: 'channels',
     label: 'Channels',
-    path: '/settings/messaging',
+    path: '/channels',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -138,7 +139,8 @@ const navItems = [
 const MiniSidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const token = useAppSelector(state => state.auth.token);
+  const { snapshot } = useCoreState();
+  const token = snapshot.sessionToken;
   const [showDaemonPanel, setShowDaemonPanel] = useState(false);
 
   // Unread count for Conversations: threads with lastMessageAt > lastViewedAt (must be before early return)
@@ -166,11 +168,10 @@ const MiniSidebar = () => {
       return (
         location.pathname === '/settings' ||
         (location.pathname.startsWith('/settings/') &&
-          !location.pathname.startsWith('/settings/messaging') &&
           !location.pathname.startsWith('/settings/cron-jobs'))
       );
     }
-    if (path === '/settings/messaging') return location.pathname.startsWith('/settings/messaging');
+    if (path === '/channels') return location.pathname.startsWith('/channels');
     if (path === '/settings/cron-jobs') return location.pathname.startsWith('/settings/cron-jobs');
     if (path === '/conversations') return location.pathname.startsWith('/conversations');
     return location.pathname === path;

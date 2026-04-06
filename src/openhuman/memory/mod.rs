@@ -1,6 +1,14 @@
+//! Memory system for OpenHuman.
+//!
+//! This module provides the core abstractions and implementations for the memory system,
+//! including semantic search, ingestion pipelines, document management, and knowledge graph
+//! operations. It integrates vector search, keyword search, and relational data to provide
+//! a unified memory interface for AI agents.
+
 pub mod chunker;
 pub mod embeddings;
 pub mod ingestion;
+pub mod ingestion_queue;
 pub mod ops;
 pub(crate) mod relex;
 pub mod rpc_models;
@@ -12,6 +20,7 @@ pub use ingestion::{
     ExtractedEntity, ExtractedRelation, ExtractionMode, MemoryIngestionConfig,
     MemoryIngestionRequest, MemoryIngestionResult, DEFAULT_GLINER_RELEX_MODEL,
 };
+pub use ingestion_queue::{IngestionJob, IngestionQueue};
 pub use ops as rpc;
 pub use ops::*;
 pub use rpc_models::*;

@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use base64::Engine;
 use reqwest::header::AUTHORIZATION;
-use reqwest::{Client, Url};
+use reqwest::{Client, Method, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
@@ -21,9 +21,8 @@ fn build_backend_reqwest_client() -> Result<Client> {
         .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {e}"))
 }
 
-fn parse_settings_response_json(text: &str) -> Result<Value> {
-    let v: Value =
-        serde_json::from_str(text).with_context(|| format!("parse /settings JSON: {text}"))?;
+fn parse_api_response_json(text: &str) -> Result<Value> {
+    let v: Value = serde_json::from_str(text).with_context(|| format!("parse API JSON: {text}"))?;
     let Some(obj) = v.as_object() else {
         return Ok(v);
     };
@@ -34,7 +33,7 @@ fn parse_settings_response_json(text: &str) -> Result<Value> {
                 .or_else(|| obj.get("error"))
                 .and_then(|x| x.as_str())
                 .unwrap_or("request unsuccessful");
-            anyhow::bail!("/settings failed: {msg}");
+            anyhow::bail!("API request failed: {msg}");
         }
         if let Some(data) = obj.get("data") {
             if !data.is_null() {
@@ -65,14 +64,29 @@ fn user_id_from_object(obj: &serde_json::Map<String, Value>) -> Option<String> {
     None
 }
 
-/// Best-effort user id from a `GET /settings` body (unwraps `data`, checks root then nested `user`).
-pub fn user_id_from_settings_payload(settings: &Value) -> Option<String> {
-    let obj = settings.as_object()?;
+/// Best-effort user id from an authenticated profile payload.
+///
+/// Accepts a raw user object or an envelope that nests the user under `data`
+/// or `user`.
+pub fn user_id_from_profile_payload(payload: &Value) -> Option<String> {
+    let obj = payload.as_object()?;
+    if let Some(data) = obj.get("data").and_then(|v| v.as_object()) {
+        return user_id_from_object(data).or_else(|| {
+            data.get("user")
+                .and_then(|u| u.as_object())
+                .and_then(user_id_from_object)
+        });
+    }
+
     user_id_from_object(obj).or_else(|| {
         obj.get("user")
             .and_then(|u| u.as_object())
             .and_then(user_id_from_object)
     })
+}
+
+pub fn user_id_from_auth_me_payload(payload: &Value) -> Option<String> {
+    user_id_from_profile_payload(payload)
 }
 
 /// JSON body returned by the backend after OAuth connect starts.
@@ -174,6 +188,7 @@ impl BackendOAuthClient {
         bearer_jwt: &str,
         skill_id: Option<&str>,
         response_type: Option<&str>,
+        encryption_mode: Option<&str>,
     ) -> Result<ConnectResponse> {
         let p = provider.trim().trim_matches('/');
         anyhow::ensure!(!p.is_empty(), "provider is required");
@@ -186,6 +201,9 @@ impl BackendOAuthClient {
         }
         if let Some(r) = response_type.filter(|r| !r.is_empty()) {
             url.query_pairs_mut().append_pair("responseType", r);
+        }
+        if let Some(e) = encryption_mode.filter(|e| !e.is_empty()) {
+            url.query_pairs_mut().append_pair("encryptionMode", e);
         }
 
         let resp = self
@@ -218,23 +236,23 @@ impl BackendOAuthClient {
         Ok(ConnectResponse { oauth_url, state })
     }
 
-    /// `GET /settings` — current user settings for the Bearer session JWT (used after login).
-    pub async fn fetch_settings(&self, bearer_jwt: &str) -> Result<Value> {
-        let url = self.base.join("settings").context("build /settings URL")?;
+    /// `GET /auth/me` — current authenticated user profile for the Bearer session JWT.
+    pub async fn fetch_current_user(&self, bearer_jwt: &str) -> Result<Value> {
+        let url = self.base.join("auth/me").context("build /auth/me URL")?;
         let resp = self
             .client
             .get(url)
             .header(AUTHORIZATION, bearer_authorization_value(bearer_jwt))
             .send()
             .await
-            .context("GET /settings")?;
+            .context("GET /auth/me")?;
 
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         if !status.is_success() {
-            anyhow::bail!("GET /settings failed ({status}): {text}");
+            anyhow::bail!("GET /auth/me failed ({status}): {text}");
         }
-        parse_settings_response_json(&text)
+        parse_api_response_json(&text)
     }
 
     /// `POST /telegram/login-tokens/:token/consume` — exchange a one-time login token for a JWT.
@@ -277,10 +295,83 @@ impl BackendOAuthClient {
         Ok(jwt)
     }
 
-    /// Confirms the JWT is accepted by the API using `GET /settings`.
+    /// Confirms the JWT is accepted by the API using `GET /auth/me`.
     pub async fn validate_session_token(&self, bearer_jwt: &str) -> Result<()> {
-        let _ = self.fetch_settings(bearer_jwt).await?;
+        let _ = self.fetch_current_user(bearer_jwt).await?;
         Ok(())
+    }
+
+    /// `POST /auth/channels/:channel/link-token` — create a short-lived channel link token.
+    pub async fn create_channel_link_token(
+        &self,
+        channel: &str,
+        bearer_jwt: &str,
+    ) -> Result<Value> {
+        let channel = channel.trim().trim_matches('/');
+        anyhow::ensure!(!channel.is_empty(), "channel is required");
+        let encoded_channel = urlencoding::encode(channel);
+
+        let url = self
+            .base
+            .join(&format!("auth/channels/{encoded_channel}/link-token"))
+            .context("build channel link-token URL")?;
+
+        let resp = self
+            .client
+            .post(url)
+            .header(AUTHORIZATION, bearer_authorization_value(bearer_jwt))
+            .send()
+            .await
+            .context("create channel link token")?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("create channel link token failed ({status}): {text}");
+        }
+
+        parse_api_response_json(&text)
+    }
+
+    /// Generic authenticated JSON request helper for backend API routes that
+    /// follow the standard `{ success, data, message }` envelope.
+    pub async fn authed_json(
+        &self,
+        bearer_jwt: &str,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Value> {
+        let url = self
+            .base
+            .join(path.trim_start_matches('/'))
+            .with_context(|| format!("build URL for {path}"))?;
+
+        let mut request = self
+            .client
+            .request(method.clone(), url.clone())
+            .header(AUTHORIZATION, bearer_authorization_value(bearer_jwt));
+
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("backend request {} {}", method.as_str(), url.path()))?;
+
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!(
+                "{} {} failed ({status}): {text}",
+                method.as_str(),
+                url.path()
+            );
+        }
+
+        parse_api_response_json(&text)
     }
 
     /// `GET /auth/integrations`
@@ -348,6 +439,159 @@ impl BackendOAuthClient {
         }
         let plaintext = decrypt_handoff_blob(&env.data.encrypted, encryption_key.trim())?;
         serde_json::from_str(&plaintext).context("parse decrypted token JSON")
+    }
+
+    /// `POST /auth/integrations/:id/client-key` — one-time handoff of client key share (deleted from Redis after retrieval).
+    pub async fn fetch_client_key(&self, integration_id: &str, bearer_jwt: &str) -> Result<String> {
+        let id = integration_id.trim();
+        anyhow::ensure!(
+            !id.is_empty() && id.len() == 24,
+            "integrationId must be a 24-char hex id"
+        );
+        let url = self
+            .base
+            .join(&format!("auth/integrations/{id}/client-key"))
+            .context("build client-key URL")?;
+        let resp = self
+            .client
+            .post(url)
+            .header(AUTHORIZATION, bearer_authorization_value(bearer_jwt))
+            .send()
+            .await
+            .context("fetch client key")?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("fetch client key failed ({status}): {text}");
+        }
+        let v: Value = serde_json::from_str(&text)
+            .with_context(|| format!("parse client-key JSON: {text}"))?;
+        let obj = v.as_object().context("expected JSON object")?;
+        let success = obj
+            .get("success")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
+        if !success {
+            let msg = obj
+                .get("error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("client key retrieval unsuccessful");
+            anyhow::bail!("fetch client key failed: {msg}");
+        }
+        let client_key = obj
+            .get("data")
+            .and_then(|d| d.get("clientKey"))
+            .and_then(|k| k.as_str())
+            .context("missing data.clientKey in response")?;
+        Ok(client_key.to_string())
+    }
+
+    /// `POST /channels/:channel/messages` — Send a rich message to a channel.
+    pub async fn send_channel_message(
+        &self,
+        channel: &str,
+        bearer_jwt: &str,
+        message_body: Value,
+    ) -> Result<Value> {
+        let channel = channel.trim().trim_matches('/');
+        anyhow::ensure!(!channel.is_empty(), "channel is required");
+        let encoded = urlencoding::encode(channel);
+        self.authed_json(
+            bearer_jwt,
+            Method::POST,
+            &format!("channels/{encoded}/messages"),
+            Some(message_body),
+        )
+        .await
+    }
+
+    /// `POST /channels/:channel/reactions` — React to a message in a channel.
+    pub async fn send_channel_reaction(
+        &self,
+        channel: &str,
+        bearer_jwt: &str,
+        reaction_body: Value,
+    ) -> Result<Value> {
+        let channel = channel.trim().trim_matches('/');
+        anyhow::ensure!(!channel.is_empty(), "channel is required");
+        let encoded = urlencoding::encode(channel);
+        self.authed_json(
+            bearer_jwt,
+            Method::POST,
+            &format!("channels/{encoded}/reactions"),
+            Some(reaction_body),
+        )
+        .await
+    }
+
+    /// `POST /channels/:channel/threads` — Create a thread in a channel.
+    pub async fn create_channel_thread(
+        &self,
+        channel: &str,
+        bearer_jwt: &str,
+        title: &str,
+    ) -> Result<Value> {
+        let channel = channel.trim().trim_matches('/');
+        anyhow::ensure!(!channel.is_empty(), "channel is required");
+        anyhow::ensure!(!title.trim().is_empty(), "title is required");
+        let encoded = urlencoding::encode(channel);
+        let body = serde_json::json!({ "title": title.trim() });
+        self.authed_json(
+            bearer_jwt,
+            Method::POST,
+            &format!("channels/{encoded}/threads"),
+            Some(body),
+        )
+        .await
+    }
+
+    /// `PATCH /channels/:channel/threads/:thread_id` — Close or reopen a thread.
+    pub async fn update_channel_thread(
+        &self,
+        channel: &str,
+        bearer_jwt: &str,
+        thread_id: &str,
+        action: &str,
+    ) -> Result<Value> {
+        let channel = channel.trim().trim_matches('/');
+        anyhow::ensure!(!channel.is_empty(), "channel is required");
+        anyhow::ensure!(!thread_id.trim().is_empty(), "threadId is required");
+        anyhow::ensure!(
+            action == "close" || action == "reopen",
+            "action must be 'close' or 'reopen'"
+        );
+        let encoded_channel = urlencoding::encode(channel);
+        let encoded_thread = urlencoding::encode(thread_id.trim());
+        let body = serde_json::json!({ "action": action });
+        self.authed_json(
+            bearer_jwt,
+            Method::PATCH,
+            &format!("channels/{encoded_channel}/threads/{encoded_thread}"),
+            Some(body),
+        )
+        .await
+    }
+
+    /// `GET /channels/:channel/threads` — List threads, optionally filtered by active status.
+    pub async fn list_channel_threads(
+        &self,
+        channel: &str,
+        bearer_jwt: &str,
+        active_filter: Option<bool>,
+    ) -> Result<Value> {
+        let channel = channel.trim().trim_matches('/');
+        anyhow::ensure!(!channel.is_empty(), "channel is required");
+        let encoded = urlencoding::encode(channel);
+        let mut path = format!("channels/{encoded}/threads");
+        if let Some(active) = active_filter {
+            path.push_str(if active {
+                "?active=true"
+            } else {
+                "?active=false"
+            });
+        }
+        self.authed_json(bearer_jwt, Method::GET, &path, None).await
     }
 
     /// `DELETE /auth/integrations/:id`
