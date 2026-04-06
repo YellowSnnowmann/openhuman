@@ -1258,23 +1258,24 @@ async fn json_rpc_skills_runtime_start_tools_call_stop() {
             json!({"namespace":"global"}),
         )
         .await;
-        let result = assert_no_jsonrpc_error(&docs, "memory_list_documents");
-        let arr = result
-            .get("documents")
-            .or_else(|| result.get("data").and_then(|d| d.get("documents")))
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let arr = {
+            let result = assert_no_jsonrpc_error(&docs, "memory_list_documents");
+            result
+                .get("documents")
+                .or_else(|| result.get("data").and_then(|d| d.get("documents")))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
         let has_summary = arr.iter().any(|doc| {
-            doc.get("key").and_then(Value::as_str)
-                == Some("working.user.e2e-runtime.summary")
+            doc.get("key").and_then(Value::as_str) == Some("working.user.e2e-runtime.summary")
         });
         if has_summary {
-            break (result, arr);
+            break (docs, arr);
         }
         assert!(
             tokio::time::Instant::now() < poll_deadline,
-            "Timeout waiting for working.user.e2e-runtime.summary to appear. docs={result}"
+            "Timeout waiting for working.user.e2e-runtime.summary to appear. docs={docs}"
         );
         tokio::time::sleep(Duration::from_millis(200)).await;
     };
