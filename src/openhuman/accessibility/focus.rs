@@ -352,10 +352,13 @@ pub fn validate_focused_target(
             }
             if let (Some(expected), Some(actual)) = (expected_role, ctx.role.as_deref()) {
                 if expected != actual {
-                    return Err(format!(
-                        "target role changed from '{}' to '{}', aborting insertion",
-                        expected, actual
-                    ));
+                    // Role can legitimately fluctuate (e.g. AXTextArea <-> AXTextField) while
+                    // app focus is still stable. Treat this as inconclusive instead of fatal.
+                    log::debug!(
+                        "[accessibility] validate_focused_target: role changed '{}' -> '{}'; proceeding",
+                        expected,
+                        actual
+                    );
                 }
             }
             Ok(())

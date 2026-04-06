@@ -24,6 +24,8 @@ use super::types::{
     FocusedTextContext,
 };
 
+const REFRESH_TIMEOUT_SECS: u64 = 120;
+
 struct EngineState {
     running: bool,
     phase: String,
@@ -140,8 +142,11 @@ impl AutocompleteEngine {
                 let _ = engine.try_reject_via_escape().await;
                 let _ = engine.try_accept_via_tab().await;
                 if last_refresh.elapsed() >= Duration::from_millis(current_debounce_ms) {
-                    let refresh_result =
-                        time::timeout(Duration::from_secs(15), engine.refresh(None)).await;
+                    let refresh_result = time::timeout(
+                        Duration::from_secs(REFRESH_TIMEOUT_SECS),
+                        engine.refresh(None),
+                    )
+                    .await;
                     match refresh_result {
                         Ok(Err(err)) => {
                             let error_message = {
@@ -179,10 +184,16 @@ impl AutocompleteEngine {
                             state.last_error = None;
                         }
                         Err(_elapsed) => {
-                            log::warn!("[autocomplete] refresh timed out after 15s, skipping");
+                            log::warn!(
+                                "[autocomplete] refresh timed out after {}s, skipping",
+                                REFRESH_TIMEOUT_SECS
+                            );
                             let mut state = engine.inner.lock().await;
                             state.phase = "idle".to_string();
-                            state.suggestion = None;
+                            // Preserve the previous suggestion so the user can still accept the
+                            // last known completion when inference stalls.
+                            state.last_error =
+                                Some(format!("refresh timed out after {}s", REFRESH_TIMEOUT_SECS));
                             state.updated_at_ms = Some(Utc::now().timestamp_millis());
                         }
                     }
@@ -285,17 +296,26 @@ impl AutocompleteEngine {
             })();
             if let Err(e) = apply_result {
                 let mut state = self.inner.lock().await;
-                state.suggestion = None;
-                state.phase = "idle".to_string();
+                state.phase = if state.suggestion.is_some() {
+                    "ready".to_string()
+                } else {
+                    "idle".to_string()
+                };
+                state.last_error = Some(e.clone());
                 state.updated_at_ms = Some(Utc::now().timestamp_millis());
-                state.last_overlay_signature = None;
-                return Err(e);
+                return Ok(AutocompleteAcceptResult {
+                    accepted: false,
+                    applied: false,
+                    value: None,
+                    reason: Some(format!("accept aborted: {e}")),
+                });
             }
         }
         {
             let mut state = self.inner.lock().await;
             state.suggestion = None;
             state.phase = "idle".to_string();
+            state.last_error = None;
             state.updated_at_ms = Some(Utc::now().timestamp_millis());
             state.last_overlay_signature = None;
         }
@@ -645,9 +665,13 @@ impl AutocompleteEngine {
                 {
                     log::warn!("[autocomplete] tab-accept aborted: {e}");
                     let mut state = self.inner.lock().await;
-                    state.suggestion = None;
-                    state.phase = "idle".to_string();
-                    state.last_overlay_signature = None;
+                    state.phase = if state.suggestion.is_some() {
+                        "ready".to_string()
+                    } else {
+                        "idle".to_string()
+                    };
+                    state.last_error = Some(e);
+                    state.updated_at_ms = Some(Utc::now().timestamp_millis());
                     return Ok(());
                 }
                 {
@@ -659,6 +683,7 @@ impl AutocompleteEngine {
                     let mut state = self.inner.lock().await;
                     state.suggestion = None;
                     state.phase = "idle".to_string();
+                    state.last_error = None;
                     state.updated_at_ms = Some(Utc::now().timestamp_millis());
                     state.last_overlay_signature = None;
                 }
