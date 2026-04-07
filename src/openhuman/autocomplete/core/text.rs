@@ -13,8 +13,13 @@ pub(super) fn sanitize_suggestion(text: &str) -> String {
     let first_line = text.lines().next().unwrap_or_default().trim();
     let cleaned = first_line
         .trim_matches('"')
+        .trim_start_matches(|c: char| matches!(c, '-' | '*' | '>' | '→'))
         .replace('\t', " ")
+        .replace('→', " ")
         .replace('\r', "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
         .trim()
         .to_string();
     if cleaned.is_empty() {
@@ -93,8 +98,16 @@ mod tests {
 
     #[test]
     fn sanitize_suggestion_replaces_embedded_tabs_with_spaces() {
-        // Leading/trailing tabs are stripped by trim(); only interior tabs become spaces.
+        // Leading/trailing tabs are stripped by trim(); interior tabs are normalized.
         assert_eq!(sanitize_suggestion("he\tllo"), "he llo");
+    }
+
+    #[test]
+    fn sanitize_suggestion_removes_arrow_tokens_and_collapses_spaces() {
+        assert_eq!(
+            sanitize_suggestion("  \t→  keep   it   concise  "),
+            "keep it concise"
+        );
     }
 
     #[test]

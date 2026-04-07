@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 use crate::core::all;
 use crate::core::jsonrpc::{default_state, invoke_method, parse_json_params};
+use crate::core::logging::CliLogDefault;
 use crate::core::{ControllerSchema, TypeSchema};
 use crate::openhuman::autocomplete::ops::{autocomplete_start_cli, AutocompleteStartCliOptions};
 
@@ -77,6 +78,7 @@ fn run_server_command(args: &[String]) -> Result<()> {
     let mut host: Option<String> = None;
     let mut socketio_enabled = true;
     let mut verbose = false;
+    let mut autocomplete_logs_only = false;
     let mut i = 0usize;
 
     // Manual argument parsing loop for specific flags.
@@ -108,8 +110,12 @@ fn run_server_command(args: &[String]) -> Result<()> {
                 verbose = true;
                 i += 1;
             }
+            "--autocomplete-logs" => {
+                autocomplete_logs_only = true;
+                i += 1;
+            }
             "-h" | "--help" => {
-                println!("Usage: openhuman run [--host <addr>] [--port <u16>] [--jsonrpc-only] [-v|--verbose]");
+                println!("Usage: openhuman run [--host <addr>] [--port <u16>] [--jsonrpc-only] [--autocomplete-logs] [-v|--verbose]");
                 println!();
                 println!(
                     "  --host <addr>    Bind address (default: 127.0.0.1 or OPENHUMAN_CORE_HOST)"
@@ -118,6 +124,7 @@ fn run_server_command(args: &[String]) -> Result<()> {
                     "  --port <u16>     Listen address port (default: 7788 or OPENHUMAN_CORE_PORT)"
                 );
                 println!("  --jsonrpc-only   HTTP JSON-RPC only; disable Socket.IO");
+                println!("  --autocomplete-logs  When RUST_LOG is unset: stderr shows only inline-autocomplete logs");
                 println!("  -v, --verbose    Shorthand for RUST_LOG=debug when RUST_LOG is unset");
                 println!();
                 println!("Logging: set RUST_LOG (e.g. RUST_LOG=debug openhuman run). Default level is info.");
@@ -127,7 +134,12 @@ fn run_server_command(args: &[String]) -> Result<()> {
         }
     }
 
-    crate::core::logging::init_for_cli_run(verbose);
+    let log_scope = if autocomplete_logs_only {
+        CliLogDefault::AutocompleteOnly
+    } else {
+        CliLogDefault::Global
+    };
+    crate::core::logging::init_for_cli_run(verbose, log_scope);
 
     // Initialize the Tokio runtime and start the server.
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -250,7 +262,7 @@ fn run_voice_server_command(args: &[String]) -> Result<()> {
         }
     }
 
-    crate::core::logging::init_for_cli_run(verbose);
+    crate::core::logging::init_for_cli_run(verbose, CliLogDefault::Global);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -294,6 +306,18 @@ fn run_voice_server_command(args: &[String]) -> Result<()> {
 /// * `namespace` - The namespace for the command.
 /// * `args` - Arguments for the function within the namespace.
 /// * `grouped` - A map of available schemas grouped by namespace.
+fn strip_verbose_flags(args: &[String]) -> (bool, Vec<String>) {
+    let mut verbose = false;
+    let mut out = Vec::with_capacity(args.len());
+    for a in args {
+        match a.as_str() {
+            "-v" | "--verbose" => verbose = true,
+            _ => out.push(a.clone()),
+        }
+    }
+    (verbose, out)
+}
+
 fn run_namespace_command(
     namespace: &str,
     args: &[String],
@@ -304,6 +328,17 @@ fn run_namespace_command(
             "unknown namespace '{namespace}'. Run `openhuman --help` to see available namespaces."
         ));
     };
+
+    let (verbose, args_owned) = if namespace == "autocomplete" {
+        strip_verbose_flags(args)
+    } else {
+        (false, args.to_vec())
+    };
+    let args: &[String] = &args_owned;
+
+    if namespace == "autocomplete" {
+        crate::core::logging::init_for_cli_run(verbose, CliLogDefault::AutocompleteOnly);
+    }
 
     if args.is_empty() || is_help(&args[0]) {
         print_namespace_help(namespace, schemas);
@@ -548,6 +583,9 @@ fn print_namespace_help(namespace: &str, schemas: &[ControllerSchema]) {
         println!("  {} - {}", schema.function, schema.description);
     }
     println!("\nUse `openhuman {namespace} <function> --help` for parameters.");
+    if namespace == "autocomplete" {
+        println!("Logging: stderr is autocomplete-only by default (unless RUST_LOG is set); add -v for trace.");
+    }
 }
 
 /// Prints detailed help for a specific function, including its parameters and description.
