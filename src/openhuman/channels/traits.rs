@@ -116,6 +116,7 @@ pub trait Channel: Send + Sync {
         _recipient: &str,
         _message_id: &str,
         _text: &str,
+        _thread_ts: Option<&str>,
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -201,7 +202,7 @@ mod tests {
             .is_none());
         assert!(channel.update_draft("bob", "msg_1", "text").await.is_ok());
         assert!(channel
-            .finalize_draft("bob", "msg_1", "final text")
+            .finalize_draft("bob", "msg_1", "final text", None)
             .await
             .is_ok());
     }

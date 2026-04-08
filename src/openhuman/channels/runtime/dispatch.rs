@@ -18,6 +18,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
+/// Maximum characters shown in the debug reply println. Large enough to not truncate
+/// real responses while keeping terminal output readable.
+const REPLY_LOG_TRUNCATE_CHARS: usize = 200;
+
 fn channel_delivery_instructions(channel_name: &str) -> Option<&'static str> {
     match channel_name {
         "telegram" => Some(
@@ -81,14 +85,6 @@ fn select_acknowledgment_reaction(content: &str) -> &'static str {
     ) {
         // Excitement / celebration
         &["🔥", "🎉"]
-    } else if contains_any(
-        &l,
-        &[
-            "error", "bug", "broken", "issue", "problem", "fail", "not work", "crash", "stuck",
-        ],
-    ) {
-        // Problem / debugging
-        &["🤔", "🤯"]
     } else if contains_any(
         &l,
         &[
@@ -439,12 +435,12 @@ pub(crate) async fn process_channel_message(
             println!(
                 "  🤖 Reply ({}ms): {}",
                 started_at.elapsed().as_millis(),
-                truncate_with_ellipsis(&response, 10000000)
+                truncate_with_ellipsis(&response, REPLY_LOG_TRUNCATE_CHARS)
             );
             if let Some(channel) = target_channel.as_ref() {
                 if let Some(ref draft_id) = draft_message_id {
                     if let Err(e) = channel
-                        .finalize_draft(&msg.reply_target, draft_id, &response)
+                        .finalize_draft(&msg.reply_target, draft_id, &response, msg.thread_ts.as_deref())
                         .await
                     {
                         tracing::warn!("Failed to finalize draft: {e}; sending as new message");
@@ -483,7 +479,7 @@ pub(crate) async fn process_channel_message(
                 if let Some(channel) = target_channel.as_ref() {
                     if let Some(ref draft_id) = draft_message_id {
                         let _ = channel
-                            .finalize_draft(&msg.reply_target, draft_id, error_text)
+                            .finalize_draft(&msg.reply_target, draft_id, error_text, msg.thread_ts.as_deref())
                             .await;
                     } else {
                         let _ = channel
@@ -514,7 +510,7 @@ pub(crate) async fn process_channel_message(
             if let Some(channel) = target_channel.as_ref() {
                 if let Some(ref draft_id) = draft_message_id {
                     let _ = channel
-                        .finalize_draft(&msg.reply_target, draft_id, &error_response)
+                        .finalize_draft(&msg.reply_target, draft_id, &error_response, msg.thread_ts.as_deref())
                         .await;
                 } else {
                     let _ = channel
@@ -539,7 +535,7 @@ pub(crate) async fn process_channel_message(
             if let Some(channel) = target_channel.as_ref() {
                 if let Some(ref draft_id) = draft_message_id {
                     let _ = channel
-                        .finalize_draft(&msg.reply_target, draft_id, &error_text)
+                        .finalize_draft(&msg.reply_target, draft_id, &error_text, msg.thread_ts.as_deref())
                         .await;
                 } else {
                     let _ = channel

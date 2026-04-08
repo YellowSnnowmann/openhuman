@@ -744,14 +744,13 @@ Allowlist Telegram username (without '@') or numeric user ID.",
 
     fn parse_update_reaction(&self, update: &serde_json::Value) -> Option<TelegramReactionEvent> {
         let reaction = update.get("message_reaction")?;
-        let message = reaction.get("message")?;
 
-        let chat_id = message
+        let chat_id = reaction
             .get("chat")
             .and_then(|chat| chat.get("id"))
             .and_then(serde_json::Value::as_i64)
             .map(|id| id.to_string())?;
-        let message_id = message
+        let message_id = reaction
             .get("message_id")
             .and_then(serde_json::Value::as_i64)
             .map(|id| id.to_string())?;
@@ -1619,9 +1618,11 @@ impl Channel for TelegramChannel {
         recipient: &str,
         message_id: &str,
         text: &str,
+        thread_ts: Option<&str>,
     ) -> anyhow::Result<()> {
         let text = &strip_tool_call_tags(text);
         let (chat_id, thread_id) = Self::parse_reply_target(recipient);
+        let parent_message_id = Self::parse_message_id(thread_ts);
 
         // Clean up rate-limit tracking for this chat
         self.last_draft_edit.lock().remove(&chat_id);
@@ -1633,7 +1634,7 @@ impl Channel for TelegramChannel {
                 Err(e) => {
                     tracing::warn!("Invalid Telegram message_id '{message_id}': {e}");
                     return self
-                        .send_text_chunks(text, &chat_id, thread_id.as_deref(), None)
+                        .send_text_chunks(text, &chat_id, thread_id.as_deref(), parent_message_id)
                         .await;
                 }
             };
@@ -1651,7 +1652,7 @@ impl Channel for TelegramChannel {
 
             // Fall back to chunked send
             return self
-                .send_text_chunks(text, &chat_id, thread_id.as_deref(), None)
+                .send_text_chunks(text, &chat_id, thread_id.as_deref(), parent_message_id)
                 .await;
         }
 
@@ -1660,7 +1661,7 @@ impl Channel for TelegramChannel {
             Err(e) => {
                 tracing::warn!("Invalid Telegram message_id '{message_id}': {e}");
                 return self
-                    .send_text_chunks(text, &chat_id, thread_id.as_deref(), None)
+                    .send_text_chunks(text, &chat_id, thread_id.as_deref(), parent_message_id)
                     .await;
             }
         };
@@ -1704,7 +1705,7 @@ impl Channel for TelegramChannel {
 
         // Edit failed entirely — fall back to new message
         tracing::warn!("Telegram finalize_draft edit failed; falling back to sendMessage");
-        self.send_text_chunks(text, &chat_id, thread_id.as_deref(), None)
+        self.send_text_chunks(text, &chat_id, thread_id.as_deref(), parent_message_id)
             .await
     }
 
@@ -2108,7 +2109,7 @@ mod tests {
 
         // For oversized text + invalid draft message_id, finalize_draft should
         // fall back to chunked send instead of returning early.
-        let result = ch.finalize_draft("123", "not-a-number", &long_text).await;
+        let result = ch.finalize_draft("123", "not-a-number", &long_text, None).await;
         assert!(result.is_err());
     }
 
@@ -2386,15 +2387,13 @@ mod tests {
         let update = serde_json::json!({
             "update_id": 5,
             "message_reaction": {
+                "chat": {
+                    "id": -100200300
+                },
+                "message_id": 123,
                 "user": {
                     "id": 777,
                     "username": "alice"
-                },
-                "message": {
-                    "message_id": 123,
-                    "chat": {
-                        "id": -100200300
-                    }
                 },
                 "old_reaction": [],
                 "new_reaction": [

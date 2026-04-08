@@ -62,8 +62,9 @@ fn parse_allowed_users(value: Option<&Value>) -> Vec<String> {
         if normalized.is_empty() {
             return;
         }
-        if !out.iter().any(|existing| existing == normalized) {
-            out.push(normalized.to_string());
+        let canonical = normalized.to_lowercase();
+        if !out.iter().any(|existing| existing.eq_ignore_ascii_case(&canonical)) {
+            out.push(canonical);
         }
     };
 
