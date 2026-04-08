@@ -2109,7 +2109,9 @@ mod tests {
 
         // For oversized text + invalid draft message_id, finalize_draft should
         // fall back to chunked send instead of returning early.
-        let result = ch.finalize_draft("123", "not-a-number", &long_text, None).await;
+        let result = ch
+            .finalize_draft("123", "not-a-number", &long_text, None)
+            .await;
         assert!(result.is_err());
     }
 
@@ -3219,11 +3221,9 @@ mod tests {
         let update = serde_json::json!({
             "update_id": 50,
             "message_reaction": {
+                "chat": { "id": 100 },
+                "message_id": 1,
                 "user": { "id": 999, "username": "mallory" },
-                "message": {
-                    "message_id": 1,
-                    "chat": { "id": 100 }
-                },
                 "old_reaction": [],
                 "new_reaction": [{ "type": "emoji", "emoji": "👍" }]
             }
@@ -3241,11 +3241,9 @@ mod tests {
         let update = serde_json::json!({
             "update_id": 51,
             "message_reaction": {
+                "chat": { "id": 100 },
+                "message_id": 55,
                 "user": { "id": 777, "username": "alice" },
-                "message": {
-                    "message_id": 55,
-                    "chat": { "id": 100 }
-                },
                 "old_reaction": [{ "type": "emoji", "emoji": "👍" }],
                 "new_reaction": []
             }
@@ -3263,11 +3261,9 @@ mod tests {
         let update = serde_json::json!({
             "update_id": 52,
             "message_reaction": {
+                "chat": { "id": 200 },
+                "message_id": 77,
                 "user": { "id": 99999 },
-                "message": {
-                    "message_id": 77,
-                    "chat": { "id": 200 }
-                },
                 "old_reaction": [],
                 "new_reaction": [{ "type": "emoji", "emoji": "❤️" }]
             }

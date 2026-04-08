@@ -440,7 +440,12 @@ pub(crate) async fn process_channel_message(
             if let Some(channel) = target_channel.as_ref() {
                 if let Some(ref draft_id) = draft_message_id {
                     if let Err(e) = channel
-                        .finalize_draft(&msg.reply_target, draft_id, &response, msg.thread_ts.as_deref())
+                        .finalize_draft(
+                            &msg.reply_target,
+                            draft_id,
+                            &response,
+                            msg.thread_ts.as_deref(),
+                        )
                         .await
                     {
                         tracing::warn!("Failed to finalize draft: {e}; sending as new message");
@@ -479,7 +484,12 @@ pub(crate) async fn process_channel_message(
                 if let Some(channel) = target_channel.as_ref() {
                     if let Some(ref draft_id) = draft_message_id {
                         let _ = channel
-                            .finalize_draft(&msg.reply_target, draft_id, error_text, msg.thread_ts.as_deref())
+                            .finalize_draft(
+                                &msg.reply_target,
+                                draft_id,
+                                error_text,
+                                msg.thread_ts.as_deref(),
+                            )
                             .await;
                     } else {
                         let _ = channel
@@ -510,7 +520,12 @@ pub(crate) async fn process_channel_message(
             if let Some(channel) = target_channel.as_ref() {
                 if let Some(ref draft_id) = draft_message_id {
                     let _ = channel
-                        .finalize_draft(&msg.reply_target, draft_id, &error_response, msg.thread_ts.as_deref())
+                        .finalize_draft(
+                            &msg.reply_target,
+                            draft_id,
+                            &error_response,
+                            msg.thread_ts.as_deref(),
+                        )
                         .await;
                 } else {
                     let _ = channel
@@ -535,7 +550,12 @@ pub(crate) async fn process_channel_message(
             if let Some(channel) = target_channel.as_ref() {
                 if let Some(ref draft_id) = draft_message_id {
                     let _ = channel
-                        .finalize_draft(&msg.reply_target, draft_id, &error_text, msg.thread_ts.as_deref())
+                        .finalize_draft(
+                            &msg.reply_target,
+                            draft_id,
+                            &error_text,
+                            msg.thread_ts.as_deref(),
+                        )
                         .await;
                 } else {
                     let _ = channel
