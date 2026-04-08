@@ -2,6 +2,7 @@
 use serde::Serialize;
 
 pub mod all;
+pub mod autocomplete_cli_adapter;
 pub mod cli;
 pub mod dispatch;
 pub mod jsonrpc;
@@ -13,6 +14,7 @@ pub mod screen_intelligence_cli;
 pub mod skills_cli;
 pub mod socketio;
 pub mod text_input_cli;
+pub mod tree_summarizer_cli;
 pub mod types;
 
 /// Canonical function contract for domain controllers.

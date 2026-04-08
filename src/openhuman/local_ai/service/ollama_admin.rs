@@ -10,6 +10,7 @@ use crate::openhuman::local_ai::ollama_api::{
     OLLAMA_BASE_URL,
 };
 use crate::openhuman::local_ai::paths::{find_workspace_ollama_binary, workspace_ollama_binary};
+use crate::openhuman::local_ai::presets::{self, VisionMode};
 
 use super::LocalAiService;
 
@@ -71,11 +72,29 @@ impl LocalAiService {
             ));
         }
 
-        let _ = tokio::process::Command::new(ollama_cmd)
+        match tokio::process::Command::new(ollama_cmd)
             .arg("serve")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .spawn()
+        {
+            Ok(_) => {
+                log::debug!(
+                    "[local_ai] spawned `ollama serve` from {}",
+                    ollama_cmd.display()
+                );
+            }
+            Err(err) => {
+                log::warn!(
+                    "[local_ai] failed to spawn `ollama serve` from {}: {err}",
+                    ollama_cmd.display()
+                );
+                return Err(format!(
+                    "Failed to start Ollama server ({}): {err}",
+                    ollama_cmd.display()
+                ));
+            }
+        }
 
         for _ in 0..20 {
             if self.ollama_healthy().await {
@@ -136,8 +155,17 @@ impl LocalAiService {
         self.download_and_install_ollama(config).await?;
         if let Some(installed) = find_workspace_ollama_binary(config) {
             Ok(installed)
+        } else if let Some(system_bin) = find_system_ollama_binary() {
+            log::debug!(
+                "[local_ai] workspace binary not found after install, using system binary: {}",
+                system_bin.display()
+            );
+            Ok(system_bin)
         } else {
-            Err("Ollama download completed but executable is missing.".to_string())
+            Err("Ollama download completed but executable is missing. \
+                 The installer may have placed it in an unexpected location. \
+                 Set OLLAMA_BIN or configure the path in Settings > Local Model."
+                .to_string())
         }
     }
 
@@ -253,11 +281,19 @@ impl LocalAiService {
         self.ensure_ollama_model_available(&chat_model, "chat")
             .await?;
 
-        let vision_model = model_ids::effective_vision_model_id(config);
-        if config.local_ai.preload_vision_model {
-            self.ensure_ollama_model_available(&vision_model, "vision")
-                .await?;
-            self.status.lock().vision_state = "ready".to_string();
+        match presets::vision_mode_for_config(&config.local_ai) {
+            VisionMode::Disabled => {
+                self.status.lock().vision_state = "disabled".to_string();
+            }
+            VisionMode::Ondemand => {
+                self.status.lock().vision_state = "idle".to_string();
+            }
+            VisionMode::Bundled => {
+                let vision_model = model_ids::effective_vision_model_id(config);
+                self.ensure_ollama_model_available(&vision_model, "vision")
+                    .await?;
+                self.status.lock().vision_state = "ready".to_string();
+            }
         }
 
         let embedding_model = model_ids::effective_embedding_model_id(config);
@@ -588,7 +624,13 @@ impl LocalAiService {
                 expected_embedding
             ));
         }
-        if healthy && config.local_ai.preload_vision_model && !vision_found {
+        if healthy
+            && matches!(
+                presets::vision_mode_for_config(&config.local_ai),
+                VisionMode::Bundled
+            )
+            && !vision_found
+        {
             issues.push(format!(
                 "Vision model `{}` is not installed",
                 expected_vision
@@ -609,6 +651,7 @@ impl LocalAiService {
             "ollama_running": healthy,
             "ollama_binary_path": binary_path,
             "installed_models": models,
+            "vision_mode": presets::vision_mode_for_config(&config.local_ai),
             "expected": {
                 "chat_model": expected_chat,
                 "chat_found": chat_found,
