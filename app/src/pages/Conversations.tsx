@@ -1171,7 +1171,7 @@ const Conversations = () => {
                   <p className="text-xs text-coral-600 truncate">
                     {teamUsage.remainingUsd <= 0
                       ? 'Weekly inference budget exhausted. Top up to continue.'
-                      : `5-hour rate limit reached.${teamUsage.fiveHourResetsAt ? ` Resets ${formatResetTime(teamUsage.fiveHourResetsAt)}.` : ''}`}
+                      : `10-hour rate limit reached.${teamUsage.fiveHourResetsAt ? ` Resets ${formatResetTime(teamUsage.fiveHourResetsAt)}.` : ''}`}
                   </p>
                 </div>
                 {teamUsage.remainingUsd <= 0 && (
