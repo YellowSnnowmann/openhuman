@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub(crate) const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
+pub(crate) const OLLAMA_BASE_URL: &str = "https://cognitive-nonradiative-nelida.ngrok-free.dev/";
 
 #[derive(Debug, Serialize)]
 pub(crate) struct OllamaPullRequest {

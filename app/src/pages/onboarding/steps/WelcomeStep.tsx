@@ -2,9 +2,17 @@ import OnboardingNextButton from '../components/OnboardingNextButton';
 
 interface WelcomeStepProps {
   onNext: () => void;
+  nextDisabled?: boolean;
+  nextLoading?: boolean;
+  nextLoadingLabel?: string;
 }
 
-const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
+const WelcomeStep = ({
+  onNext,
+  nextDisabled = false,
+  nextLoading = false,
+  nextLoadingLabel,
+}: WelcomeStepProps) => {
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-8 shadow-soft animate-fade-up">
       <div className="text-center mb-6">
@@ -18,7 +26,12 @@ const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           skills. Nothing is permanent—you can adjust everything later in Settings.
         </p>
       </div>
-      <OnboardingNextButton onClick={onNext} />
+      <OnboardingNextButton
+        onClick={onNext}
+        disabled={nextDisabled}
+        loading={nextLoading}
+        loadingLabel={nextLoadingLabel}
+      />
     </div>
   );
 };
