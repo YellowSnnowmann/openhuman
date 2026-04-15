@@ -40,7 +40,7 @@ function touchConnection(
     status: patch.status ?? existing?.status ?? 'disconnected',
     selectedDefault: patch.selectedDefault ?? existing?.selectedDefault ?? false,
     lastError: hasLastError ? patch.lastError : existing?.lastError,
-    capabilities: hasCapabilities ? patch.capabilities ?? [] : existing?.capabilities ?? [],
+    capabilities: hasCapabilities ? (patch.capabilities ?? []) : (existing?.capabilities ?? []),
     updatedAt: patch.updatedAt ?? new Date().toISOString(),
   };
 }
