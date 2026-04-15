@@ -68,6 +68,29 @@ function expectObject<T extends object>(payload: unknown, context: string): T {
   return record as T;
 }
 
+function expectDiscordLinkStart(payload: unknown): DiscordLinkStartResult {
+  const record = expectObject<Record<string, unknown>>(payload, 'Discord link start');
+  if (typeof record.linkToken !== 'string' || !record.linkToken) {
+    throw new Error('Discord link start response missing required string field: linkToken');
+  }
+  if (typeof record.instructions !== 'string') {
+    throw new Error('Discord link start response missing required string field: instructions');
+  }
+  return { linkToken: record.linkToken, instructions: record.instructions };
+}
+
+function expectDiscordLinkComplete(payload: unknown): DiscordLinkCheckResult {
+  const record = expectObject<Record<string, unknown>>(payload, 'Discord link complete');
+  if (typeof record.linked !== 'boolean') {
+    throw new Error('Discord link complete response missing required boolean field: linked');
+  }
+  const details =
+    record.details !== undefined && record.details !== null
+      ? (record.details as Record<string, unknown>)
+      : null;
+  return { linked: record.linked, details };
+}
+
 function normalizeConnectResult(payload: unknown): ChannelConnectionResult {
   const record = expectObject<Record<string, unknown>>(payload, 'Channel connect');
   const status = typeof record.status === 'string' ? record.status : '';
@@ -164,7 +187,7 @@ export const channelConnectionsApi = {
       method: 'openhuman.channels_discord_link_start',
       params: {},
     });
-    return expectObject<DiscordLinkStartResult>(result, 'Discord link start');
+    return expectDiscordLinkStart(result);
   },
 
   /** Check whether the Discord managed link has been completed. */
@@ -173,7 +196,7 @@ export const channelConnectionsApi = {
       method: 'openhuman.channels_discord_link_check',
       params: { linkToken },
     });
-    return expectObject<DiscordLinkCheckResult>(result, 'Discord link check');
+    return expectDiscordLinkComplete(result);
   },
 
   /** List Discord servers (guilds) the connected bot is a member of. */
