@@ -607,9 +607,9 @@ mod tests {
 
     // ── check_channel_permissions ─────────────────────────────────
 
-    /// Build a mock Discord that answers all three endpoints the permissions
-    /// check touches: `/guilds/<id>/members/@me`, `/guilds/<id>/roles`, and
-    /// `/channels/<id>`.
+    /// Build a mock Discord that answers all endpoints the permissions check
+    /// touches: `/users/@me`, `/guilds/<id>/members/<bot_id>`,
+    /// `/guilds/<id>/roles`, and `/channels/<id>`.
     fn permissions_mock(
         member: serde_json::Value,
         roles: serde_json::Value,
@@ -618,8 +618,13 @@ mod tests {
         use axum::extract::Path;
         Router::new()
             .route(
-                "/guilds/{guild_id}/members/@me",
-                get(move |Path(_g): Path<String>| {
+                "/users/@me",
+                get(|| async { Json(json!({ "id": "bot-1" })) }),
+            )
+            .route(
+                "/guilds/{guild_id}/members/{member_id}",
+                get(move |Path((_g, member_id)): Path<(String, String)>| {
+                    assert_eq!(member_id, "bot-1");
                     let m = member.clone();
                     async move { Json(m) }
                 }),
@@ -734,10 +739,17 @@ mod tests {
     #[tokio::test]
     async fn check_channel_permissions_errors_on_member_lookup_failure() {
         use axum::http::StatusCode;
-        let app = Router::new().route(
-            "/guilds/{guild_id}/members/@me",
-            get(|| async { (StatusCode::UNAUTHORIZED, "bad token") }),
-        );
+        let app = Router::new()
+            .route(
+                "/users/@me",
+                get(|| async { Json(json!({ "id": "bot-1" })) }),
+            )
+            .route(
+                "/guilds/{guild_id}/members/{member_id}",
+                get(|Path((_g, _member_id)): Path<(String, String)>| async {
+                    (StatusCode::UNAUTHORIZED, "bad token")
+                }),
+            );
         let base = spawn_mock(app).await;
         let err = check_channel_permissions_at_base(&base, "t", "g", "c")
             .await
