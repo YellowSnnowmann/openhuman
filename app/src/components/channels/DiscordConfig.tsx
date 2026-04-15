@@ -93,8 +93,8 @@ const DiscordConfig = ({ definition }: DiscordConfigProps) => {
               );
               return;
             }
-          } catch {
-            // keep polling
+          } catch (err) {
+            log('discord link check failed: %o', err);
           }
 
           await new Promise<void>(resolve => {
