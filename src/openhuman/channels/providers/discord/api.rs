@@ -148,12 +148,22 @@ pub async fn check_channel_permissions(
     guild_id: &str,
     channel_id: &str,
 ) -> anyhow::Result<BotPermissionCheck> {
+    check_channel_permissions_at_base(DISCORD_API_BASE, token, guild_id, channel_id).await
+}
+
+/// Test seam: see [`check_channel_permissions`].
+async fn check_channel_permissions_at_base(
+    base: &str,
+    token: &str,
+    guild_id: &str,
+    channel_id: &str,
+) -> anyhow::Result<BotPermissionCheck> {
     tracing::debug!(
         "[discord-api] checking permissions in channel {channel_id} (guild {guild_id})"
     );
 
     // Resolve bot user id first (`members/@me` is not a valid Discord route).
-    let me_url = format!("{DISCORD_API_BASE}/users/@me");
+    let me_url = format!("{base}/users/@me");
     let me_resp = build_client()
         .get(&me_url)
         .header("Authorization", auth_header(token))
@@ -163,6 +173,16 @@ pub async fn check_channel_permissions(
     if !me_resp.status().is_success() {
         let status = me_resp.status();
         let body = me_resp.text().await.unwrap_or_default();
+        tracing::debug!(
+            target: "discord-api",
+            endpoint = "check_bot_permissions.me",
+            %guild_id,
+            %channel_id,
+            url = %me_url,
+            %status,
+            body = %body,
+            "[discord-api] non-success response"
+        );
         anyhow::bail!("Discord get bot user failed ({status}): {body}");
     }
     let me: serde_json::Value = me_resp.json().await?;
@@ -172,7 +192,7 @@ pub async fn check_channel_permissions(
     }
 
     // Fetch the bot's guild member info which includes role ids.
-    let member_url = format!("{DISCORD_API_BASE}/guilds/{guild_id}/members/{bot_user_id}");
+    let member_url = format!("{base}/guilds/{guild_id}/members/{bot_user_id}");
     let member_resp = build_client()
         .get(&member_url)
         .header("Authorization", auth_header(token))
@@ -182,6 +202,16 @@ pub async fn check_channel_permissions(
     if !member_resp.status().is_success() {
         let status = member_resp.status();
         let body = member_resp.text().await.unwrap_or_default();
+        tracing::debug!(
+            target: "discord-api",
+            endpoint = "check_bot_permissions.member",
+            %guild_id,
+            %channel_id,
+            url = %member_url,
+            %status,
+            body = %body,
+            "[discord-api] non-success response"
+        );
         anyhow::bail!("Discord get member info failed ({status}): {body}");
     }
 
