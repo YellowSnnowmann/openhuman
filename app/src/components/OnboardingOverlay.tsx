@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import Onboarding from '../pages/onboarding/Onboarding';
 import { useCoreState } from '../providers/CoreStateProvider';
@@ -13,6 +13,7 @@ import { DEV_FORCE_ONBOARDING } from '../utils/config';
  * Reads `onboarding_completed` from the core config (persisted in config.toml).
  */
 const OnboardingOverlay = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const { isBootstrapping, snapshot, setOnboardingCompletedFlag } = useCoreState();
   const token = snapshot.sessionToken;
@@ -51,13 +52,27 @@ const OnboardingOverlay = () => {
     // persist the completed flag. This prevents the home page from flashing
     // between overlay dismissal and route change.
     setIsDismissing(true);
-    navigate('/conversations');
+    console.debug('[onboarding:overlay] completion finished; navigating to conversations');
+    navigate('/conversations', { replace: true });
     try {
       await setOnboardingCompletedFlag(true);
+      console.debug('[onboarding:overlay] persisted onboarding_completed=true');
     } catch {
       console.warn('[onboarding] Failed to persist onboarding_completed');
     }
   }, [setOnboardingCompletedFlag, navigate]);
+
+  useEffect(() => {
+    if (!isDismissing) return;
+    if (location.pathname === '/conversations') {
+      console.debug('[onboarding:overlay] conversations active; dismissing transition mask');
+      setIsDismissing(false);
+    }
+  }, [isDismissing, location.pathname]);
+
+  useEffect(() => {
+    setIsDismissing(false);
+  }, [token]);
 
   // Don't show if not logged in, bootstrap not complete, or user not ready
   if (!token || isBootstrapping || !userReady) return null;
