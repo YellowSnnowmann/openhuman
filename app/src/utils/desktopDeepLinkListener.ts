@@ -46,11 +46,7 @@ const waitForAuthReadiness = async (maxAttempts = 10, delayMs = 150) => {
 const applySessionToken = async (sessionToken: string): Promise<void> => {
   await storeSession(sessionToken, {});
   patchCoreStateSnapshot({ snapshot: { sessionToken } });
-  window.dispatchEvent(
-    new CustomEvent(SESSION_TOKEN_UPDATED_EVENT, {
-      detail: { sessionToken },
-    })
-  );
+  window.dispatchEvent(new CustomEvent(SESSION_TOKEN_UPDATED_EVENT, { detail: { sessionToken } }));
 };
 
 /**
