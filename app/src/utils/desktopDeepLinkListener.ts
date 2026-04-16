@@ -2,9 +2,14 @@ import { isTauri as coreIsTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
-import { getCoreStateSnapshot } from '../lib/coreState/store';
+import { getCoreStateSnapshot, patchCoreStateSnapshot } from '../lib/coreState/store';
 import { consumeLoginToken } from '../services/api/authApi';
 import { buildManualSentryEvent, enqueueError } from '../services/errorReportQueue';
+import {
+  beginDeepLinkAuthProcessing,
+  completeDeepLinkAuthProcessing,
+  failDeepLinkAuthProcessing,
+} from '../store/deepLinkAuthState';
 import { evaluateOAuthAppVersionGate } from './oauthAppVersionGate';
 import { openUrl } from './openUrl';
 import { storeSession } from './tauriCommands';
@@ -44,26 +49,43 @@ const handleAuthDeepLink = async (parsed: URL) => {
   const key = parsed.searchParams.get('key');
   if (!token) {
     console.warn('[DeepLink] URL did not contain a token query parameter');
+    failDeepLinkAuthProcessing('Sign-in callback was missing a token. Please try again.');
     return;
   }
+
+  beginDeepLinkAuthProcessing();
 
   console.log('[DeepLink][auth] received', {
     tokenLength: token.length,
     keyMode: parsed.searchParams.get('key') ?? 'consume',
   });
 
-  await focusMainWindow();
-  await waitForAuthReadiness();
+  try {
+    await focusMainWindow();
+    await waitForAuthReadiness();
 
-  if (key === 'auth') {
-    await storeSession(token, {});
-    console.log('[DeepLink][auth] bypass token applied');
+    if (key === 'auth') {
+      await storeSession(token, {});
+      patchCoreStateSnapshot({ snapshot: { sessionToken: token } });
+      window.dispatchEvent(
+        new CustomEvent('core-state:session-token-updated', { detail: { sessionToken: token } })
+      );
+      console.log('[DeepLink][auth] bypass token applied');
+    } else {
+      const jwtToken = await consumeLoginToken(token);
+      await storeSession(jwtToken, {});
+      patchCoreStateSnapshot({ snapshot: { sessionToken: jwtToken } });
+      window.dispatchEvent(
+        new CustomEvent('core-state:session-token-updated', { detail: { sessionToken: jwtToken } })
+      );
+      console.log('[DeepLink][auth] login token consumed');
+    }
+
     window.location.hash = '/home';
-  } else {
-    const jwtToken = await consumeLoginToken(token);
-    await storeSession(jwtToken, {});
-    console.log('[DeepLink][auth] login token consumed');
-    window.location.hash = '/home';
+    completeDeepLinkAuthProcessing();
+  } catch (error) {
+    console.error('[DeepLink][auth] failed to complete login:', error);
+    failDeepLinkAuthProcessing('Sign-in failed. Please try again.');
   }
 };
 
