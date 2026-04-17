@@ -21,7 +21,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::sync;
-use crate::openhuman::composio::providers::sync_state::{extract_item_id, persist_single_item, SyncState};
+use crate::openhuman::composio::providers::sync_state::{
+    extract_item_id, persist_single_item, SyncState,
+};
 use crate::openhuman::composio::providers::{
     pick_str, ComposioProvider, ProviderContext, ProviderUserProfile, SyncOutcome, SyncReason,
 };
