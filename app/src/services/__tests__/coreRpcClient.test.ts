@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { dispatchLocalAiMethod } from '../../lib/ai/localCoreAiMemory';
 import type { AccessibilityStatus, CommandResponse } from '../../utils/tauriCommands';
 import { callCoreRpc } from '../coreRpcClient';
@@ -304,5 +305,43 @@ describe('coreRpcClient', () => {
     expect(init.method).toBe('POST');
     const headers = init.headers as Record<string, string>;
     expect(headers['Content-Type']).toBe('application/json');
+  });
+
+  test('adds bearer token header in Tauri mode', async () => {
+    vi.resetModules();
+    vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'core_rpc_url') return 'http://127.0.0.1:7788/rpc';
+      if (cmd === 'core_rpc_token') return 'test-local-token';
+      throw new Error(`unexpected command: ${cmd}`);
+    });
+    const { callCoreRpc: callFreshCoreRpc } = await import('../coreRpcClient');
+
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+    } as Response);
+
+    await callFreshCoreRpc({ method: 'openhuman.threads_list' });
+
+    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer test-local-token');
+  });
+
+  test('fails closed in Tauri mode when core rpc token is unavailable', async () => {
+    vi.resetModules();
+    vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'core_rpc_url') return 'http://127.0.0.1:7788/rpc';
+      if (cmd === 'core_rpc_token') throw new Error('denied');
+      throw new Error(`unexpected command: ${cmd}`);
+    });
+    const { callCoreRpc: callFreshCoreRpc } = await import('../coreRpcClient');
+
+    await expect(callFreshCoreRpc({ method: 'openhuman.threads_list' })).rejects.toThrow(
+      'Core RPC token unavailable in Tauri; local RPC auth cannot be satisfied'
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
