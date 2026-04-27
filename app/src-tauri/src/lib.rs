@@ -78,8 +78,7 @@ fn expand_dictation_shortcuts(shortcut: &str) -> Vec<String> {
 
 #[tauri::command]
 fn core_rpc_url() -> String {
-    std::env::var("OPENHUMAN_CORE_RPC_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:7788/rpc".to_string())
+    crate::core_rpc::core_rpc_url_value()
 }
 
 /// Tauri command: return the per-process bearer token that must be sent with
