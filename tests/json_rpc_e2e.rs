@@ -2664,7 +2664,10 @@ async fn rpc_rejects_unauthenticated_request() {
 
     assert_eq!(resp.status(), 401, "missing Authorization must yield 401");
     let body: Value = resp.json().await.expect("json body");
-    assert_eq!(body["error"], "unauthorized", "error field must be 'unauthorized'");
+    assert_eq!(
+        body["error"], "unauthorized",
+        "error field must be 'unauthorized'"
+    );
 
     rpc_join.abort();
 }
@@ -2680,7 +2683,10 @@ async fn rpc_rejects_wrong_token() {
 
     let resp = client
         .post(format!("http://{rpc_addr}/rpc"))
-        .header(AUTHORIZATION, "Bearer deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+        .header(
+            AUTHORIZATION,
+            "Bearer deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        )
         .header("Content-Type", "application/json")
         .body(r#"{"jsonrpc":"2.0","id":1,"method":"core.ping","params":{}}"#)
         .send()
@@ -2731,7 +2737,10 @@ async fn external_process_with_guessed_token_is_rejected() {
 
     // An attacker process trying a plausible-looking token that isn't the real one.
     let attacker_token = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899";
-    assert_ne!(attacker_token, TEST_RPC_TOKEN, "attacker token must differ from real one");
+    assert_ne!(
+        attacker_token, TEST_RPC_TOKEN,
+        "attacker token must differ from real one"
+    );
 
     let resp = client
         .post(format!("http://{rpc_addr}/rpc"))
@@ -2742,7 +2751,11 @@ async fn external_process_with_guessed_token_is_rejected() {
         .await
         .expect("request");
 
-    assert_eq!(resp.status(), 401, "external process with wrong token must be rejected");
+    assert_eq!(
+        resp.status(),
+        401,
+        "external process with wrong token must be rejected"
+    );
 
     rpc_join.abort();
 }
