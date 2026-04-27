@@ -236,7 +236,11 @@ fn ensure_running_returns_ok_when_rpc_port_already_open() {
 #[test]
 fn generate_rpc_token_produces_64_hex_chars() {
     let token = generate_rpc_token();
-    assert_eq!(token.len(), 64, "256-bit token → 64 hex chars, got {token:?}");
+    assert_eq!(
+        token.len(),
+        64,
+        "256-bit token → 64 hex chars, got {token:?}"
+    );
     assert!(
         token.chars().all(|c| c.is_ascii_hexdigit()),
         "token must be hex, got {token:?}"
@@ -275,7 +279,8 @@ fn core_process_handle_new_token_is_valid() {
 #[test]
 fn current_rpc_token_matches_handle_after_new() {
     let handle = CoreProcessHandle::new(19002, None, CoreRunMode::ChildProcess);
-    let global = current_rpc_token().expect("global token must be set after CoreProcessHandle::new");
+    let global =
+        current_rpc_token().expect("global token must be set after CoreProcessHandle::new");
     assert_eq!(
         global,
         handle.rpc_token(),
