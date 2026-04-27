@@ -7,12 +7,16 @@
 //! the token in every request as `Authorization: Bearer <token>`.
 //!
 //! Endpoints exempt from auth (checked by [`rpc_auth_middleware`]):
-//! - `GET /`          — public info page
-//! - `GET /health`    — liveness probe
+//! - `GET /`              — public info page
+//! - `GET /health`        — liveness probe
 //! - `GET /auth/telegram` — external browser callback (carries its own token)
 //! - `GET /schema`        — read-only schema discovery
-//! - `GET /events/webhooks` — public local webhook debug SSE
-//! - `OPTIONS *`      — CORS preflight (handled by outer CORS middleware)
+//! - `GET /events`        — SSE stream; browser `EventSource` cannot set headers
+//! - `GET /events/webhooks` — webhook SSE; same browser constraint
+//! - `GET /ws/dictation`  — WebSocket upgrade; browser WS API cannot set headers
+//! - `OPTIONS *`          — CORS preflight (handled by outer CORS middleware)
+//!
+//! Only `POST /rpc` carries executable commands and requires the bearer token.
 
 use std::io::Write as _;
 use std::path::Path;
@@ -27,12 +31,19 @@ use serde_json::json;
 static RPC_TOKEN: OnceLock<String> = OnceLock::new();
 
 /// Paths that bypass bearer-token authentication.
+///
+/// Only `/rpc` carries executable commands and must be protected.  All other
+/// routes are read-only, streaming, or WebSocket upgrades whose clients
+/// (browser `EventSource`, browser `WebSocket`) cannot set `Authorization`
+/// headers via standard APIs.
 const PUBLIC_PATHS: &[&str] = &[
     "/",
     "/health",
     "/auth/telegram",
     "/schema",
+    "/events",
     "/events/webhooks",
+    "/ws/dictation",
 ];
 
 /// The environment variable the Tauri shell sets before spawning the core.
