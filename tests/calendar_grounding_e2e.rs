@@ -1,8 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
-use openhuman_core::openhuman::providers::{ChatMessage, ChatRequest, ChatResponse, Provider, ToolCall};
+use openhuman_core::openhuman::agent::Agent;
+use openhuman_core::openhuman::providers::{
+    ChatMessage, ChatRequest, ChatResponse, Provider, ToolCall,
+};
 use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolResult};
 use parking_lot::Mutex;
 use serde_json::json;
@@ -49,7 +51,8 @@ impl Provider for MockCalendarProvider {
                     arguments: json!({
                         "timeMin": "2026-04-27T00:00:00Z",
                         "timeMax": "2026-05-04T00:00:00Z"
-                    }).to_string(),
+                    })
+                    .to_string(),
                 }],
                 usage: None,
             })
@@ -115,7 +118,8 @@ async fn test_orchestrator_has_current_date_context() -> Result<()> {
     let _ = agent.turn("what is on my calendar this week?").await?;
 
     let messages = captured_messages.lock();
-    let system_prompt = messages.iter()
+    let system_prompt = messages
+        .iter()
         .find(|m| m.role == "system" && m.content.contains("## Current Date & Time"))
         .expect("System prompt should contain Current Date & Time");
 
@@ -154,19 +158,22 @@ async fn test_integrations_agent_has_current_date_context() -> Result<()> {
         session_parent_prefix: None,
     };
 
-    let def = openhuman_core::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
-        .unwrap()
-        .get("integrations_agent")
-        .unwrap()
-        .clone();
+    let def =
+        openhuman_core::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
+            .unwrap()
+            .get("integrations_agent")
+            .unwrap()
+            .clone();
 
     let _ = openhuman_core::openhuman::agent::harness::with_parent_context(parent, async {
         openhuman_core::openhuman::agent::harness::run_subagent(
             &def,
             "list my calendar events for today",
             openhuman_core::openhuman::agent::harness::SubagentRunOptions::default(),
-        ).await
-    }).await?;
+        )
+        .await
+    })
+    .await?;
 
     let messages = captured_messages.lock();
     // Use substring search on all user messages
@@ -178,7 +185,10 @@ async fn test_integrations_agent_has_current_date_context() -> Result<()> {
         }
     }
 
-    assert!(found, "User message should contain Current Date & Time context");
+    assert!(
+        found,
+        "User message should contain Current Date & Time context"
+    );
 
     Ok(())
 }
@@ -187,13 +197,54 @@ struct StubMemory;
 
 #[async_trait]
 impl openhuman_core::openhuman::memory::Memory for StubMemory {
-    async fn store(&self, _: &str, _: &str, _: &str, _: openhuman_core::openhuman::memory::MemoryCategory, _: Option<&str>) -> Result<()> { Ok(()) }
-    async fn recall(&self, _: &str, _: usize, _: openhuman_core::openhuman::memory::RecallOpts<'_>) -> Result<Vec<openhuman_core::openhuman::memory::MemoryEntry>> { Ok(vec![]) }
-    async fn get(&self, _: &str, _: &str) -> Result<Option<openhuman_core::openhuman::memory::MemoryEntry>> { Ok(None) }
-    async fn list(&self, _: Option<&str>, _: Option<&openhuman_core::openhuman::memory::MemoryCategory>, _: Option<&str>) -> Result<Vec<openhuman_core::openhuman::memory::MemoryEntry>> { Ok(vec![]) }
-    async fn forget(&self, _: &str, _: &str) -> Result<bool> { Ok(true) }
-    async fn namespace_summaries(&self) -> Result<Vec<openhuman_core::openhuman::memory::NamespaceSummary>> { Ok(vec![]) }
-    async fn count(&self, ) -> Result<usize> { Ok(0) }
-    async fn health_check(&self) -> bool { true }
-    fn name(&self) -> &str { "stub" }
+    async fn store(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: openhuman_core::openhuman::memory::MemoryCategory,
+        _: Option<&str>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    async fn recall(
+        &self,
+        _: &str,
+        _: usize,
+        _: openhuman_core::openhuman::memory::RecallOpts<'_>,
+    ) -> Result<Vec<openhuman_core::openhuman::memory::MemoryEntry>> {
+        Ok(vec![])
+    }
+    async fn get(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<Option<openhuman_core::openhuman::memory::MemoryEntry>> {
+        Ok(None)
+    }
+    async fn list(
+        &self,
+        _: Option<&str>,
+        _: Option<&openhuman_core::openhuman::memory::MemoryCategory>,
+        _: Option<&str>,
+    ) -> Result<Vec<openhuman_core::openhuman::memory::MemoryEntry>> {
+        Ok(vec![])
+    }
+    async fn forget(&self, _: &str, _: &str) -> Result<bool> {
+        Ok(true)
+    }
+    async fn namespace_summaries(
+        &self,
+    ) -> Result<Vec<openhuman_core::openhuman::memory::NamespaceSummary>> {
+        Ok(vec![])
+    }
+    async fn count(&self) -> Result<usize> {
+        Ok(0)
+    }
+    async fn health_check(&self) -> bool {
+        true
+    }
+    fn name(&self) -> &str {
+        "stub"
+    }
 }
