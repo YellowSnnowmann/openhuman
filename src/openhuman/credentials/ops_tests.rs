@@ -1,4 +1,7 @@
 use super::*;
+use crate::openhuman::config::{
+    default_root_openhuman_dir, pre_login_user_dir, user_openhuman_dir, write_active_user_id,
+};
 use serde_json::json;
 use tempfile::TempDir;
 
@@ -71,6 +74,62 @@ fn sanitize_stored_session_user_discards_empty_objects() {
         sanitize_stored_session_user(Some(json!({ "firstName": "steven" }))),
         Some(json!({ "firstName": "steven" }))
     );
+}
+
+#[tokio::test]
+async fn config_load_migrates_local_data() {
+    // This test verifies that 'local' user data is migrated
+    // to a newly logged-in user when Config::load_or_init() is called.
+    let _lock = crate::openhuman::config::TEST_ENV_LOCK.lock().unwrap();
+    let tmp = TempDir::new().unwrap();
+    let home = tmp.path();
+    let old_home = std::env::var("HOME").ok();
+    std::env::set_var("HOME", home);
+
+    let root_dir = default_root_openhuman_dir().unwrap();
+    let local_dir = pre_login_user_dir(&root_dir);
+    std::fs::create_dir_all(&local_dir).unwrap();
+
+    // 1. Set onboarding_completed = true in 'local' config
+    let local_config_path = local_dir.join("config.toml");
+    let local_config = Config {
+        config_path: local_config_path.clone(),
+        onboarding_completed: true,
+        ..Config::default()
+    };
+    local_config.save().await.unwrap();
+    assert!(local_dir.exists());
+
+    // 2. Simulate what store_session does: activate a new user
+    let user_id = "new-user-123";
+    write_active_user_id(&root_dir, user_id).unwrap();
+
+    // 3. Reload config — this is where migration SHOULD happen.
+    let new_config = Config::load_or_init().await.unwrap();
+
+    // 4. Verify migration success: onboarding_completed is preserved!
+    assert_eq!(
+        new_config.onboarding_completed, true,
+        "onboarding_completed should be true after migration from 'local'"
+    );
+    assert!(
+        new_config.config_path.to_string_lossy().contains(user_id),
+        "Config path should be scoped to new user"
+    );
+
+    // 5. Verify local directory was moved
+    assert!(
+        !local_dir.exists(),
+        "Local directory should have been moved"
+    );
+    let user_dir = user_openhuman_dir(&root_dir, user_id);
+    assert!(user_dir.exists(), "User directory should exist");
+
+    if let Some(v) = old_home {
+        std::env::set_var("HOME", v);
+    } else {
+        std::env::remove_var("HOME");
+    }
 }
 
 // ── clear_session ──────────────────────────────────────────────

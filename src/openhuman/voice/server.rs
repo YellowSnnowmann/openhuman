@@ -548,6 +548,8 @@ fn start_hotkey_listener(
             return start_globe_hotkey_listener(mode, server_cancel);
         }
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = server_cancel;
 
     // Default path: rdev-based listener for all other keys.
     let combo = hotkey::parse_hotkey(hotkey_str)?;
@@ -560,7 +562,7 @@ fn start_hotkey_listener(
 #[cfg(target_os = "macos")]
 fn start_globe_hotkey_listener(
     mode: hotkey::ActivationMode,
-    server_cancel: &CancellationToken,
+    _server_cancel: &CancellationToken,
 ) -> Result<
     (
         HotkeyListenerKind,

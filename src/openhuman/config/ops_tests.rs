@@ -23,7 +23,11 @@ async fn reset_local_data_removes_current_dir_default_dir_and_marker() {
         .unwrap();
 
     assert!(!current_openhuman_dir.exists());
-    assert!(!default_openhuman_dir.exists());
+    // Refined behavior: we no longer remove the root directory to avoid
+    // wiping other users' data.
+    assert!(default_openhuman_dir.exists());
+    assert!(!marker.exists());
+
     assert!(outcome
         .value
         .get("removed_paths")

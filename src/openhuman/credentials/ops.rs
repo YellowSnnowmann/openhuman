@@ -13,9 +13,7 @@ use crate::openhuman::security::SecretStore;
 use crate::rpc::RpcOutcome;
 
 use super::{AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME};
-use crate::openhuman::config::{
-    default_root_openhuman_dir, user_openhuman_dir, write_active_user_id,
-};
+use crate::openhuman::config::{default_root_openhuman_dir, write_active_user_id};
 
 /// Start all login-gated background services (local AI, voice, screen
 /// intelligence, autocomplete).  Called both from the initial boot path
@@ -158,14 +156,7 @@ pub async fn store_session(
 
     if let Some(ref uid) = resolved_user_id {
         if let Ok(root_dir) = default_root_openhuman_dir() {
-            let user_dir = user_openhuman_dir(&root_dir, uid);
-            if let Err(e) = std::fs::create_dir_all(&user_dir) {
-                tracing::warn!(
-                    user_id = %uid,
-                    error = %e,
-                    "failed to create user directory"
-                );
-            } else if let Err(e) = write_active_user_id(&root_dir, uid) {
+            if let Err(e) = write_active_user_id(&root_dir, uid) {
                 tracing::warn!(
                     user_id = %uid,
                     error = %e,
@@ -173,11 +164,7 @@ pub async fn store_session(
                 );
             } else {
                 logs.push(format!("user directory activated for {uid}"));
-                tracing::info!(
-                    user_id = %uid,
-                    user_dir = %user_dir.display(),
-                    "User-scoped directory activated"
-                );
+                tracing::info!(user_id = %uid, "User directory activated");
             }
         }
     }
