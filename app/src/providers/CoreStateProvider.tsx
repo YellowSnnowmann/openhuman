@@ -17,7 +17,6 @@ import {
   getCoreStateSnapshot,
   setCoreStateSnapshot,
 } from '../lib/coreState/store';
-import { persistor } from '../store';
 import { syncAnalyticsConsent } from '../services/analytics';
 import {
   fetchCoreAppSnapshot,
@@ -26,6 +25,7 @@ import {
   listTeams,
   updateCoreLocalState,
 } from '../services/coreStateApi';
+import { persistor } from '../store';
 import {
   openhumanUpdateAnalyticsSettings,
   restartApp,

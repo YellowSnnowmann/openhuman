@@ -1,4 +1,7 @@
 use super::*;
+use crate::openhuman::config::{
+    default_root_openhuman_dir, pre_login_user_dir, user_openhuman_dir, write_active_user_id,
+};
 use serde_json::json;
 use tempfile::TempDir;
 
@@ -89,7 +92,7 @@ async fn config_load_migrates_local_data() {
 
     // 1. Set onboarding_completed = true in 'local' config
     let local_config_path = local_dir.join("config.toml");
-    let mut local_config = Config {
+    let local_config = Config {
         config_path: local_config_path.clone(),
         onboarding_completed: true,
         ..Config::default()
@@ -115,7 +118,10 @@ async fn config_load_migrates_local_data() {
     );
 
     // 5. Verify local directory was moved
-    assert!(!local_dir.exists(), "Local directory should have been moved");
+    assert!(
+        !local_dir.exists(),
+        "Local directory should have been moved"
+    );
     let user_dir = user_openhuman_dir(&root_dir, user_id);
     assert!(user_dir.exists(), "User directory should exist");
 

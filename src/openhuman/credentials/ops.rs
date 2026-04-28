@@ -13,9 +13,7 @@ use crate::openhuman::security::SecretStore;
 use crate::rpc::RpcOutcome;
 
 use super::{AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME};
-use crate::openhuman::config::{
-    default_root_openhuman_dir, user_openhuman_dir, write_active_user_id,
-};
+use crate::openhuman::config::{default_root_openhuman_dir, write_active_user_id};
 
 /// Start all login-gated background services (local AI, voice, screen
 /// intelligence, autocomplete).  Called both from the initial boot path

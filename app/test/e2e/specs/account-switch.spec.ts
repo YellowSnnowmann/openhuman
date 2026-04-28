@@ -10,14 +10,19 @@
 import { waitForApp, waitForAppReady, waitForAuthBootstrap } from '../helpers/app-helpers';
 import { textExists, waitForWebView, waitForWindowVisible } from '../helpers/element-helpers';
 import {
-  logoutViaSettings,
-  performFullLogin,
-  walkOnboarding,
-  waitForHomePage,
   isOnboardingOverlayVisible,
+  logoutViaSettings,
   navigateToHome,
+  performFullLogin,
+  waitForHomePage,
+  walkOnboarding,
 } from '../helpers/shared-flows';
-import { clearRequestLog, resetMockBehavior, startMockServer, stopMockServer } from '../mock-server';
+import {
+  clearRequestLog,
+  resetMockBehavior,
+  startMockServer,
+  stopMockServer,
+} from '../mock-server';
 
 describe('Account Switching and Migration', () => {
   before(async () => {
