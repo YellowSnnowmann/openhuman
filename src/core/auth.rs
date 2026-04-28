@@ -1,10 +1,20 @@
 //! Per-process RPC bearer-token authentication.
 //!
-//! At server startup, [`init_rpc_token`] generates a 256-bit
-//! cryptographically-random token, writes it to
-//! `{workspace_dir}/core.token` (owner-read-only on Unix), and stores it in a
-//! process-global [`OnceLock`].  The Tauri shell reads that file and includes
-//! the token in every request as `Authorization: Bearer <token>`.
+//! At server startup, [`init_rpc_token`] either reads the token from the
+//! `OPENHUMAN_CORE_TOKEN` environment variable (Tauri-spawned path) or
+//! generates a 256-bit cryptographically-random token and writes it to
+//! `{workspace_dir}/core.token` (owner-read-only on Unix, standalone CLI path),
+//! then stores it in a process-global [`OnceLock`].
+//!
+//! **Tauri path**: the Tauri shell generates the token in
+//! `CoreProcessHandle::new()`, injects it as `OPENHUMAN_CORE_TOKEN` before
+//! spawning the core process, and holds it in memory via
+//! `CoreProcessHandle.rpc_token`.  The shell includes the token in every
+//! request as `Authorization: Bearer <token>`.  The `core.token` file is
+//! never written in this path.
+//!
+//! **Standalone CLI path**: the core generates a fresh token and writes it to
+//! `{workspace_dir}/core.token` so that CLI clients can read and use it.
 //!
 //! Endpoints exempt from auth (checked by [`rpc_auth_middleware`]):
 //! - `GET /`              — public info page

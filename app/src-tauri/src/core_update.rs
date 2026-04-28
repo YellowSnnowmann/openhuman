@@ -67,6 +67,11 @@ pub async fn query_core_version(rpc_url: &str, rpc_token: &str) -> Result<String
 
     let resp = client
         .post(rpc_url)
+        // `apply_auth()` reads from the process-global CURRENT_RPC_TOKEN, but
+        // this function accepts an explicit token so it can run immediately
+        // after the core process spawns — before publish_rpc_token() is called.
+        // If the Authorization header format ever changes, update both this
+        // site and `core_rpc::apply_auth()` together.
         .header("Authorization", format!("Bearer {rpc_token}"))
         .json(&body)
         .send()
