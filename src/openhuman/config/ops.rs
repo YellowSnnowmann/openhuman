@@ -75,13 +75,18 @@ fn config_openhuman_dir(config: &Config) -> PathBuf {
 }
 
 /// Internal helper to reset local data by removing specific directories and markers.
+/// Scoped to the active user and the pre-login 'local' directory to avoid
+/// wiping data for other accounts on the same machine.
 async fn reset_local_data_for_paths(
     current_openhuman_dir: &Path,
     default_openhuman_dir: &Path,
 ) -> Result<RpcOutcome<serde_json::Value>, String> {
     let active_workspace_marker = active_workspace_marker_path(default_openhuman_dir);
+    let local_dir = crate::openhuman::config::pre_login_user_dir(default_openhuman_dir);
+
     tracing::debug!(
         current_dir = %current_openhuman_dir.display(),
+        local_dir = %local_dir.display(),
         default_dir = %default_openhuman_dir.display(),
         marker = %active_workspace_marker.display(),
         "[config] reset_local_data: starting"
@@ -89,27 +94,34 @@ async fn reset_local_data_for_paths(
 
     let mut removed_paths = Vec::new();
 
+    // 1. Clear markers in the root directory
     if active_workspace_marker.exists() {
         tokio::fs::remove_file(&active_workspace_marker)
             .await
             .map_err(|e| format!("Failed to remove active workspace marker: {e}"))?;
-        tracing::debug!(
-            marker = %active_workspace_marker.display(),
-            "[config] reset_local_data: removed active workspace marker"
-        );
         removed_paths.push(active_workspace_marker.display().to_string());
     }
 
-    for target_dir in [current_openhuman_dir, default_openhuman_dir] {
+    if let Err(e) = crate::openhuman::config::clear_active_user(default_openhuman_dir) {
+        tracing::warn!(error = %e, "failed to clear active_user.toml during reset");
+    } else {
+        removed_paths.push(default_openhuman_dir.join("active_user.toml").display().to_string());
+    }
+
+    // 2. Remove user-scoped directories (active user + 'local')
+    // We explicitly avoid removing default_openhuman_dir itself because it
+    // may contain other users' data in the 'users/' subdirectory.
+    let mut targets = vec![current_openhuman_dir.to_path_buf()];
+    if local_dir != current_openhuman_dir {
+        targets.push(local_dir);
+    }
+
+    for target_dir in targets {
         if !target_dir.exists() {
-            tracing::debug!(
-                dir = %target_dir.display(),
-                "[config] reset_local_data: directory already absent"
-            );
             continue;
         }
 
-        tokio::fs::remove_dir_all(target_dir)
+        tokio::fs::remove_dir_all(&target_dir)
             .await
             .map_err(|e| format!("Failed to remove {}: {e}", target_dir.display()))?;
         tracing::debug!(
@@ -127,13 +139,10 @@ async fn reset_local_data_for_paths(
         }),
         vec![
             format!(
-                "reset local data for active config dir {}",
+                "reset local data for active user dir {}",
                 current_openhuman_dir.display()
             ),
-            format!(
-                "removed default data dir {} if present",
-                default_openhuman_dir.display()
-            ),
+            "cleared active user and workspace markers".to_string(),
         ],
     ))
 }

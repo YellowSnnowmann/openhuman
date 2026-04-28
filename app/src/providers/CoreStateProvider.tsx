@@ -17,6 +17,7 @@ import {
   getCoreStateSnapshot,
   setCoreStateSnapshot,
 } from '../lib/coreState/store';
+import { persistor } from '../store';
 import { syncAnalyticsConsent } from '../services/analytics';
 import {
   fetchCoreAppSnapshot,
@@ -153,6 +154,21 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       const shouldClearScopedCaches =
         previousIdentity !== nextIdentity ||
         (previous.snapshot.auth.isAuthenticated && !nextSnapshot.auth.isAuthenticated);
+
+      if (
+        nextIdentity &&
+        previousIdentity &&
+        previousIdentity !== nextIdentity &&
+        previous.snapshot.auth.isAuthenticated
+      ) {
+        const mask = (s: string | null) =>
+          s == null ? 'none' : s.length > 4 ? `****${s.slice(-4)}` : '****';
+        console.debug('[core-state] user identity changed during refresh; restarting app', {
+          previousIdentity: mask(previousIdentity),
+          nextIdentity: mask(nextIdentity),
+        });
+        void restartApp();
+      }
 
       return {
         ...previous,
@@ -418,6 +434,14 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       snapshot: toSignedOutSnapshot(previous.snapshot),
     }));
     memoryTokenRef.current = null;
+
+    try {
+      await persistor.purge();
+      console.debug('[core-state] Redux store purged on logout');
+    } catch (err) {
+      console.warn('[core-state] persistor.purge failed during logout:', err);
+    }
+
     await tauriLogout();
     await refresh().catch(err => {
       log('refresh failed after clearSession: %O', sanitizeError(err));
