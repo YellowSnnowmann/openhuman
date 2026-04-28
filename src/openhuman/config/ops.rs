@@ -105,7 +105,12 @@ async fn reset_local_data_for_paths(
     if let Err(e) = crate::openhuman::config::clear_active_user(default_openhuman_dir) {
         tracing::warn!(error = %e, "failed to clear active_user.toml during reset");
     } else {
-        removed_paths.push(default_openhuman_dir.join("active_user.toml").display().to_string());
+        removed_paths.push(
+            default_openhuman_dir
+                .join("active_user.toml")
+                .display()
+                .to_string(),
+        );
     }
 
     // 2. Remove user-scoped directories (active user + 'local')

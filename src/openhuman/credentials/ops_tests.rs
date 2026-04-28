@@ -74,9 +74,9 @@ fn sanitize_stored_session_user_discards_empty_objects() {
 }
 
 #[tokio::test]
-async fn store_session_migrates_local_data() {
+async fn config_load_migrates_local_data() {
     // This test verifies that 'local' user data is migrated
-    // to a newly logged-in user.
+    // to a newly logged-in user when Config::load_or_init() is called.
     let _lock = crate::openhuman::config::TEST_ENV_LOCK.lock().unwrap();
     let tmp = TempDir::new().unwrap();
     let home = tmp.path();
@@ -95,12 +95,13 @@ async fn store_session_migrates_local_data() {
         ..Config::default()
     };
     local_config.save().await.unwrap();
+    assert!(local_dir.exists());
 
     // 2. Simulate what store_session does: activate a new user
     let user_id = "new-user-123";
     write_active_user_id(&root_dir, user_id).unwrap();
 
-    // 3. Reload config — this is where migration SHOULD happen but currently doesn't.
+    // 3. Reload config — this is where migration SHOULD happen.
     let new_config = Config::load_or_init().await.unwrap();
 
     // 4. Verify migration success: onboarding_completed is preserved!
@@ -112,6 +113,11 @@ async fn store_session_migrates_local_data() {
         new_config.config_path.to_string_lossy().contains(user_id),
         "Config path should be scoped to new user"
     );
+
+    // 5. Verify local directory was moved
+    assert!(!local_dir.exists(), "Local directory should have been moved");
+    let user_dir = user_openhuman_dir(&root_dir, user_id);
+    assert!(user_dir.exists(), "User directory should exist");
 
     if let Some(v) = old_home {
         std::env::set_var("HOME", v);

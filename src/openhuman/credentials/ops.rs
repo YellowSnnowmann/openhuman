@@ -14,8 +14,7 @@ use crate::rpc::RpcOutcome;
 
 use super::{AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME};
 use crate::openhuman::config::{
-    default_root_openhuman_dir, pre_login_user_dir, user_openhuman_dir, write_active_user_id,
-    PRE_LOGIN_USER_ID,
+    default_root_openhuman_dir, user_openhuman_dir, write_active_user_id,
 };
 
 /// Start all login-gated background services (local AI, voice, screen
@@ -159,40 +158,6 @@ pub async fn store_session(
 
     if let Some(ref uid) = resolved_user_id {
         if let Ok(root_dir) = default_root_openhuman_dir() {
-            let user_dir = user_openhuman_dir(&root_dir, uid);
-            let local_dir = pre_login_user_dir(&root_dir);
-
-            // Migration path: if this is the first login for this user AND
-            // there is a pre-login 'local' directory, migrate it to the
-            // new user path. This preserves onboarding state, chat history,
-            // and connections for the first logged-in account.
-            if !user_dir.exists() && local_dir.exists() && uid != PRE_LOGIN_USER_ID {
-                tracing::info!(
-                    user_id = %uid,
-                    from = %local_dir.display(),
-                    to = %user_dir.display(),
-                    "Migrating pre-login data to new user directory"
-                );
-                if let Err(e) = std::fs::rename(&local_dir, &user_dir) {
-                    tracing::warn!(
-                        user_id = %uid,
-                        error = %e,
-                        "failed to migrate local directory; falling back to fresh directory"
-                    );
-                    let _ = std::fs::create_dir_all(&user_dir);
-                } else {
-                    logs.push(format!("migrated local data to user directory for {uid}"));
-                }
-            } else if !user_dir.exists() {
-                if let Err(e) = std::fs::create_dir_all(&user_dir) {
-                    tracing::warn!(
-                        user_id = %uid,
-                        error = %e,
-                        "failed to create user directory"
-                    );
-                }
-            }
-
             if let Err(e) = write_active_user_id(&root_dir, uid) {
                 tracing::warn!(
                     user_id = %uid,
@@ -201,11 +166,7 @@ pub async fn store_session(
                 );
             } else {
                 logs.push(format!("user directory activated for {uid}"));
-                tracing::info!(
-                    user_id = %uid,
-                    user_dir = %user_dir.display(),
-                    "User-scoped directory activated"
-                );
+                tracing::info!(user_id = %uid, "User directory activated");
             }
         }
     }

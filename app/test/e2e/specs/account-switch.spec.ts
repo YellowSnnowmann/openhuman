@@ -15,14 +15,9 @@ import {
   walkOnboarding,
   waitForHomePage,
   isOnboardingOverlayVisible,
-  navigateToHome
+  navigateToHome,
 } from '../helpers/shared-flows';
-import {
-  clearRequestLog,
-  resetMockBehavior,
-  startMockServer,
-  stopMockServer,
-} from '../mock-server';
+import { clearRequestLog, resetMockBehavior, startMockServer, stopMockServer } from '../mock-server';
 
 describe('Account Switching and Migration', () => {
   before(async () => {
