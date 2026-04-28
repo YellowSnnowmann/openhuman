@@ -45,6 +45,10 @@ pub fn resume_job(config: &Config, id: &str) -> Result<CronJob> {
 }
 
 /// Update an existing cron job using the same rules as the legacy CLI, but without CLI wiring.
+///
+/// `expression` and `tz` are merged with the existing [`Schedule::Cron`] fields; the
+/// existing `active_hours` is always preserved as-is.  To set or clear `active_hours`
+/// directly, use the RPC path (`cron.update` with a full [`CronJobPatch`]).
 pub fn update_cron_job(
     config: &Config,
     id: &str,

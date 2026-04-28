@@ -227,7 +227,7 @@ async fn persist_job_result_records_run_and_reschedules_shell_job() {
 async fn scheduler_flow_runs_active_hours_job_and_reschedules_inside_window() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp).await;
-    let active_minute = Utc::now() + ChronoDuration::minutes(1);
+    let active_minute = Utc::now() + ChronoDuration::minutes(2);
     let active_hm = format!("{:02}:{:02}", active_minute.hour(), active_minute.minute());
     let active_hours = ActiveHours {
         start: active_hm.clone(),

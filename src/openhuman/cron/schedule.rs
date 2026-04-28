@@ -15,6 +15,7 @@ pub fn next_run_for_schedule(schedule: &Schedule, from: DateTime<Utc>) -> Result
             let cron = CronExprSchedule::from_str(&normalized)
                 .with_context(|| format!("Invalid cron expression: {expr}"))?;
             let timezone = ScheduleTimeZone::parse(tz.as_deref())?;
+            // Parsing is cheap; validated at job-creation time via validate_schedule.
             let active_window = active_hours.as_ref().map(ActiveWindow::parse).transpose()?;
 
             let mut current_from = from;
@@ -22,14 +23,25 @@ pub fn next_run_for_schedule(schedule: &Schedule, from: DateTime<Utc>) -> Result
                 let next_utc = timezone.next_after(&cron, current_from, expr)?;
 
                 if let Some(active) = &active_window {
-                    if active.contains(timezone.local_time_of_day(next_utc)) {
+                    let local_t = timezone.local_time_of_day(next_utc);
+                    if active.contains(local_t) {
                         return Ok(next_utc);
                     }
+                    tracing::debug!(
+                        "[cron] next_run candidate {} outside active window {}–{}, advancing",
+                        next_utc,
+                        active.start,
+                        active.end
+                    );
                     current_from = next_utc;
                 } else {
                     return Ok(next_utc);
                 }
             }
+            tracing::warn!(
+                "[cron] no occurrence found within active_hours for expr={} after 100,000 candidates",
+                expr
+            );
             anyhow::bail!("No future occurrence found within active hours after 100,000 attempts")
         }
         Schedule::At { at } => Ok(*at),
@@ -126,11 +138,13 @@ impl ScheduleTimeZone {
         match self {
             Self::Named(timezone) => {
                 let localized = time.with_timezone(&timezone);
-                NaiveTime::from_hms_opt(localized.hour(), localized.minute(), 0).unwrap()
+                NaiveTime::from_hms_opt(localized.hour(), localized.minute(), 0)
+                    .expect("hour() and minute() from a valid DateTime are always in-range")
             }
             Self::Local => {
                 let localized = time.with_timezone(&chrono::Local);
-                NaiveTime::from_hms_opt(localized.hour(), localized.minute(), 0).unwrap()
+                NaiveTime::from_hms_opt(localized.hour(), localized.minute(), 0)
+                    .expect("hour() and minute() from a valid DateTime are always in-range")
             }
         }
     }
