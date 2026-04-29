@@ -10,7 +10,6 @@
  *
  * Mounted once at AppShell root.
  */
-import { isTauri as coreIsTauri } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useChannelDefinitions } from '../hooks/useChannelDefinitions';
@@ -20,7 +19,7 @@ import {
   type NotificationPermissionState,
   showNativeNotification,
 } from '../lib/nativeNotifications/tauriBridge';
-import { purgeWebviewAccount } from '../services/webviewAccountService';
+import { isTauri, purgeWebviewAccount } from '../services/webviewAccountService';
 import { addAccount, removeAccount } from '../store/accountsSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { type Account, type AccountProvider, PROVIDERS } from '../types/accounts';
@@ -210,7 +209,7 @@ const NotificationsBody = ({ close }: { close: () => void }) => {
     setStatus('sending');
     setError(null);
     try {
-      if (!coreIsTauri()) {
+      if (!isTauri()) {
         setStatus('error');
         setError(
           'Native notifications are only available in the desktop app (run `pnpm dev:app`).'
