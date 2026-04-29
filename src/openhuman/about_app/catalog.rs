@@ -117,6 +117,16 @@ const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
+        id: "conversation.label_filter",
+        name: "Thread Label Filters",
+        domain: "conversation",
+        category: CapabilityCategory::Conversation,
+        description: "Filter the thread list by label (Work, Briefing, Notification) using the tab bar at the top of the thread list.",
+        how_to: "Conversations > Label tabs",
+        status: CapabilityStatus::Beta,
+        privacy: None,
+    },
+    Capability {
         id: "intelligence.analyze_actionable_items",
         name: "Analyze Actionable Items",
         domain: "intelligence",
@@ -185,6 +195,16 @@ const CAPABILITIES: &[Capability] = &[
         how_to: "Settings > Memory Debug",
         status: CapabilityStatus::Beta,
         privacy: None,
+    },
+    Capability {
+        id: "intelligence.memory_tree_retrieval",
+        name: "Memory Tree Retrieval (chat)",
+        domain: "intelligence",
+        category: CapabilityCategory::Intelligence,
+        description: "Ask questions about your ingested email/chat/document memory in chat. The orchestrator can resolve names to canonical ids, query summaries by source/topic/global window, drill into details, and cite raw chunks.",
+        how_to: "Chat > ask the assistant about people, conversations, or windows",
+        status: CapabilityStatus::Beta,
+        privacy: LOCAL_RAW,
     },
     Capability {
         id: "intelligence.slack_memory_ingest",
