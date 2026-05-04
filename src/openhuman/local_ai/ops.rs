@@ -425,22 +425,29 @@ pub async fn local_ai_chat(
         return Err("messages must not be empty".to_string());
     }
 
-    for msg in messages
-        .iter()
-        .filter(|m| m.role.eq_ignore_ascii_case("user"))
-    {
-        enforce_user_prompt_or_reject(msg.content.as_str(), "local_ai.ops.local_ai_chat")?;
-    }
+    let mut ollama_messages: Vec<crate::openhuman::local_ai::ollama_api::OllamaChatMessage> =
+        Vec::with_capacity(messages.len());
 
-    let ollama_messages: Vec<crate::openhuman::local_ai::ollama_api::OllamaChatMessage> = messages
-        .into_iter()
-        .map(
-            |m| crate::openhuman::local_ai::ollama_api::OllamaChatMessage {
-                role: m.role,
-                content: m.content,
-            },
-        )
-        .collect();
+    for msg in messages.into_iter() {
+        let normalized_role = msg.role.trim().to_ascii_lowercase();
+        match normalized_role.as_str() {
+            "user" => {
+                enforce_user_prompt_or_reject(msg.content.as_str(), "local_ai.ops.local_ai_chat")?;
+            }
+            "system" | "assistant" => {}
+            _ => {
+                return Err(format!(
+                    "unsupported message role: '{}'; expected one of: user, system, assistant",
+                    msg.role.trim()
+                ));
+            }
+        }
+
+        ollama_messages.push(crate::openhuman::local_ai::ollama_api::OllamaChatMessage {
+            role: normalized_role,
+            content: msg.content,
+        });
+    }
 
     let service = local_ai::global(config);
     let reply = service

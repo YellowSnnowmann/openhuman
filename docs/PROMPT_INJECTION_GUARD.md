@@ -58,7 +58,7 @@ If action is `block` or `review_blocked`, request processing is stopped and no p
 
 - Advisory pre-submit validation in `app/src/chat/promptInjectionGuard.ts`.
 - Composer integration in `app/src/pages/Conversations.tsx`.
-- `block` verdict: local send is stopped with user-facing message.
+- `block` verdict: advisory warning is shown client-side; backend remains authoritative for final enforcement.
 - `review` verdict: advisory warning shown; backend still enforces final decision.
 
 ## Logging and Privacy

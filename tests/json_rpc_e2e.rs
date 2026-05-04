@@ -837,6 +837,8 @@ async fn json_rpc_prompt_injection_is_rejected_before_model_call() {
     let (api_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
     let api_origin = format!("http://{api_addr}");
     write_min_config(openhuman_home.as_path(), &api_origin);
+    let user_scoped_dir = openhuman_home.join("users").join("e2e-user");
+    write_min_config(&user_scoped_dir, &api_origin);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
