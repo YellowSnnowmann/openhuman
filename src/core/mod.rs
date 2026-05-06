@@ -6,7 +6,6 @@
 
 use serde::Serialize;
 
-pub mod agent_cli;
 pub mod all;
 pub mod auth;
 pub mod autocomplete_cli_adapter;
@@ -15,7 +14,6 @@ pub mod dispatch;
 pub mod event_bus;
 pub mod jsonrpc;
 pub mod logging;
-pub mod memory_cli;
 pub mod observability;
 pub mod rpc_log;
 pub mod shutdown;

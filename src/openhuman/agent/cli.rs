@@ -29,7 +29,7 @@ use crate::openhuman::agent::debug::{
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 
 /// Entry point for `openhuman agent <subcommand>`.
-pub fn run_agent_command(args: &[String]) -> Result<()> {
+pub(crate) fn run_agent_command(args: &[String]) -> Result<()> {
     if args.is_empty() || is_help(&args[0]) {
         print_agent_help();
         return Ok(());

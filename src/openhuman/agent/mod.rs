@@ -20,6 +20,7 @@
 
 pub mod agents;
 pub mod bus;
+pub mod cli;
 pub mod cost;
 pub mod debug;
 pub mod dispatcher;
