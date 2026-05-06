@@ -1,4 +1,4 @@
-import { apiClient } from '../apiClient';
+import { callCoreCommand } from '../coreCommandClient';
 
 /**
  * Response shape from GET /auth/me when coreToken is included.
@@ -53,6 +53,15 @@ export interface HealthCheckResponse {
   checkedAt: string;
 }
 
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+function wrapCoreResult<T>(data: T): ApiEnvelope<T> {
+  return { success: true, data };
+}
+
 export const deploymentsApi = {
   /**
    * Fetch the user's coreToken from the backend.
@@ -60,28 +69,31 @@ export const deploymentsApi = {
    */
   getCoreToken: async (): Promise<string | null> => {
     try {
-      const res = await apiClient.get<{ success: boolean; data: AuthMeWithCoreToken }>(
-        '/auth/me/core-token'
-      );
-      return res.data?.coreToken ?? null;
+      const res = await callCoreCommand<AuthMeWithCoreToken>('openhuman.deployment_get_core_token');
+      return res.coreToken ?? null;
     } catch {
       return null;
     }
   },
 
+  provision: async (params: ProvisionParams) =>
+    wrapCoreResult(
+      await callCoreCommand<ProvisionResponse>('openhuman.deployment_provision', params)
+    ),
 
-  provision: (params: ProvisionParams) =>
-    apiClient.post<{ success: boolean; data: ProvisionResponse }>('/deployments/provision', params),
+  getStatus: async () =>
+    wrapCoreResult(
+      await callCoreCommand<DeploymentInstance | null>('openhuman.deployment_get_status')
+    ),
 
-  getStatus: () =>
-    apiClient.get<{ success: boolean; data: DeploymentInstance | null }>('/deployments/status'),
+  getHealth: async () =>
+    wrapCoreResult(await callCoreCommand<HealthCheckResponse>('openhuman.deployment_get_health')),
 
-  getHealth: () =>
-    apiClient.get<{ success: boolean; data: HealthCheckResponse }>('/deployments/health'),
-
-  terminate: (creds?: { awsAccessKeyId: string; awsSecretAccessKey: string }) =>
-    apiClient.post<{ success: boolean; data: { deploymentId: string; status: string } }>(
-      '/deployments/terminate',
-      creds ?? {}
+  terminate: async (creds?: { awsAccessKeyId: string; awsSecretAccessKey: string }) =>
+    wrapCoreResult(
+      await callCoreCommand<{ deploymentId: string; status: string }>(
+        'openhuman.deployment_terminate',
+        creds ?? {}
+      )
     ),
 };
