@@ -19,7 +19,7 @@ use crate::openhuman::memory::ingestion::{MemoryIngestionConfig, MemoryIngestion
 use crate::openhuman::memory::NamespaceDocumentInput;
 
 /// Entry point for `openhuman memory <subcommand>`.
-pub fn run_memory_command(args: &[String]) -> Result<()> {
+pub(crate) fn run_memory_command(args: &[String]) -> Result<()> {
     if args.is_empty() || is_help(&args[0]) {
         print_memory_help();
         return Ok(());

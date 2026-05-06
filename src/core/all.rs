@@ -72,10 +72,44 @@ fn registry() -> &'static [RegisteredController] {
 /// Returns a reference to the global CLI adapter registry.
 fn cli_adapters() -> &'static [RegisteredCliAdapter] {
     CLI_ADAPTERS.get_or_init(|| {
-        vec![RegisteredCliAdapter {
-            namespace: "voice",
-            handler: crate::openhuman::voice::cli::run_standalone_subcommand,
-        }]
+        vec![
+            RegisteredCliAdapter {
+                namespace: "voice",
+                handler: crate::openhuman::voice::cli::run_standalone_subcommand,
+            },
+            RegisteredCliAdapter {
+                namespace: "agent",
+                handler: crate::openhuman::agent::cli::run_agent_command,
+            },
+            RegisteredCliAdapter {
+                namespace: "memory",
+                handler: crate::openhuman::memory::cli::run_memory_command,
+            },
+            RegisteredCliAdapter {
+                namespace: "text-input",
+                handler: crate::openhuman::text_input::cli::run_text_input_command,
+            },
+            RegisteredCliAdapter {
+                namespace: "text_input",
+                handler: crate::openhuman::text_input::cli::run_text_input_command,
+            },
+            RegisteredCliAdapter {
+                namespace: "tree-summarizer",
+                handler: crate::openhuman::tree_summarizer::cli::run_tree_summarizer_command,
+            },
+            RegisteredCliAdapter {
+                namespace: "tree_summarizer",
+                handler: crate::openhuman::tree_summarizer::cli::run_tree_summarizer_command,
+            },
+            RegisteredCliAdapter {
+                namespace: "screen-intelligence",
+                handler: crate::openhuman::screen_intelligence::cli::run_screen_intelligence_command,
+            },
+            RegisteredCliAdapter {
+                namespace: "screen_intelligence",
+                handler: crate::openhuman::screen_intelligence::cli::run_screen_intelligence_command,
+            },
+        ]
     })
 }
 

@@ -59,22 +59,6 @@ pub fn run_from_cli_args(args: &[String]) -> Result<()> {
     match args[0].as_str() {
         "run" | "serve" => run_server_command(&args[1..]),
         "call" => run_call_command(&args[1..]),
-        // Domain-specific CLI adapters that don't follow the generic namespace pattern.
-        "screen-intelligence" => {
-            crate::openhuman::screen_intelligence::cli::run_screen_intelligence_command(&args[1..])
-        }
-        "text-input" => crate::openhuman::text_input::cli::run_text_input_command(&args[1..]),
-        "tree-summarizer" => {
-            crate::openhuman::tree_summarizer::cli::run_tree_summarizer_command(&args[1..])
-        }
-        "memory" => crate::core::memory_cli::run_memory_command(&args[1..]),
-        "agent" => {
-            log::debug!(
-                "[cli] dispatching to agent subcommand, args={:?}",
-                &args[1..]
-            );
-            crate::core::agent_cli::run_agent_command(&args[1..])
-        }
         "sentry-test" => run_sentry_test_command(&args[1..]),
         // Generic namespace dispatcher: `openhuman <namespace> <function> ...`
         namespace => run_namespace_command(namespace, &args[1..], &grouped),
