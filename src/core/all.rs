@@ -161,6 +161,8 @@ fn build_registered_controllers() -> Vec<RegisteredController> {
         .extend(crate::openhuman::redirect_links::all_redirect_links_registered_controllers());
     // Referral and growth tracking
     controllers.extend(crate::openhuman::referral::all_referral_registered_controllers());
+    // Cloud deployment management
+    controllers.extend(crate::openhuman::deployment::all_deployment_registered_controllers());
     // Billing and subscription management
     controllers.extend(crate::openhuman::billing::all_billing_registered_controllers());
     // Team and role management
@@ -237,6 +239,7 @@ fn build_declared_controller_schemas() -> Vec<ControllerSchema> {
     schemas.extend(crate::openhuman::memory::all_memory_sync_status_controller_schemas());
     schemas.extend(crate::openhuman::redirect_links::all_redirect_links_controller_schemas());
     schemas.extend(crate::openhuman::referral::all_referral_controller_schemas());
+    schemas.extend(crate::openhuman::deployment::all_deployment_controller_schemas());
     schemas.extend(crate::openhuman::billing::all_billing_controller_schemas());
     schemas.extend(crate::openhuman::team::all_team_controller_schemas());
     schemas.extend(crate::openhuman::provider_surfaces::all_provider_surfaces_controller_schemas());
@@ -310,6 +313,7 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
             "Shorten long tracking URLs to `openhuman://link/<id>` placeholders (SQLite-backed) to save tokens in prompts, with round-trip rewrite helpers.",
         ),
         "referral" => Some("Referral codes, stats, and apply flows via the hosted backend API."),
+        "deployment" => Some("Cloud instance provisioning and status via the hosted backend API."),
         "billing" => Some("Subscription plan, payment links, and credit top-up via the backend."),
         "team" => Some("Team member management, invites, and role changes via the backend."),
         "provider_surfaces" => Some(
