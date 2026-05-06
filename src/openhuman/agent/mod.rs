@@ -20,6 +20,7 @@
 
 pub mod agents;
 pub mod bus;
+pub mod cli;
 pub mod cost;
 pub mod debug;
 pub mod dispatcher;
@@ -41,7 +42,6 @@ mod schemas;
 pub mod stop_hooks;
 pub mod tree_loader;
 pub mod triage;
-pub mod cli;
 pub use schemas::{
     all_controller_schemas as all_agent_controller_schemas,
     all_registered_controllers as all_agent_registered_controllers,

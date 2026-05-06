@@ -103,11 +103,13 @@ fn cli_adapters() -> &'static [RegisteredCliAdapter] {
             },
             RegisteredCliAdapter {
                 namespace: "screen-intelligence",
-                handler: crate::openhuman::screen_intelligence::cli::run_screen_intelligence_command,
+                handler:
+                    crate::openhuman::screen_intelligence::cli::run_screen_intelligence_command,
             },
             RegisteredCliAdapter {
                 namespace: "screen_intelligence",
-                handler: crate::openhuman::screen_intelligence::cli::run_screen_intelligence_command,
+                handler:
+                    crate::openhuman::screen_intelligence::cli::run_screen_intelligence_command,
             },
         ]
     })
