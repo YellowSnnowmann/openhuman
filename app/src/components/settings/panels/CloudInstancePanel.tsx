@@ -8,8 +8,8 @@ import {
   type ProvisionParams,
 } from '../../../services/api/deploymentsApi';
 import { clearCoreRpcTokenCache, clearCoreRpcUrlCache } from '../../../services/coreRpcClient';
-import { buildRpcEndpoint } from '../../../utils/configPersistence';
 import {
+  buildRpcEndpoint,
   clearCoreToken,
   clearStoredRpcUrl,
   storeCoreToken,
