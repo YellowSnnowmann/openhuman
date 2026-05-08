@@ -76,9 +76,7 @@ pub fn app_env_from_env() -> Option<String> {
         }
     }
     // 2. Compile-time fallback
-    if let Some(v) =
-        option_env!("OPENHUMAN_APP_ENV").or(option_env!("VITE_OPENHUMAN_APP_ENV"))
-    {
+    if let Some(v) = option_env!("OPENHUMAN_APP_ENV").or(option_env!("VITE_OPENHUMAN_APP_ENV")) {
         let s = v.trim().to_ascii_lowercase();
         if !s.is_empty() {
             return Some(s);
@@ -146,9 +144,6 @@ mod tests {
             Some(v) => std::env::set_var(key, v),
             None => std::env::remove_var(key),
         }
-        assert_eq!(
-            result.as_deref(),
-            Some("https://staging-api.tinyhumans.ai")
-        );
+        assert_eq!(result.as_deref(), Some("https://staging-api.tinyhumans.ai"));
     }
 }
