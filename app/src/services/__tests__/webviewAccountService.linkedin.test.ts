@@ -41,12 +41,7 @@ async function fireRecipeEvent(payload: {
   const handler = listeners.get('webview:event');
   if (!handler) throw new Error('webview:event listener not attached');
   handler({
-    payload: {
-      account_id: ACCOUNT_ID,
-      provider: 'linkedin',
-      ts: Date.now(),
-      ...payload,
-    },
+    payload: { account_id: ACCOUNT_ID, provider: 'linkedin', ts: Date.now(), ...payload },
   });
   // Drain microtasks + one macrotask so async persistLinkedInConversation settles.
   await new Promise(r => setTimeout(r, 0));
@@ -126,9 +121,7 @@ describe('webviewAccountService — LinkedIn recipe events', () => {
         chatId: 'conv-xyz',
         chatName: 'Bob',
         day: '2025-05-08',
-        messages: [
-          { from: 'Bob', body: 'Meeting at 3?', timestamp: 1715176800, fromMe: false },
-        ],
+        messages: [{ from: 'Bob', body: 'Meeting at 3?', timestamp: 1715176800, fromMe: false }],
         isSeed: true,
       },
     });
@@ -199,9 +192,7 @@ describe('webviewAccountService — LinkedIn recipe events', () => {
 
     expect(callCoreRpc).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: expect.objectContaining({
-          title: 'LinkedIn · conv-no-name · 2025-05-08',
-        }),
+        params: expect.objectContaining({ title: 'LinkedIn · conv-no-name · 2025-05-08' }),
       })
     );
   });
@@ -241,10 +232,7 @@ describe('webviewAccountService — LinkedIn recipe events', () => {
 
   it('handles linkedin_requests with empty list without throwing', async () => {
     await expect(
-      fireRecipeEvent({
-        kind: 'linkedin_requests',
-        payload: { requests: [] },
-      })
+      fireRecipeEvent({ kind: 'linkedin_requests', payload: { requests: [] } })
     ).resolves.not.toThrow();
   });
 });
