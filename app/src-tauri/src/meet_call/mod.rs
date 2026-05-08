@@ -335,6 +335,9 @@ pub async fn meet_call_close_window<R: Runtime>(
             .map_err(|e| format!("[meet-call] window.close failed: {e}"))?;
         return Ok(true);
     }
+    // Window was in state but not found in Tauri — clean up stale entry.
+    state.inner.lock().unwrap().remove(&request_id);
+    log::debug!("[meet-call] cleaned up stale entry for request_id={request_id}");
     Ok(false)
 }
 
