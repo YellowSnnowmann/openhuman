@@ -394,11 +394,8 @@ mod tests {
         // only one notification is dispatched.
         let anchor = Utc.with_ymd_and_hms(2026, 5, 8, 10, 0, 0).unwrap();
 
-        let key_from_calendar = compute_overlap_key(
-            HeartbeatCategory::Meetings,
-            "Team Standup",
-            anchor,
-        );
+        let key_from_calendar =
+            compute_overlap_key(HeartbeatCategory::Meetings, "Team Standup", anchor);
         // A cron job with the same title and an anchor 2 minutes later (same
         // 15-minute bucket) — different source, same underlying event.
         let key_from_cron = compute_overlap_key(
@@ -420,16 +417,27 @@ mod tests {
         // Different title → different key.
         let key_a = compute_overlap_key(HeartbeatCategory::Meetings, "Team Standup", anchor);
         let key_b = compute_overlap_key(HeartbeatCategory::Meetings, "1:1 With Manager", anchor);
-        assert_ne!(key_a, key_b, "different titles must produce different overlap keys");
+        assert_ne!(
+            key_a, key_b,
+            "different titles must produce different overlap keys"
+        );
 
         // Same title but more than one bucket apart (>= 15 min) → different key.
-        let key_c =
-            compute_overlap_key(HeartbeatCategory::Meetings, "Team Standup", anchor + Duration::minutes(20));
-        assert_ne!(key_a, key_c, "events in different time buckets must produce different overlap keys");
+        let key_c = compute_overlap_key(
+            HeartbeatCategory::Meetings,
+            "Team Standup",
+            anchor + Duration::minutes(20),
+        );
+        assert_ne!(
+            key_a, key_c,
+            "events in different time buckets must produce different overlap keys"
+        );
 
         // Different category → different key even with same title and time.
-        let key_d =
-            compute_overlap_key(HeartbeatCategory::Reminders, "Team Standup", anchor);
-        assert_ne!(key_a, key_d, "different categories must produce different overlap keys");
+        let key_d = compute_overlap_key(HeartbeatCategory::Reminders, "Team Standup", anchor);
+        assert_ne!(
+            key_a, key_d,
+            "different categories must produce different overlap keys"
+        );
     }
 }

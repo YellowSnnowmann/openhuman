@@ -41,7 +41,10 @@ pub(crate) fn compute_overlap_key(
     anchor_at: DateTime<Utc>,
 ) -> String {
     let normalized_title = title.to_ascii_lowercase();
-    let normalized_title = normalized_title.split_whitespace().collect::<Vec<_>>().join(" ");
+    let normalized_title = normalized_title
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     // Round down to nearest 15-minute bucket to tolerate minor time skew across sources.
     let bucket_minutes = (anchor_at.timestamp() / 60) / 15 * 15;
     stable_key(&format!(
