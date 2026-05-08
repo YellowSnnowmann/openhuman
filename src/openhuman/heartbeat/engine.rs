@@ -94,6 +94,10 @@ impl HeartbeatEngine {
     async fn run_event_planner_tick(&self) {
         match crate::openhuman::config::Config::load_or_init().await {
             Ok(config) => {
+                if !config.heartbeat.enabled {
+                    tracing::debug!("[heartbeat] planner skipped: heartbeat disabled");
+                    return;
+                }
                 let summary = crate::openhuman::heartbeat::planner::evaluate_and_dispatch(
                     &config,
                     chrono::Utc::now(),

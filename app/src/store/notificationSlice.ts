@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { REHYDRATE } from 'redux-persist';
 
 import type { IntegrationNotification } from '../types/notifications';
 import { resetUserScopedState } from './resetActions';
@@ -152,6 +153,26 @@ const notificationSlice = createSlice({
   },
   extraReducers: builder => {
     builder.addCase(resetUserScopedState, () => initialState);
+    // Backfill any new preference keys that may be absent on older persisted
+    // state (e.g. meetings/reminders/important added after initial release).
+    // This ensures state.preferences[item.category] never returns undefined
+    // for a valid NotificationCategory after rehydration.
+    builder.addCase(REHYDRATE, (state, action) => {
+      const rehydrateAction = action as PayloadAction<
+        { preferences?: Partial<NotificationPreferences> } | undefined,
+        string,
+        { arg: string }
+      >;
+      // Only process the REHYDRATE action that belongs to this slice's persist key.
+      if (rehydrateAction.meta?.arg !== 'notifications') return;
+      const payload = rehydrateAction.payload;
+      if (payload?.preferences) {
+        state.preferences = {
+          ...initialState.preferences,
+          ...payload.preferences,
+        };
+      }
+    });
   },
 });
 

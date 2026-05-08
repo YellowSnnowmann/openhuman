@@ -1,6 +1,7 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{debug, warn};
 
 use crate::openhuman::config::{self, Config};
 use crate::rpc::RpcOutcome;
@@ -34,7 +35,12 @@ pub struct HeartbeatSettingsView {
 }
 
 pub async fn settings_get() -> Result<RpcOutcome<serde_json::Value>, String> {
-    let config = config::rpc::load_config_with_timeout().await?;
+    debug!("[heartbeat][rpc] settings_get: entry");
+    let config = config::rpc::load_config_with_timeout().await.map_err(|e| {
+        warn!("[heartbeat][rpc] settings_get: load_config failed: {e}");
+        e
+    })?;
+    debug!("[heartbeat][rpc] settings_get: exit ok");
     Ok(RpcOutcome::single_log(
         json!({ "settings": view(&config) }),
         "heartbeat settings loaded",
@@ -44,13 +50,18 @@ pub async fn settings_get() -> Result<RpcOutcome<serde_json::Value>, String> {
 pub async fn settings_set(
     patch: HeartbeatSettingsPatch,
 ) -> Result<RpcOutcome<serde_json::Value>, String> {
-    let mut config = config::rpc::load_config_with_timeout().await?;
+    debug!("[heartbeat][rpc] settings_set: entry");
+    let mut config = config::rpc::load_config_with_timeout().await.map_err(|e| {
+        warn!("[heartbeat][rpc] settings_set: load_config failed: {e}");
+        e
+    })?;
 
     if let Some(enabled) = patch.enabled {
         config.heartbeat.enabled = enabled;
     }
     if let Some(interval_minutes) = patch.interval_minutes {
-        config.heartbeat.interval_minutes = interval_minutes.max(1);
+        // Clamp to the 5-minute minimum that HeartbeatEngine::run enforces at runtime.
+        config.heartbeat.interval_minutes = interval_minutes.max(5);
     }
     if let Some(inference_enabled) = patch.inference_enabled {
         config.heartbeat.inference_enabled = inference_enabled;
@@ -74,8 +85,12 @@ pub async fn settings_set(
         config.heartbeat.reminder_lookahead_minutes = reminder_lookahead_minutes.max(1);
     }
 
-    config.save().await.map_err(|e| e.to_string())?;
+    config.save().await.map_err(|e| {
+        warn!("[heartbeat][rpc] settings_set: config.save failed: {e}");
+        e.to_string()
+    })?;
 
+    debug!("[heartbeat][rpc] settings_set: exit ok");
     Ok(RpcOutcome::single_log(
         json!({ "settings": view(&config) }),
         "heartbeat settings saved",
@@ -83,8 +98,17 @@ pub async fn settings_set(
 }
 
 pub async fn tick_now() -> Result<RpcOutcome<serde_json::Value>, String> {
-    let config = config::rpc::load_config_with_timeout().await?;
+    debug!("[heartbeat][rpc] tick_now: entry");
+    let config = config::rpc::load_config_with_timeout().await.map_err(|e| {
+        warn!("[heartbeat][rpc] tick_now: load_config failed: {e}");
+        e
+    })?;
     let summary = planner::evaluate_and_dispatch(&config, Utc::now()).await;
+    debug!(
+        source_events = summary.source_events,
+        deliveries_sent = summary.deliveries_sent,
+        "[heartbeat][rpc] tick_now: exit ok"
+    );
     Ok(RpcOutcome::single_log(
         json!({ "summary": summary }),
         "heartbeat planner tick completed",
