@@ -158,13 +158,13 @@ const notificationSlice = createSlice({
     // This ensures state.preferences[item.category] never returns undefined
     // for a valid NotificationCategory after rehydration.
     builder.addCase(REHYDRATE, (state, action) => {
-      const rehydrateAction = action as PayloadAction<
-        { preferences?: Partial<NotificationPreferences> } | undefined,
-        string,
-        { arg: string }
-      >;
+      const rehydrateAction = action as {
+        type: typeof REHYDRATE;
+        key: string;
+        payload?: { preferences?: Partial<NotificationPreferences> };
+      };
       // Only process the REHYDRATE action that belongs to this slice's persist key.
-      if (rehydrateAction.meta?.arg !== 'notifications') return;
+      if (rehydrateAction.key !== 'notifications') return;
       const payload = rehydrateAction.payload;
       if (payload?.preferences) {
         state.preferences = { ...initialState.preferences, ...payload.preferences };
