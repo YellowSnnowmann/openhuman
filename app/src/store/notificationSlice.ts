@@ -167,10 +167,7 @@ const notificationSlice = createSlice({
       if (rehydrateAction.meta?.arg !== 'notifications') return;
       const payload = rehydrateAction.payload;
       if (payload?.preferences) {
-        state.preferences = {
-          ...initialState.preferences,
-          ...payload.preferences,
-        };
+        state.preferences = { ...initialState.preferences, ...payload.preferences };
       }
     });
   },
