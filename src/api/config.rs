@@ -13,7 +13,7 @@ pub const VITE_APP_ENV_VAR: &str = "VITE_OPENHUMAN_APP_ENV";
 ///
 /// Order:
 /// 1. Non-empty `api_url` from config (user explicitly set it)
-/// 2. `BACKEND_URL` / `VITE_BACKEND_URL` runtime env var
+/// 2. `BACKEND_URL` / `VITE_BACKEND_URL` runtime env vars (each checked independently)
 /// 3. `BACKEND_URL` / `VITE_BACKEND_URL` baked in at compile time via `option_env!`
 /// 4. Environment-aware default: `app_env_from_env()` == `staging` →
 ///    [`DEFAULT_STAGING_API_BASE_URL`], otherwise [`DEFAULT_API_BASE_URL`]
@@ -34,25 +34,28 @@ pub fn normalize_api_base_url(url: &str) -> String {
 
 /// Resolve API base URL from the environment.
 ///
-/// Checks runtime env vars first (`BACKEND_URL`, `VITE_BACKEND_URL`), then
-/// falls back to values baked in at compile time via `option_env!`. The
-/// compile-time fallback is what makes a shipped DMG/installer resolve to the
-/// correct environment — at runtime the process has no shell env vars set.
+/// Each key is checked independently so that an empty `BACKEND_URL` does not
+/// shadow a valid `VITE_BACKEND_URL`. Runtime vars are checked first, then
+/// compile-time values baked in via `option_env!`. The compile-time path is
+/// what makes a shipped DMG/installer resolve to the correct environment —
+/// at runtime the process has no shell env vars set.
 pub fn api_base_from_env() -> Option<String> {
-    // 1. Runtime (developer local or CI with explicit env)
-    if let Some(url) = std::env::var("BACKEND_URL")
-        .or_else(|_| std::env::var("VITE_BACKEND_URL"))
-        .ok()
-        .map(|s| normalize_api_base_url(&s))
-        .filter(|s| !s.is_empty())
-    {
-        return Some(url);
+    // 1. Runtime — each key checked independently; empty values are skipped
+    //    so VITE_BACKEND_URL is still reachable when BACKEND_URL="" is set.
+    for key in ["BACKEND_URL", "VITE_BACKEND_URL"] {
+        if let Ok(v) = std::env::var(key) {
+            let url = normalize_api_base_url(&v);
+            if !url.is_empty() {
+                return Some(url);
+            }
+        }
     }
-    // 2. Compile-time fallback — baked in by build-desktop.yml when
-    //    `BACKEND_URL` / `VITE_BACKEND_URL` are set as build env vars.
-    //    This is what ensures a staging DMG always hits staging-api and a
-    //    prod DMG always hits api.tinyhumans.ai without needing a live env.
-    if let Some(v) = option_env!("BACKEND_URL").or(option_env!("VITE_BACKEND_URL")) {
+    // 2. Compile-time fallback — baked in by build-desktop.yml.
+    //    Each key checked independently for the same reason as above.
+    for v in [option_env!("BACKEND_URL"), option_env!("VITE_BACKEND_URL")]
+        .into_iter()
+        .flatten()
+    {
         let url = normalize_api_base_url(v);
         if !url.is_empty() {
             return Some(url);
@@ -63,20 +66,27 @@ pub fn api_base_from_env() -> Option<String> {
 
 /// Resolve the app environment, checking runtime env first then compile-time.
 ///
-/// The compile-time fallback (`option_env!`) mirrors what the Tauri shell
-/// already does for its Sentry environment tag — it ensures `OPENHUMAN_APP_ENV`
-/// and `VITE_OPENHUMAN_APP_ENV` set during `cargo build` in CI are baked into
-/// the binary and available when the installed app runs with no shell env.
+/// Each key is checked independently so that an empty primary key does not
+/// shadow a valid secondary key. The compile-time fallback (`option_env!`)
+/// mirrors what the Tauri shell already does for its Sentry environment tag.
 pub fn app_env_from_env() -> Option<String> {
-    // 1. Runtime
-    if let Ok(v) = std::env::var(APP_ENV_VAR).or_else(|_| std::env::var(VITE_APP_ENV_VAR)) {
-        let s = v.trim().to_ascii_lowercase();
-        if !s.is_empty() {
-            return Some(s);
+    // 1. Runtime — each key checked independently
+    for key in [APP_ENV_VAR, VITE_APP_ENV_VAR] {
+        if let Ok(v) = std::env::var(key) {
+            let s = v.trim().to_ascii_lowercase();
+            if !s.is_empty() {
+                return Some(s);
+            }
         }
     }
-    // 2. Compile-time fallback
-    if let Some(v) = option_env!("OPENHUMAN_APP_ENV").or(option_env!("VITE_OPENHUMAN_APP_ENV")) {
+    // 2. Compile-time fallback — each key checked independently
+    for v in [
+        option_env!("OPENHUMAN_APP_ENV"),
+        option_env!("VITE_OPENHUMAN_APP_ENV"),
+    ]
+    .into_iter()
+    .flatten()
+    {
         let s = v.trim().to_ascii_lowercase();
         if !s.is_empty() {
             return Some(s);
@@ -99,7 +109,13 @@ pub fn default_api_base_url_for_env(app_env: Option<&str>) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, OnceLock};
+
     use super::*;
+
+    // Serialise all env-mutating tests to prevent flaky failures under
+    // parallel test execution (std::env is process-global).
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     #[test]
     fn staging_app_env_uses_staging_default_api() {
@@ -122,8 +138,8 @@ mod tests {
 
     #[test]
     fn app_env_from_env_reads_runtime_var() {
-        let key = "OPENHUMAN_APP_ENV";
-        // Guard: stash and restore so parallel tests are not affected.
+        let _guard = ENV_LOCK.get_or_init(Mutex::default).lock().unwrap();
+        let key = APP_ENV_VAR;
         let prev = std::env::var(key).ok();
         std::env::set_var(key, "staging");
         let result = app_env_from_env();
@@ -135,7 +151,27 @@ mod tests {
     }
 
     #[test]
+    fn app_env_from_env_falls_through_empty_primary_to_secondary() {
+        let _guard = ENV_LOCK.get_or_init(Mutex::default).lock().unwrap();
+        let prev_primary = std::env::var(APP_ENV_VAR).ok();
+        let prev_secondary = std::env::var(VITE_APP_ENV_VAR).ok();
+        std::env::set_var(APP_ENV_VAR, ""); // empty — must not block secondary
+        std::env::set_var(VITE_APP_ENV_VAR, "staging");
+        let result = app_env_from_env();
+        match prev_primary {
+            Some(v) => std::env::set_var(APP_ENV_VAR, v),
+            None => std::env::remove_var(APP_ENV_VAR),
+        }
+        match prev_secondary {
+            Some(v) => std::env::set_var(VITE_APP_ENV_VAR, v),
+            None => std::env::remove_var(VITE_APP_ENV_VAR),
+        }
+        assert_eq!(result.as_deref(), Some("staging"));
+    }
+
+    #[test]
     fn api_base_from_env_reads_runtime_var() {
+        let _guard = ENV_LOCK.get_or_init(Mutex::default).lock().unwrap();
         let key = "BACKEND_URL";
         let prev = std::env::var(key).ok();
         std::env::set_var(key, "https://staging-api.tinyhumans.ai/");
@@ -143,6 +179,25 @@ mod tests {
         match prev {
             Some(v) => std::env::set_var(key, v),
             None => std::env::remove_var(key),
+        }
+        assert_eq!(result.as_deref(), Some("https://staging-api.tinyhumans.ai"));
+    }
+
+    #[test]
+    fn api_base_from_env_falls_through_empty_primary_to_secondary() {
+        let _guard = ENV_LOCK.get_or_init(Mutex::default).lock().unwrap();
+        let prev_primary = std::env::var("BACKEND_URL").ok();
+        let prev_secondary = std::env::var("VITE_BACKEND_URL").ok();
+        std::env::set_var("BACKEND_URL", ""); // empty — must not block secondary
+        std::env::set_var("VITE_BACKEND_URL", "https://staging-api.tinyhumans.ai/");
+        let result = api_base_from_env();
+        match prev_primary {
+            Some(v) => std::env::set_var("BACKEND_URL", v),
+            None => std::env::remove_var("BACKEND_URL"),
+        }
+        match prev_secondary {
+            Some(v) => std::env::set_var("VITE_BACKEND_URL", v),
+            None => std::env::remove_var("VITE_BACKEND_URL"),
         }
         assert_eq!(result.as_deref(), Some("https://staging-api.tinyhumans.ai"));
     }
