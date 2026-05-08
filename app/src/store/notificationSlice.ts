@@ -3,7 +3,14 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { IntegrationNotification } from '../types/notifications';
 import { resetUserScopedState } from './resetActions';
 
-export type NotificationCategory = 'messages' | 'agents' | 'skills' | 'system';
+export type NotificationCategory =
+  | 'messages'
+  | 'agents'
+  | 'skills'
+  | 'system'
+  | 'meetings'
+  | 'reminders'
+  | 'important';
 
 export interface NotificationItem {
   id: string;
@@ -22,6 +29,9 @@ export interface NotificationPreferences {
   agents: boolean;
   skills: boolean;
   system: boolean;
+  meetings: boolean;
+  reminders: boolean;
+  important: boolean;
 }
 
 export interface NotificationState {
@@ -37,7 +47,15 @@ const MAX_ITEMS = 200;
 
 const initialState: NotificationState = {
   items: [],
-  preferences: { messages: true, agents: true, skills: true, system: true },
+  preferences: {
+    messages: true,
+    agents: true,
+    skills: true,
+    system: true,
+    meetings: true,
+    reminders: true,
+    important: true,
+  },
   integrationItems: [],
   integrationUnreadCount: 0,
   integrationLoading: false,
