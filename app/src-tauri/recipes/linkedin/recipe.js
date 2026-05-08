@@ -206,6 +206,23 @@
     // 1. Conversation list
     var items = scrapeConversationList();
     if (items && items.length > 0) {
+      // Unread delta check runs on EVERY poll tick, not just when the list
+      // structure changes. listKey only fingerprints name+preview of the first
+      // five rows, so an unread-count bump on row 6+ (or a count-only change)
+      // would never enter the listKey gate and the notification would be missed.
+      items.forEach(function (item) {
+        var prev = prevUnread[item.chatId] || 0;
+        if (item.unread > 0 && item.unread > prev) {
+          api.emit('notify', {
+            title: 'LinkedIn: ' + (item.name || 'New message'),
+            body: item.preview || '',
+            tag: 'linkedin:' + item.chatId,
+            silent: false,
+          });
+        }
+        prevUnread[item.chatId] = item.unread;
+      });
+
       var listKey = JSON.stringify({
         n: items.length,
         first: items.slice(0, 5).map(function (i) { return i.name + '|' + i.preview; }),
@@ -222,22 +239,8 @@
           snapshotKey: listKey,
         });
 
-        // Unread delta → OS notifications
-        items.forEach(function (item) {
-          var prev = prevUnread[item.chatId] || 0;
-          if (item.unread > 0 && item.unread > prev) {
-            api.emit('notify', {
-              title: 'LinkedIn: ' + (item.name || 'New message'),
-              body: item.preview || '',
-              tag: 'linkedin:' + item.chatId,
-              silent: false,
-            });
-          }
-          prevUnread[item.chatId] = item.unread;
-        });
-
         // Per-conversation-per-day memory ingest (list-level snippet only;
-        // overwritten by a richer thread ingest when the thread is open).
+        // written to :preview key so a richer thread ingest is never overwritten).
         items.forEach(function (item) {
           if (!item.preview) return;
           api.emit('linkedin_conversation', {

@@ -511,10 +511,12 @@ async function persistLinkedInConversation(
   const raw = payload.messages ?? [];
   if (raw.length === 0) return;
 
-  // Stable namespace + key: same (chat, day) always upserts the same doc,
-  // so repeated polls accumulate rather than balloon memory.
+  // Stable namespace. Key is scoped by whether this is a full thread
+  // snapshot (isSeed=true → canonical key) or a list-panel snippet
+  // (isSeed=false → :preview suffix). This prevents a later list-poll
+  // from overwriting a richer thread transcript with a single preview line.
   const namespace = `linkedin:${accountId}`;
-  const key = `${chatId}:${day}`;
+  const key = payload.isSeed ? `${chatId}:${day}` : `${chatId}:${day}:preview`;
 
   const sorted = [...raw].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
 
