@@ -98,6 +98,7 @@ pub fn render_tool_memory_rules(rules: &[ToolMemoryRule]) -> String {
             .cmp(&a.priority)
             .then_with(|| a.tool_name.cmp(&b.tool_name))
             .then_with(|| a.rule.cmp(&b.rule))
+            .then_with(|| a.id.cmp(&b.id))
     });
 
     let mut out = String::new();

@@ -50,7 +50,7 @@ impl ToolMemoryPriority {
     /// True for priorities that must survive context compression (i.e.
     /// must live in the system prompt, not the mid-session buffer).
     pub fn is_pinned(self) -> bool {
-        matches!(self, Self::Critical)
+        matches!(self, Self::Critical | Self::High)
     }
 }
 
@@ -146,7 +146,7 @@ impl ToolMemoryRule {
 /// and `tool_effectiveness` so retrieval and clearing operations can
 /// reason about the namespace without ambiguity.
 pub fn tool_memory_namespace(tool_name: &str) -> String {
-    format!("tool-{}", tool_name.trim())
+    format!("tool-{}", tool_name.trim().to_lowercase())
 }
 
 #[cfg(test)]
@@ -172,9 +172,9 @@ mod tests {
     }
 
     #[test]
-    fn priority_is_pinned_for_critical_only() {
+    fn priority_is_pinned_for_high_and_critical() {
         assert!(ToolMemoryPriority::Critical.is_pinned());
-        assert!(!ToolMemoryPriority::High.is_pinned());
+        assert!(ToolMemoryPriority::High.is_pinned());
         assert!(!ToolMemoryPriority::Normal.is_pinned());
     }
 
@@ -244,5 +244,7 @@ mod tests {
     fn namespace_uses_tool_prefix_and_trims_whitespace() {
         assert_eq!(tool_memory_namespace("email"), "tool-email");
         assert_eq!(tool_memory_namespace("  shell  "), "tool-shell");
+        assert_eq!(tool_memory_namespace("Send_Email"), "tool-send_email");
+        assert_eq!(tool_memory_namespace("WebSearch"), "tool-websearch");
     }
 }

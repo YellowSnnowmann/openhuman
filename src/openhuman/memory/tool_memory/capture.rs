@@ -174,9 +174,9 @@ impl PostTurnHook for ToolMemoryCaptureHook {
         }
 
         for (tool, body) in Self::extract_user_edicts(&ctx.user_message, &ctx.tool_calls) {
-            log::info!(
-                "[tool-memory] capturing user edict tool={tool} body=\"{}\"",
-                truncate_for_log(&body)
+            log::debug!(
+                "[tool-memory] capturing user edict tool={tool} body_len={}",
+                body.len()
             );
             if let Err(err) = self
                 .store

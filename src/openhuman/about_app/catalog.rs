@@ -216,7 +216,7 @@ const CAPABILITIES: &[Capability] = &[
             system prompt at session start. Captured automatically from user edicts and repeated \
             tool failures; also writable programmatically via the memory.tool_rule_* RPC surface.",
         how_to: "Automatic — user edicts are captured after every turn. Manage via \
-            memory.tool_rule_put / tool_rule_list / tool_rule_delete (RPC).",
+            memory.tool_rule_put / memory.tool_rule_list / memory.tool_rule_delete (RPC).",
         status: CapabilityStatus::Beta,
         privacy: LOCAL_RAW,
     },

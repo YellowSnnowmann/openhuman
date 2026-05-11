@@ -798,7 +798,7 @@ impl Agent {
             let pinned = prefetch_tool_memory_rules_blocking(memory.clone());
             if !pinned.is_empty() {
                 log::info!(
-                    "[#1400] pinning {} tool-scoped rule(s) into system prompt",
+                    "[memory::tool_memory] pinning {} tool-scoped rule(s) into system prompt",
                     pinned.len()
                 );
                 prompt_builder = prompt_builder.with_tool_memory_rules(pinned);
@@ -1220,7 +1220,7 @@ fn prefetch_tool_memory_rules_blocking(
                     flat
                 }
                 Err(err) => {
-                    log::warn!("[#1400] tool memory prefetch failed: {err}");
+                    log::warn!("[memory::tool_memory] prefetch failed: {err}");
                     Vec::new()
                 }
             }

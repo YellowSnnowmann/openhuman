@@ -880,11 +880,11 @@ impl Config {
             }
         }
         if let Some(flag) = env.get("OPENHUMAN_LEARNING_TOOL_MEMORY_CAPTURE_ENABLED") {
-            let normalized = flag.trim().to_ascii_lowercase();
-            match normalized.as_str() {
-                "1" | "true" | "yes" | "on" => self.learning.tool_memory_capture_enabled = true,
-                "0" | "false" | "no" | "off" => self.learning.tool_memory_capture_enabled = false,
-                _ => {}
+            if let Some(enabled) = parse_env_bool(
+                "OPENHUMAN_LEARNING_TOOL_MEMORY_CAPTURE_ENABLED",
+                flag.as_str(),
+            ) {
+                self.learning.tool_memory_capture_enabled = enabled;
             }
         }
         if let Some(source) = env.get("OPENHUMAN_LEARNING_REFLECTION_SOURCE") {

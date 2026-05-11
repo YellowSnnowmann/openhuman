@@ -256,7 +256,7 @@ fn handle_tool_rule_delete(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_tool_rules_for_prompt(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        let payload = parse_params::<ToolRulesForPromptParams>(params).unwrap_or_default();
+        let payload = parse_params::<ToolRulesForPromptParams>(params)?;
         to_json(rpc::tool_rules_for_prompt(payload).await?)
     })
 }

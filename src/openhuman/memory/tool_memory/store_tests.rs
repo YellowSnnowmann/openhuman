@@ -2,6 +2,7 @@
 //! surface against an in-memory mock backend.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
