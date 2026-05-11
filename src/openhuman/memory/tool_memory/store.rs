@@ -205,7 +205,11 @@ impl ToolMemoryStore {
         let mut out = Vec::new();
         for summary in summaries {
             if let Some(tool) = summary.namespace.strip_prefix("tool-") {
-                if !tool.is_empty() {
+                // Exclude empty names and the sentinel used for unscoped
+                // edicts captured before any tool call ran — those rules are
+                // not permanently associated with a real tool and must not be
+                // injected into prompt filtering for arbitrary sessions.
+                if !tool.is_empty() && tool != "__unscoped__" {
                     out.push(tool.to_string());
                 }
             }

@@ -787,24 +787,6 @@ impl Agent {
             }
         }
 
-        // (#1400) Pre-fetch Critical + High priority tool-scoped memory
-        // rules so they pin into the (compression-resistant) system
-        // prompt for the whole session. Skipped silently when the
-        // current runtime cannot host a synchronous bridge — typically
-        // a single-threaded test harness — so this stays safe for every
-        // call site of `from_config_*`. The capture hook still runs in
-        // every session via [`ToolMemoryCaptureHook`] above.
-        if config.learning.tool_memory_capture_enabled {
-            let pinned = prefetch_tool_memory_rules_blocking(memory.clone());
-            if !pinned.is_empty() {
-                log::info!(
-                    "[memory::tool_memory] pinning {} tool-scoped rule(s) into system prompt",
-                    pinned.len()
-                );
-                prompt_builder = prompt_builder.with_tool_memory_rules(pinned);
-            }
-        }
-
         // Build post-turn hooks when learning is enabled
         let mut post_turn_hooks: Vec<Arc<dyn crate::openhuman::agent::hooks::PostTurnHook>> =
             Vec::new();
@@ -864,7 +846,7 @@ impl Agent {
                     crate::openhuman::memory::ToolMemoryCaptureHook::new(memory.clone(), true),
                 ));
                 log::info!(
-                    "[learning] tool_memory_capture hook registered (#1400 — durable tool rules)"
+                    "[learning] tool_memory_capture hook registered"
                 );
             }
         }
@@ -996,6 +978,28 @@ impl Agent {
                 .into_iter()
                 .filter(|t| !existing_names.contains(t.name())),
         );
+
+        // Pre-fetch Critical + High priority tool-scoped memory rules so they
+        // pin into the (compression-resistant) system prompt for the whole
+        // session. Done here — after the tool list is finalised — so we only
+        // fetch rules for tools this agent can actually use.  Skipped when
+        // `learning.enabled` is false (no new rules are written in that mode,
+        // and users who opt out of learning expect no stored rules to surface)
+        // or when the runtime cannot host a synchronous bridge (single-threaded
+        // test harnesses).
+        if config.learning.enabled && config.learning.tool_memory_capture_enabled {
+            let agent_tool_names: Vec<String> =
+                tools.iter().map(|t| t.name().to_string()).collect();
+            let pinned =
+                prefetch_tool_memory_rules_blocking(memory.clone(), &agent_tool_names);
+            if !pinned.is_empty() {
+                log::info!(
+                    "[memory::tool_memory] pinning {} tool-scoped rule(s) into system prompt",
+                    pinned.len()
+                );
+                prompt_builder = prompt_builder.with_tool_memory_rules(pinned);
+            }
+        }
 
         // Build the P-Format registry AFTER the tool list is finalised
         // (including orchestrator tools) so every tool gets a signature
@@ -1198,6 +1202,7 @@ impl Agent {
 /// merely seeds the rules that exist at session start.
 fn prefetch_tool_memory_rules_blocking(
     memory: Arc<dyn Memory>,
+    tool_names: &[String],
 ) -> Vec<crate::openhuman::memory::ToolMemoryRule> {
     let Ok(handle) = tokio::runtime::Handle::try_current() else {
         return Vec::new();
@@ -1205,10 +1210,11 @@ fn prefetch_tool_memory_rules_blocking(
     if handle.runtime_flavor() != tokio::runtime::RuntimeFlavor::MultiThread {
         return Vec::new();
     }
+    let tool_names = tool_names.to_vec();
     tokio::task::block_in_place(|| {
         handle.block_on(async move {
             let store = crate::openhuman::memory::ToolMemoryStore::new(memory);
-            match store.rules_for_prompt(&[]).await {
+            match store.rules_for_prompt(&tool_names).await {
                 Ok(grouped) => {
                     let mut flat: Vec<_> = grouped.into_values().flatten().collect();
                     flat.sort_by(|a, b| {

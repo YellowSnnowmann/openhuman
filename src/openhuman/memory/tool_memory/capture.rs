@@ -77,8 +77,14 @@ impl ToolMemoryCaptureHook {
             return Vec::new();
         }
         let lower = trimmed.to_lowercase();
+        // Only treat "stop" as an imperative edict when it appears at a
+        // sentence boundary (start of message or after ". "/"\n"), so routine
+        // phrases like "I want to stop working" don't trigger false captures.
+        let stop_imperative = lower.starts_with("stop ")
+            || lower.contains(". stop ")
+            || lower.contains("\nstop ");
         if !(lower.contains("never ") || lower.contains("don't ") || lower.contains("do not "))
-            && !lower.contains("stop ")
+            && !stop_imperative
         {
             return Vec::new();
         }
@@ -105,8 +111,7 @@ impl ToolMemoryCaptureHook {
                 || lower_line.starts_with("stop ")
                 || lower_line.contains(" never ")
                 || lower_line.contains(" don't ")
-                || lower_line.contains(" do not ")
-                || lower_line.contains(" stop ");
+                || lower_line.contains(" do not ");
             if !is_edict {
                 continue;
             }
@@ -195,8 +200,8 @@ impl PostTurnHook for ToolMemoryCaptureHook {
 
         for (tool, body) in Self::extract_repeated_failures(&ctx.tool_calls) {
             log::debug!(
-                "[tool-memory] capturing repeated failure tool={tool} body=\"{}\"",
-                truncate_for_log(&body)
+                "[tool-memory] capturing repeated failure tool={tool} body_len={}",
+                body.len()
             );
             if let Err(err) = self
                 .store
@@ -286,103 +291,7 @@ mod tests {
     use super::*;
     use crate::openhuman::agent::hooks::ToolCallRecord;
     use crate::openhuman::memory::tool_memory::store::ToolMemoryStore;
-    use crate::openhuman::memory::{MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts};
-    use async_trait::async_trait;
-    use parking_lot::Mutex;
-    use std::collections::HashMap;
-
-    #[derive(Default)]
-    struct MockMemory {
-        entries: Mutex<HashMap<(String, String), MemoryEntry>>,
-    }
-
-    #[async_trait]
-    impl Memory for MockMemory {
-        fn name(&self) -> &str {
-            "mock"
-        }
-        async fn store(
-            &self,
-            namespace: &str,
-            key: &str,
-            content: &str,
-            category: MemoryCategory,
-            session_id: Option<&str>,
-        ) -> anyhow::Result<()> {
-            self.entries.lock().insert(
-                (namespace.to_string(), key.to_string()),
-                MemoryEntry {
-                    id: format!("{namespace}/{key}"),
-                    key: key.to_string(),
-                    content: content.to_string(),
-                    namespace: Some(namespace.to_string()),
-                    category,
-                    timestamp: "now".into(),
-                    session_id: session_id.map(str::to_string),
-                    score: None,
-                },
-            );
-            Ok(())
-        }
-        async fn recall(
-            &self,
-            _query: &str,
-            _limit: usize,
-            _opts: RecallOpts<'_>,
-        ) -> anyhow::Result<Vec<MemoryEntry>> {
-            Ok(Vec::new())
-        }
-        async fn get(&self, namespace: &str, key: &str) -> anyhow::Result<Option<MemoryEntry>> {
-            Ok(self
-                .entries
-                .lock()
-                .get(&(namespace.to_string(), key.to_string()))
-                .cloned())
-        }
-        async fn list(
-            &self,
-            namespace: Option<&str>,
-            _category: Option<&MemoryCategory>,
-            _session_id: Option<&str>,
-        ) -> anyhow::Result<Vec<MemoryEntry>> {
-            let lock = self.entries.lock();
-            let iter = lock.iter();
-            Ok(match namespace {
-                Some(ns) => iter
-                    .filter(|((n, _), _)| n == ns)
-                    .map(|(_, v)| v.clone())
-                    .collect(),
-                None => iter.map(|(_, v)| v.clone()).collect(),
-            })
-        }
-        async fn forget(&self, namespace: &str, key: &str) -> anyhow::Result<bool> {
-            Ok(self
-                .entries
-                .lock()
-                .remove(&(namespace.to_string(), key.to_string()))
-                .is_some())
-        }
-        async fn namespace_summaries(&self) -> anyhow::Result<Vec<NamespaceSummary>> {
-            let mut counts: HashMap<String, usize> = HashMap::new();
-            for ((ns, _), _) in self.entries.lock().iter() {
-                *counts.entry(ns.clone()).or_default() += 1;
-            }
-            Ok(counts
-                .into_iter()
-                .map(|(namespace, count)| NamespaceSummary {
-                    namespace,
-                    count,
-                    last_updated: None,
-                })
-                .collect())
-        }
-        async fn count(&self) -> anyhow::Result<usize> {
-            Ok(self.entries.lock().len())
-        }
-        async fn health_check(&self) -> bool {
-            true
-        }
-    }
+    use crate::openhuman::memory::tool_memory::test_helpers::MockMemory;
 
     fn ctx_with(message: &str, tool_calls: Vec<ToolCallRecord>) -> TurnContext {
         TurnContext {

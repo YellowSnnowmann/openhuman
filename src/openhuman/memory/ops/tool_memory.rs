@@ -69,6 +69,7 @@ async fn open_store() -> Result<ToolMemoryStore, String> {
 pub async fn tool_rule_put(
     params: ToolRulePutParams,
 ) -> Result<RpcOutcome<ToolMemoryRule>, String> {
+    log::debug!("[tool-memory] rpc tool_rule_put tool={}", params.tool_name);
     let store = open_store().await?;
     let mut rule = ToolMemoryRule::new(
         &params.tool_name,
@@ -90,6 +91,11 @@ pub async fn tool_rule_put(
 pub async fn tool_rule_get(
     params: ToolRuleRefParams,
 ) -> Result<RpcOutcome<Option<ToolMemoryRule>>, String> {
+    log::debug!(
+        "[tool-memory] rpc tool_rule_get tool={} id={}",
+        params.tool_name,
+        params.id
+    );
     let store = open_store().await?;
     let rule = store.get_rule(&params.tool_name, &params.id).await?;
     Ok(RpcOutcome::single_log(rule, "tool memory rule fetched"))
@@ -99,6 +105,7 @@ pub async fn tool_rule_get(
 pub async fn tool_rule_list(
     params: ToolRuleListParams,
 ) -> Result<RpcOutcome<Vec<ToolMemoryRule>>, String> {
+    log::debug!("[tool-memory] rpc tool_rule_list tool={}", params.tool_name);
     let store = open_store().await?;
     let rules = store.list_rules(&params.tool_name).await?;
     Ok(RpcOutcome::single_log(rules, "tool memory rules listed"))
@@ -106,6 +113,11 @@ pub async fn tool_rule_list(
 
 /// Delete a tool-scoped rule by id.
 pub async fn tool_rule_delete(params: ToolRuleRefParams) -> Result<RpcOutcome<bool>, String> {
+    log::debug!(
+        "[tool-memory] rpc tool_rule_delete tool={} id={}",
+        params.tool_name,
+        params.id
+    );
     let store = open_store().await?;
     let deleted = store.delete_rule(&params.tool_name, &params.id).await?;
     Ok(RpcOutcome::single_log(deleted, "tool memory rule deleted"))
@@ -126,6 +138,10 @@ pub struct ToolRulesForPromptResult {
 pub async fn tool_rules_for_prompt(
     params: ToolRulesForPromptParams,
 ) -> Result<RpcOutcome<ToolRulesForPromptResult>, String> {
+    log::debug!(
+        "[tool-memory] rpc tool_rules_for_prompt tools={:?}",
+        params.tools
+    );
     let store = open_store().await?;
     let grouped = store.rules_for_prompt(&params.tools).await?;
     let mut flat: Vec<ToolMemoryRule> = grouped.into_values().flatten().collect();
@@ -148,6 +164,7 @@ pub async fn tool_rules_for_prompt(
 /// Render the raw JSON form of a tool's rules, useful for envelope
 /// consumers that want the unfiltered list.
 pub async fn tool_rules_json(params: ToolRuleListParams) -> Result<RpcOutcome<Value>, String> {
+    log::debug!("[tool-memory] rpc tool_rules_json tool={}", params.tool_name);
     let store = open_store().await?;
     let value = store.list_rules_json(&params.tool_name).await?;
     Ok(RpcOutcome::single_log(value, "tool memory rules json"))

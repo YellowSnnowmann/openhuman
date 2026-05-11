@@ -42,14 +42,10 @@ impl Default for ToolMemoryPriority {
 }
 
 impl ToolMemoryPriority {
-    /// True for priorities that must be eagerly surfaced to the agent.
+    /// True for priorities that must be eagerly surfaced to the agent
+    /// (Critical/High rules are both pinned into the system prompt and
+    /// prefetched at session start, so they survive context compression).
     pub fn is_eager(self) -> bool {
-        matches!(self, Self::Critical | Self::High)
-    }
-
-    /// True for priorities that must survive context compression (i.e.
-    /// must live in the system prompt, not the mid-session buffer).
-    pub fn is_pinned(self) -> bool {
         matches!(self, Self::Critical | Self::High)
     }
 }
@@ -169,13 +165,6 @@ mod tests {
         assert!(ToolMemoryPriority::Critical.is_eager());
         assert!(ToolMemoryPriority::High.is_eager());
         assert!(!ToolMemoryPriority::Normal.is_eager());
-    }
-
-    #[test]
-    fn priority_is_pinned_for_high_and_critical() {
-        assert!(ToolMemoryPriority::Critical.is_pinned());
-        assert!(ToolMemoryPriority::High.is_pinned());
-        assert!(!ToolMemoryPriority::Normal.is_pinned());
     }
 
     #[test]

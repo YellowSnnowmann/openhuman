@@ -144,6 +144,7 @@ fn priority_marker(priority: ToolMemoryPriority) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openhuman::agent::prompts::types::{LearnedContextData, PromptContext, ToolCallFormat};
     use crate::openhuman::memory::tool_memory::types::ToolMemorySource;
 
     fn rule(tool: &str, body: &str, priority: ToolMemoryPriority) -> ToolMemoryRule {
@@ -214,14 +215,34 @@ mod tests {
 
     #[test]
     fn section_renders_via_prompt_section_trait() {
-        // We construct a minimal context-independent test: build() must
-        // not depend on PromptContext fields and must surface the
-        // section's snapshot verbatim.
+        // build() must not depend on PromptContext fields — it returns
+        // the at-construction snapshot verbatim. We call it here to
+        // exercise the trait contract directly.
         let section = ToolMemoryRulesSection::new(vec![rule(
             "email",
             "never email Sarah",
             ToolMemoryPriority::Critical,
         )]);
         assert!(!section.is_empty());
+        let visible = std::collections::HashSet::new();
+        let ctx = PromptContext {
+            workspace_dir: std::path::Path::new("."),
+            model_name: "test",
+            agent_id: "test",
+            tools: &[],
+            skills: &[],
+            dispatcher_instructions: "",
+            learned: LearnedContextData::default(),
+            visible_tool_names: &visible,
+            tool_call_format: ToolCallFormat::PFormat,
+            connected_integrations: &[],
+            connected_identities_md: String::new(),
+            include_profile: false,
+            include_memory_md: false,
+            curated_snapshot: None,
+            user_identity: None,
+        };
+        let built = section.build(&ctx).unwrap();
+        assert!(built.contains("never email Sarah"));
     }
 }
