@@ -557,9 +557,16 @@ impl Config {
                         path = %config_path.display(),
                         backup = %backup_path.display(),
                         error = %parse_err,
-                        "Config file is corrupted — backing up and resetting to defaults"
+                        "[config] Config file is corrupted — backing up and resetting to defaults"
                     );
-                    let _ = fs::copy(&config_path, &backup_path).await;
+                    if let Err(copy_err) = fs::copy(&config_path, &backup_path).await {
+                        tracing::warn!(
+                            path = %config_path.display(),
+                            backup = %backup_path.display(),
+                            error = %copy_err,
+                            "[config] Failed to back up corrupted config; continuing with defaults"
+                        );
+                    }
                     Config::default()
                 }
             };
