@@ -144,7 +144,9 @@ fn priority_marker(priority: ToolMemoryPriority) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::agent::prompts::types::{LearnedContextData, PromptContext, ToolCallFormat};
+    use crate::openhuman::agent::prompts::types::{
+        LearnedContextData, PromptContext, ToolCallFormat,
+    };
     use crate::openhuman::memory::tool_memory::types::ToolMemorySource;
 
     fn rule(tool: &str, body: &str, priority: ToolMemoryPriority) -> ToolMemoryRule {

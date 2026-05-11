@@ -34,9 +34,9 @@
 pub mod capture;
 pub mod prompt;
 pub mod store;
-pub mod types;
 #[cfg(test)]
 pub mod test_helpers;
+pub mod types;
 
 pub use capture::ToolMemoryCaptureHook;
 pub use prompt::{render_tool_memory_rules, ToolMemoryRulesSection, TOOL_MEMORY_HEADING};

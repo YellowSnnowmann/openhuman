@@ -845,9 +845,7 @@ impl Agent {
                 post_turn_hooks.push(Arc::new(
                     crate::openhuman::memory::ToolMemoryCaptureHook::new(memory.clone(), true),
                 ));
-                log::info!(
-                    "[learning] tool_memory_capture hook registered"
-                );
+                log::info!("[learning] tool_memory_capture hook registered");
             }
         }
 
@@ -990,8 +988,7 @@ impl Agent {
         if config.learning.enabled && config.learning.tool_memory_capture_enabled {
             let agent_tool_names: Vec<String> =
                 tools.iter().map(|t| t.name().to_string()).collect();
-            let pinned =
-                prefetch_tool_memory_rules_blocking(memory.clone(), &agent_tool_names);
+            let pinned = prefetch_tool_memory_rules_blocking(memory.clone(), &agent_tool_names);
             if !pinned.is_empty() {
                 log::info!(
                     "[memory::tool_memory] pinning {} tool-scoped rule(s) into system prompt",

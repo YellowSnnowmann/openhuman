@@ -80,9 +80,8 @@ impl ToolMemoryCaptureHook {
         // Only treat "stop" as an imperative edict when it appears at a
         // sentence boundary (start of message or after ". "/"\n"), so routine
         // phrases like "I want to stop working" don't trigger false captures.
-        let stop_imperative = lower.starts_with("stop ")
-            || lower.contains(". stop ")
-            || lower.contains("\nstop ");
+        let stop_imperative =
+            lower.starts_with("stop ") || lower.contains(". stop ") || lower.contains("\nstop ");
         if !(lower.contains("never ") || lower.contains("don't ") || lower.contains("do not "))
             && !stop_imperative
         {

@@ -164,7 +164,10 @@ pub async fn tool_rules_for_prompt(
 /// Render the raw JSON form of a tool's rules, useful for envelope
 /// consumers that want the unfiltered list.
 pub async fn tool_rules_json(params: ToolRuleListParams) -> Result<RpcOutcome<Value>, String> {
-    log::debug!("[tool-memory] rpc tool_rules_json tool={}", params.tool_name);
+    log::debug!(
+        "[tool-memory] rpc tool_rules_json tool={}",
+        params.tool_name
+    );
     let store = open_store().await?;
     let value = store.list_rules_json(&params.tool_name).await?;
     Ok(RpcOutcome::single_log(value, "tool memory rules json"))
