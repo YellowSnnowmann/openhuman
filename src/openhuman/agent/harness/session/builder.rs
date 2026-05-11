@@ -787,6 +787,24 @@ impl Agent {
             }
         }
 
+        // (#1400) Pre-fetch Critical + High priority tool-scoped memory
+        // rules so they pin into the (compression-resistant) system
+        // prompt for the whole session. Skipped silently when the
+        // current runtime cannot host a synchronous bridge — typically
+        // a single-threaded test harness — so this stays safe for every
+        // call site of `from_config_*`. The capture hook still runs in
+        // every session via [`ToolMemoryCaptureHook`] above.
+        if config.learning.tool_memory_capture_enabled {
+            let pinned = prefetch_tool_memory_rules_blocking(memory.clone());
+            if !pinned.is_empty() {
+                log::info!(
+                    "[#1400] pinning {} tool-scoped rule(s) into system prompt",
+                    pinned.len()
+                );
+                prompt_builder = prompt_builder.with_tool_memory_rules(pinned);
+            }
+        }
+
         // Build post-turn hooks when learning is enabled
         let mut post_turn_hooks: Vec<Arc<dyn crate::openhuman::agent::hooks::PostTurnHook>> =
             Vec::new();
@@ -839,6 +857,15 @@ impl Agent {
                     memory.clone(),
                 )));
                 log::info!("[learning] tool_tracker hook registered");
+            }
+
+            if config.learning.tool_memory_capture_enabled {
+                post_turn_hooks.push(Arc::new(
+                    crate::openhuman::memory::ToolMemoryCaptureHook::new(memory.clone(), true),
+                ));
+                log::info!(
+                    "[learning] tool_memory_capture hook registered (#1400 — durable tool rules)"
+                );
             }
         }
 
@@ -1151,4 +1178,52 @@ impl Agent {
         }
         builder.build()
     }
+}
+
+/// (#1400) Best-effort synchronous prefetch of eager tool-scoped rules.
+///
+/// `from_config_*` is sync but typically runs inside a multi-threaded
+/// Tokio runtime (the agent harness path from the channels runtime).
+/// We use `block_in_place` + the current runtime handle to call the
+/// async store API without restructuring the whole session builder.
+///
+/// Returns an empty `Vec` (rather than erroring) when:
+///   - no Tokio runtime is active (e.g. a sync CLI bootstrap),
+///   - the runtime is single-threaded (`block_in_place` would panic),
+///   - or the underlying `rules_for_prompt` call returns an error
+///     (e.g. the memory backend isn't ready yet).
+///
+/// Critical / High rules captured later in the session are still
+/// available via the `memory_tool_rules_for_prompt` RPC; this prefetch
+/// merely seeds the rules that exist at session start.
+fn prefetch_tool_memory_rules_blocking(
+    memory: Arc<dyn Memory>,
+) -> Vec<crate::openhuman::memory::ToolMemoryRule> {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        return Vec::new();
+    };
+    if handle.runtime_flavor() != tokio::runtime::RuntimeFlavor::MultiThread {
+        return Vec::new();
+    }
+    tokio::task::block_in_place(|| {
+        handle.block_on(async move {
+            let store = crate::openhuman::memory::ToolMemoryStore::new(memory);
+            match store.rules_for_prompt(&[]).await {
+                Ok(grouped) => {
+                    let mut flat: Vec<_> = grouped.into_values().flatten().collect();
+                    flat.sort_by(|a, b| {
+                        b.priority
+                            .cmp(&a.priority)
+                            .then_with(|| a.tool_name.cmp(&b.tool_name))
+                            .then_with(|| a.rule.cmp(&b.rule))
+                    });
+                    flat
+                }
+                Err(err) => {
+                    log::warn!("[#1400] tool memory prefetch failed: {err}");
+                    Vec::new()
+                }
+            }
+        })
+    })
 }
