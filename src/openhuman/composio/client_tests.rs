@@ -48,6 +48,42 @@ async fn authorize_rejects_empty_toolkit() {
     );
 }
 
+/// `authorize()` must reject a non-object `extra_params` before making any HTTP call.
+#[tokio::test]
+async fn authorize_rejects_non_object_extra_params() {
+    let inner = Arc::new(crate::openhuman::integrations::IntegrationClient::new(
+        "http://127.0.0.1:0".into(),
+        "test".into(),
+    ));
+    let client = ComposioClient::new(inner);
+    let err = client
+        .authorize("whatsapp", Some(serde_json::json!("waba-123")))
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("extra_params must be a JSON object"),
+        "unexpected error: {err}"
+    );
+}
+
+/// `authorize()` must reject an `extra_params` object that tries to override a reserved key.
+#[tokio::test]
+async fn authorize_rejects_reserved_key_override() {
+    let inner = Arc::new(crate::openhuman::integrations::IntegrationClient::new(
+        "http://127.0.0.1:0".into(),
+        "test".into(),
+    ));
+    let client = ComposioClient::new(inner);
+    let err = client
+        .authorize("whatsapp", Some(serde_json::json!({ "toolkit": "gmail" })))
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("cannot override reserved key"),
+        "unexpected error: {err}"
+    );
+}
+
 /// `delete_connection()` likewise must reject empty connection ids.
 #[tokio::test]
 async fn delete_connection_rejects_empty_id() {
