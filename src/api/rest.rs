@@ -461,9 +461,10 @@ impl BackendOAuthClient {
             } else {
                 crate::core::observability::report_error(
                     format!(
-                        "{} {} failed ({status}): {text}",
+                        "{} {} failed ({status}); response_body_len={}",
                         method.as_str(),
-                        url.path()
+                        url.path(),
+                        text.len()
                     )
                     .as_str(),
                     "backend_api",
