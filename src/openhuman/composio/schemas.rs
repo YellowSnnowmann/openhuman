@@ -601,7 +601,8 @@ fn handle_authorize(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let config = config_rpc::load_config_with_timeout().await?;
         let toolkit = read_required_non_empty(&params, "toolkit")?;
-        to_json(super::ops::composio_authorize(&config, &toolkit).await?)
+        let extra_params = params.get("extra_params").cloned();
+        to_json(super::ops::composio_authorize(&config, &toolkit, extra_params).await?)
     })
 }
 
