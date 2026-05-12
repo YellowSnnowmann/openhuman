@@ -61,7 +61,8 @@ async fn authorize_rejects_non_object_extra_params() {
         .await
         .unwrap_err();
     assert!(
-        err.to_string().contains("extra_params must be a JSON object"),
+        err.to_string()
+            .contains("extra_params must be a JSON object"),
         "unexpected error: {err}"
     );
 }
