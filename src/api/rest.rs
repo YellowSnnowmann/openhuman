@@ -212,6 +212,10 @@ impl BackendOAuthClient {
     /// path `/v1/chat/teams/me/usage` via RFC 3986 relative resolution.
     pub fn new(api_base: &str) -> Result<Self> {
         let mut base = Url::parse(api_base.trim()).context("Invalid API base URL")?;
+        anyhow::ensure!(
+            matches!(base.scheme(), "http" | "https") && base.host_str().is_some(),
+            "API base URL must be an absolute http(s) URL with host"
+        );
         base.set_path("");
         base.set_query(None);
         base.set_fragment(None);
