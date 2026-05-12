@@ -197,6 +197,31 @@ async fn authorize_posts_toolkit_and_returns_connect_url() {
 }
 
 #[tokio::test]
+async fn authorize_forwards_extra_params_and_returns_connect_url() {
+    let app = Router::new().route(
+        "/agent-integrations/composio/authorize",
+        post(|Json(body): Json<Value>| async move {
+            // Assert extra_params are forwarded alongside toolkit.
+            assert_eq!(body["toolkit"].as_str(), Some("whatsapp"));
+            assert_eq!(body["waba_id"].as_str(), Some("waba-123"));
+            Json(json!({
+                "success": true,
+                "data": {
+                    "connectUrl": "https://composio.example/whatsapp/consent",
+                    "connectionId": "conn-xyz"
+                }
+            }))
+        }),
+    );
+    let base = start_mock_backend(app).await;
+    let client = build_client_for(base);
+    let extra = serde_json::json!({ "waba_id": "waba-123" });
+    let resp = client.authorize("whatsapp", Some(extra)).await.unwrap();
+    assert!(resp.connect_url.contains("whatsapp"));
+    assert_eq!(resp.connection_id, "conn-xyz");
+}
+
+#[tokio::test]
 async fn list_tools_filters_pass_through_as_csv_query_param() {
     let app = Router::new().route(
         "/agent-integrations/composio/tools",

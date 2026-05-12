@@ -188,12 +188,22 @@ pub fn schemas(function: &str) -> ControllerSchema {
             namespace: "composio",
             function: "authorize",
             description: "Begin an OAuth handoff for a toolkit and return the hosted connect URL.",
-            inputs: vec![FieldSchema {
-                name: "toolkit",
-                ty: TypeSchema::String,
-                comment: "Toolkit slug to authorize (must be in the backend allowlist).",
-                required: true,
-            }],
+            inputs: vec![
+                FieldSchema {
+                    name: "toolkit",
+                    ty: TypeSchema::String,
+                    comment: "Toolkit slug to authorize (must be in the backend allowlist).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "extra_params",
+                    ty: TypeSchema::Json,
+                    comment: "Optional JSON object of additional auth fields forwarded to Composio \
+                              (e.g. {\"waba_id\": \"...\") for toolkits that require them). \
+                              Reserved keys (toolkit, toolkit_version, auth, client_id) are rejected.",
+                    required: false,
+                },
+            ],
             outputs: vec![
                 FieldSchema {
                     name: "connectUrl",

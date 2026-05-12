@@ -82,10 +82,20 @@ impl ComposioClient {
         tracing::debug!(toolkit = %toolkit, has_extra_params = extra_params.is_some(), "[composio] authorize");
         let mut body = serde_json::json!({ "toolkit": toolkit });
         if let Some(extra) = extra_params {
-            if let (Some(obj), Some(extra_obj)) = (body.as_object_mut(), extra.as_object()) {
-                for (k, v) in extra_obj {
-                    obj.insert(k.clone(), v.clone());
+            const RESERVED: &[&str] = &["toolkit", "toolkit_version", "auth", "client_id"];
+            let extra_obj = extra.as_object().ok_or_else(|| {
+                anyhow::anyhow!("composio.authorize: extra_params must be a JSON object")
+            })?;
+            let obj = body.as_object_mut().ok_or_else(|| {
+                anyhow::anyhow!("composio.authorize: internal payload must be an object")
+            })?;
+            for (k, v) in extra_obj {
+                if RESERVED.contains(&k.as_str()) {
+                    anyhow::bail!(
+                        "composio.authorize: extra_params cannot override reserved key '{k}'"
+                    );
                 }
+                obj.insert(k.clone(), v.clone());
             }
         }
         self.inner
