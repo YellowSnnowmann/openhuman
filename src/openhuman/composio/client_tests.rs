@@ -41,7 +41,7 @@ async fn authorize_rejects_empty_toolkit() {
         "test".into(),
     ));
     let client = ComposioClient::new(inner);
-    let err = client.authorize("   ").await.unwrap_err();
+    let err = client.authorize("   ", None).await.unwrap_err();
     assert!(
         err.to_string().contains("toolkit must not be empty"),
         "unexpected error: {err}"
@@ -191,7 +191,7 @@ async fn authorize_posts_toolkit_and_returns_connect_url() {
     );
     let base = start_mock_backend(app).await;
     let client = build_client_for(base);
-    let resp = client.authorize("gmail").await.unwrap();
+    let resp = client.authorize("gmail", None).await.unwrap();
     assert!(resp.connect_url.contains("gmail"));
     assert_eq!(resp.connection_id, "conn-abc");
 }
