@@ -358,7 +358,9 @@ describe('MicCloudComposer', () => {
     render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.queryByRole('combobox', { name: /microphone device/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('combobox', { name: /microphone device/i })
+      ).not.toBeInTheDocument();
       expect(enumerateDevicesMock).not.toHaveBeenCalled();
     });
   });
