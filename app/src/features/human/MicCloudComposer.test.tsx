@@ -173,9 +173,7 @@ describe('MicCloudComposer', () => {
     const onError = vi.fn();
     render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} onError={onError} />);
     fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
-    await waitFor(() =>
-      expect(onError).toHaveBeenCalledWith(expect.stringMatching(/in use/i))
-    );
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.stringMatching(/in use/i)));
   });
 
   it('surfaces a generic error for non-DOMException getUserMedia failures', async () => {
@@ -366,9 +364,9 @@ describe('MicCloudComposer', () => {
   });
 
   it('shows the selector disabled when only one device is available', async () => {
-    const enumerateDevicesMock = vi.fn().mockResolvedValue([
-      { kind: 'audioinput', deviceId: 'dev1', label: 'Built-in Mic' },
-    ]);
+    const enumerateDevicesMock = vi
+      .fn()
+      .mockResolvedValue([{ kind: 'audioinput', deviceId: 'dev1', label: 'Built-in Mic' }]);
     Object.defineProperty(globalThis.navigator, 'mediaDevices', {
       value: { getUserMedia: getUserMediaMock, enumerateDevices: enumerateDevicesMock },
       configurable: true,
