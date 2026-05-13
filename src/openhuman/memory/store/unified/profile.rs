@@ -44,12 +44,6 @@ CREATE TABLE IF NOT EXISTS user_profile (
 
 CREATE INDEX IF NOT EXISTS idx_profile_type
     ON user_profile(facet_type);
-
-CREATE INDEX IF NOT EXISTS idx_profile_state
-    ON user_profile(state);
-
-CREATE INDEX IF NOT EXISTS idx_profile_class
-    ON user_profile(class);
 "#;
 
 /// Phase 3 ALTER TABLE statements for adding new columns to existing databases.
