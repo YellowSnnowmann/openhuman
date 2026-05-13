@@ -357,10 +357,10 @@ describe('MicCloudComposer', () => {
 
     render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} />);
 
-    // Give any async effects a chance to run
-    await new Promise(r => setTimeout(r, 50));
-    expect(screen.queryByRole('combobox', { name: /microphone device/i })).not.toBeInTheDocument();
-    expect(enumerateDevicesMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByRole('combobox', { name: /microphone device/i })).not.toBeInTheDocument();
+      expect(enumerateDevicesMock).not.toHaveBeenCalled();
+    });
   });
 
   it('shows the selector disabled when only one device is available', async () => {
