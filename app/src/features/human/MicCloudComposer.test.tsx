@@ -372,9 +372,7 @@ describe('MicCloudComposer', () => {
     await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
 
     expect(getUserMediaMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        audio: expect.objectContaining({ deviceId: { exact: 'dev2' } }),
-      })
+      expect.objectContaining({ audio: expect.objectContaining({ deviceId: { exact: 'dev2' } }) })
     );
   });
 
