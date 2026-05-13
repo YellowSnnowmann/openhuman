@@ -119,8 +119,10 @@ pub(crate) fn normalize_function_arguments(arguments: Option<serde_json::Value>)
         Some(serde_json::Value::String(raw)) => {
             if raw.trim().is_empty() {
                 "{}".to_string()
-            } else {
+            } else if serde_json::from_str::<serde_json::Value>(&raw).is_ok() {
                 raw
+            } else {
+                "{}".to_string()
             }
         }
         Some(serde_json::Value::Null) | None => "{}".to_string(),
