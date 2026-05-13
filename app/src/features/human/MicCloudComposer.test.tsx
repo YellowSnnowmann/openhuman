@@ -147,12 +147,45 @@ describe('MicCloudComposer', () => {
     expect(opts).toEqual({ language: 'es' });
   });
 
-  it('surfaces a permission-denied error via onError', async () => {
-    getUserMediaMock.mockRejectedValueOnce(new Error('NotAllowed'));
+  it('surfaces a permission-denied error via onError for NotAllowedError', async () => {
+    const err = Object.assign(new DOMException('', 'NotAllowedError'));
+    getUserMediaMock.mockRejectedValueOnce(err);
     const onError = vi.fn();
     render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} onError={onError} />);
     fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
     await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.stringMatching(/permission/i)));
+  });
+
+  it('surfaces a device-unavailable error for OverconstrainedError', async () => {
+    const err = new DOMException('', 'OverconstrainedError');
+    getUserMediaMock.mockRejectedValueOnce(err);
+    const onError = vi.fn();
+    render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} onError={onError} />);
+    fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+    await waitFor(() =>
+      expect(onError).toHaveBeenCalledWith(expect.stringMatching(/unavailable/i))
+    );
+  });
+
+  it('surfaces an in-use error for NotReadableError', async () => {
+    const err = new DOMException('', 'NotReadableError');
+    getUserMediaMock.mockRejectedValueOnce(err);
+    const onError = vi.fn();
+    render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} onError={onError} />);
+    fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+    await waitFor(() =>
+      expect(onError).toHaveBeenCalledWith(expect.stringMatching(/in use/i))
+    );
+  });
+
+  it('surfaces a generic error for non-DOMException getUserMedia failures', async () => {
+    getUserMediaMock.mockRejectedValueOnce(new Error('some other error'));
+    const onError = vi.fn();
+    render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} onError={onError} />);
+    fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+    await waitFor(() =>
+      expect(onError).toHaveBeenCalledWith(expect.stringMatching(/microphone error/i))
+    );
   });
 
   it('falls back to wav re-encode when the native attempt fails', async () => {
@@ -330,6 +363,23 @@ describe('MicCloudComposer', () => {
     await new Promise(r => setTimeout(r, 50));
     expect(screen.queryByRole('combobox', { name: /microphone device/i })).not.toBeInTheDocument();
     expect(enumerateDevicesMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the selector disabled when only one device is available', async () => {
+    const enumerateDevicesMock = vi.fn().mockResolvedValue([
+      { kind: 'audioinput', deviceId: 'dev1', label: 'Built-in Mic' },
+    ]);
+    Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+      value: { getUserMedia: getUserMediaMock, enumerateDevices: enumerateDevicesMock },
+      configurable: true,
+      writable: true,
+    });
+
+    render(<MicCloudComposer disabled={false} onSubmit={vi.fn()} showDeviceSelector />);
+
+    const select = await screen.findByRole('combobox', { name: /microphone device/i });
+    expect(select).toBeInTheDocument();
+    expect(select).toBeDisabled();
   });
 
   it('falls back to "Microphone N" label when browser hides labels before permission', async () => {

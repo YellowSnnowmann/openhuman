@@ -118,8 +118,9 @@ export function MicCloudComposer({
       }
     }
     void loadDevices();
-    navigator.mediaDevices?.addEventListener?.('devicechange', loadDevices);
-    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', loadDevices);
+    const onDeviceChange = () => void loadDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', onDeviceChange);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange);
   }, [showDeviceSelector]);
 
   // Spacebar = tap-to-toggle (#1471). Scoped to whatever surface mounts
@@ -254,7 +255,19 @@ export function MicCloudComposer({
       startInFlightRef.current = false;
       const msg = err instanceof Error ? err.message : String(err);
       composerLog('getUserMedia rejected: %s', msg);
-      onError?.(`Microphone permission denied: ${msg}`);
+      if (err instanceof DOMException) {
+        if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+          onError?.(`Microphone permission denied: ${msg}`);
+        } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+          onError?.('Selected microphone is unavailable — try a different device.');
+        } else if (err.name === 'NotReadableError') {
+          onError?.('Microphone is in use by another application.');
+        } else {
+          onError?.(`Microphone error: ${msg}`);
+        }
+      } else {
+        onError?.(`Microphone error: ${msg}`);
+      }
       return;
     }
 
@@ -413,12 +426,12 @@ export function MicCloudComposer({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      {showDeviceSelector && devices.length > 1 && (
+      {showDeviceSelector && devices.length > 0 && (
         <select
           aria-label="Microphone device"
           value={selectedDeviceId}
           onChange={e => setSelectedDeviceId(e.target.value)}
-          disabled={state !== 'idle'}
+          disabled={state !== 'idle' || devices.length <= 1}
           className="text-xs text-stone-600 bg-stone-100 border border-stone-200 rounded px-2 py-1 max-w-[220px] truncate disabled:opacity-50">
           {devices.map(d => (
             <option key={d.deviceId} value={d.deviceId}>
