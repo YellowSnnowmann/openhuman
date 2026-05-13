@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { transcribeCloud } from './voice/sttClient';
 import { encodeBlobToWav } from './voice/wavEncoder';
 
+/** Minimal descriptor for an audio input device. */
+interface AudioInputDevice {
+  deviceId: string;
+  label: string;
+}
+
 const composerLog = debug('human:mic-composer');
 
 /** MIME types MediaRecorder will be asked to use, in priority order.
@@ -34,6 +40,8 @@ export interface MicCloudComposerProps {
    *  passing a hint is meaningfully more accurate than auto-detect on
    *  short utterances. Set to empty string to let Scribe auto-detect. */
   language?: string;
+  /** Show a microphone device selector beneath the button. Defaults to false. */
+  showDeviceSelector?: boolean;
 }
 
 type RecordingState = 'idle' | 'recording' | 'transcribing';
@@ -52,8 +60,11 @@ export function MicCloudComposer({
   onSubmit,
   onError,
   language = 'en',
+  showDeviceSelector = false,
 }: MicCloudComposerProps) {
   const [state, setState] = useState<RecordingState>('idle');
+  const [devices, setDevices] = useState<AudioInputDevice[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -84,6 +95,35 @@ export function MicCloudComposer({
       recorderRef.current = null;
     };
   }, []);
+
+  // Enumerate audio input devices when the selector is shown, and refresh the
+  // list after the user grants mic permission (labels are hidden until then).
+  useEffect(() => {
+    if (!showDeviceSelector) return;
+    async function loadDevices() {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        const inputs = all
+          .filter(d => d.kind === 'audioinput')
+          .map((d, i) => ({
+            deviceId: d.deviceId,
+            label: d.label || `Microphone ${i + 1}`,
+          }));
+        setDevices(inputs);
+        // Keep the selected device valid; fall back to default.
+        setSelectedDeviceId(prev =>
+          inputs.some(d => d.deviceId === prev) ? prev : (inputs[0]?.deviceId ?? '')
+        );
+        composerLog('enumerated %d audio inputs', inputs.length);
+      } catch (err) {
+        composerLog('enumerateDevices failed: %s', err);
+      }
+    }
+    void loadDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', loadDevices);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', loadDevices);
+  }, [showDeviceSelector]);
 
   // Spacebar = tap-to-toggle (#1471). Scoped to whatever surface mounts
   // this composer — today only the Human agent page. The listener lives
@@ -196,6 +236,7 @@ export function MicCloudComposer({
       //     transcription drops words in our flow)
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          ...(selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : {}),
           channelCount: 1,
           sampleRate: 48000,
           echoCancellation: true,
@@ -203,6 +244,15 @@ export function MicCloudComposer({
           autoGainControl: true,
         },
       });
+      // After the first successful grant, refresh device labels (they are
+      // blank until the user has given permission).
+      if (showDeviceSelector) {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        const inputs = all
+          .filter(d => d.kind === 'audioinput')
+          .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+        setDevices(inputs);
+      }
     } catch (err) {
       startInFlightRef.current = false;
       const msg = err instanceof Error ? err.message : String(err);
@@ -365,7 +415,22 @@ export function MicCloudComposer({
         : 'Tap and speak';
 
   return (
-    <div className="flex items-center justify-center gap-3">
+    <div className="flex flex-col items-center gap-2">
+      {showDeviceSelector && devices.length > 1 && (
+        <select
+          aria-label="Microphone device"
+          value={selectedDeviceId}
+          onChange={e => setSelectedDeviceId(e.target.value)}
+          disabled={state !== 'idle'}
+          className="text-xs text-stone-600 bg-stone-100 border border-stone-200 rounded px-2 py-1 max-w-[220px] truncate disabled:opacity-50">
+          {devices.map(d => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      )}
+      <div className="flex items-center justify-center gap-3">
       <button
         type="button"
         aria-label={isRecording ? 'Stop recording and send' : 'Start recording'}
@@ -409,6 +474,7 @@ export function MicCloudComposer({
         )}
       </button>
       <span className="text-xs text-stone-500 select-none">{label}</span>
+      </div>
     </div>
   );
 }
