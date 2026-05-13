@@ -1183,3 +1183,22 @@ fn normalize_function_arguments_object_value_serializes() {
     let v = Some(serde_json::json!({"path": "/tmp"}));
     assert_eq!(normalize_function_arguments(v), r#"{"path":"/tmp"}"#);
 }
+
+#[test]
+fn parse_provider_tool_call_from_value_guards_malformed_arguments() {
+    // OPENHUMAN-TAURI-6F: the early-return path in
+    // `parse_provider_tool_call_from_value` previously bypassed
+    // `normalize_function_arguments`, forwarding malformed JSON strings
+    // directly. Verify the guard now applies on both code paths.
+    let value = serde_json::json!({
+        "id": "call_bad",
+        "name": "shell",
+        "arguments": "{a:1}"
+    });
+    let result = parse_provider_tool_call_from_value(&value);
+    let call = result.expect("should produce a ToolCall");
+    assert_eq!(
+        call.arguments, "{}",
+        "malformed arguments string must be normalised to {{}} via the first-path guard"
+    );
+}
