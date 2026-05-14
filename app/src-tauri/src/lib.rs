@@ -1426,14 +1426,12 @@ pub fn run() {
     // explicit cleanup is only needed if `run()` returns normally.
     #[cfg(windows)]
     let _cef_init_mutex_guard = {
-        use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError};
+        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
         use windows_sys::Win32::System::Threading::CreateMutexW;
 
         // Must match the bundle identifier in tauri.conf.json.
         // Changing the app identifier requires updating this string too.
-        let mutex_name: Vec<u16> = "com.openhuman.app-cef-init\0"
-            .encode_utf16()
-            .collect();
+        let mutex_name: Vec<u16> = "com.openhuman.app-cef-init\0".encode_utf16().collect();
 
         // SAFETY: mutex_name is null-terminated UTF-16; handle is checked below.
         let handle = unsafe { CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr()) };
