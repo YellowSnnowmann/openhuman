@@ -160,6 +160,10 @@ windows-sys = { version = "0.59", features = [
     # cef::Window internal handle, not the visible Chrome_WidgetWin_1
     # top-level frame, so we walk the OS window list ourselves (#1607).
     "Win32_UI_WindowsAndMessaging",
+    # CreateMutexW / CloseHandle — used by the pre-CEF single-instance guard
+    # (see run() in lib.rs) that detects a second launch before CefRuntime::init
+    # fires (Sentry OPENHUMAN-TAURI-A).
+    "Win32_System_Threading",
 ] }
 
 [features]
