@@ -1,8 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type ComposioConnection } from '../../lib/composio/types';
-import ComposioConnectModal from './ComposioConnectModal';
+import ComposioConnectModal, {
+  isMissingRequiredFieldsError,
+  isValidAtlassianSubdomain,
+  sanitizeAuthError,
+} from './ComposioConnectModal';
 import { composioToolkitMeta } from './toolkitMeta';
 
 vi.mock('../../lib/composio/composioApi', () => ({
@@ -19,6 +23,122 @@ vi.mock('../../utils/openUrl', () => ({ openUrl: vi.fn() }));
 vi.mock('./TriggerToggles', () => ({ default: () => <div data-testid="trigger-toggles" /> }));
 
 const mockToolkit = composioToolkitMeta('gmail');
+const jiraToolkit = composioToolkitMeta('jira');
+
+// ── Pure helper unit tests ────────────────────────────────────────────
+
+describe('isValidAtlassianSubdomain', () => {
+  it('accepts typical lowercase subdomain', () => {
+    expect(isValidAtlassianSubdomain('acme')).toBe(true);
+    expect(isValidAtlassianSubdomain('my-company')).toBe(true);
+    expect(isValidAtlassianSubdomain('org123')).toBe(true);
+  });
+
+  it('accepts mixed-case subdomain (case-insensitive check)', () => {
+    expect(isValidAtlassianSubdomain('MyCompany')).toBe(true);
+  });
+
+  it('accepts single-character subdomain', () => {
+    expect(isValidAtlassianSubdomain('a')).toBe(true);
+    expect(isValidAtlassianSubdomain('z')).toBe(true);
+    expect(isValidAtlassianSubdomain('5')).toBe(true);
+  });
+
+  it('rejects full URLs', () => {
+    expect(isValidAtlassianSubdomain('https://acme.atlassian.net')).toBe(false);
+    expect(isValidAtlassianSubdomain('acme.atlassian.net')).toBe(false);
+  });
+
+  it('rejects leading/trailing hyphens', () => {
+    expect(isValidAtlassianSubdomain('-acme')).toBe(false);
+    expect(isValidAtlassianSubdomain('acme-')).toBe(false);
+  });
+
+  it('rejects empty string', () => {
+    expect(isValidAtlassianSubdomain('')).toBe(false);
+    expect(isValidAtlassianSubdomain('   ')).toBe(false);
+  });
+
+  it('rejects strings with spaces', () => {
+    expect(isValidAtlassianSubdomain('my company')).toBe(false);
+  });
+
+  it('trims whitespace before validation', () => {
+    expect(isValidAtlassianSubdomain('  acme  ')).toBe(true);
+  });
+});
+
+describe('isMissingRequiredFieldsError', () => {
+  it('matches the Composio error slug', () => {
+    const err = new Error(
+      'Authorization failed: [composio] authorize failed: Backend returned 400 Bad Request: Composio authorization failed: 400 {"error":{"message":"Missing required fields","code":612,"slug":"ConnectedAccount_MissingRequiredFields"}}'
+    );
+    expect(isMissingRequiredFieldsError(err)).toBe(true);
+  });
+
+  it('matches the error code alone', () => {
+    const err = new Error('error code 612 from server');
+    expect(isMissingRequiredFieldsError(err)).toBe(true);
+  });
+
+  it('returns false for unrelated errors', () => {
+    expect(isMissingRequiredFieldsError(new Error('Network timeout'))).toBe(false);
+    expect(isMissingRequiredFieldsError(new Error('401 Unauthorized'))).toBe(false);
+  });
+
+  it('returns false for null / undefined', () => {
+    expect(isMissingRequiredFieldsError(null)).toBe(false);
+    expect(isMissingRequiredFieldsError(undefined)).toBe(false);
+  });
+
+  it('accepts non-Error objects with the slug in stringified form', () => {
+    expect(isMissingRequiredFieldsError('ConnectedAccount_MissingRequiredFields')).toBe(true);
+  });
+});
+
+describe('sanitizeAuthError', () => {
+  it('returns a generic message for missing-required-fields errors', () => {
+    const err = new Error(
+      'Authorization failed: [composio] authorize failed: Backend returned 400 Bad Request for POST https://api.tinyhumans.ai/agent-integrations/composio/authorize: Composio authorization failed: 400 {"error":{"slug":"ConnectedAccount_MissingRequiredFields","code":612}}'
+    );
+    const result = sanitizeAuthError(err);
+    expect(result).not.toContain('ConnectedAccount_MissingRequiredFields');
+    expect(result).not.toContain('api.tinyhumans.ai');
+    expect(result).not.toContain('612');
+    expect(result).toContain('required field');
+  });
+
+  it('strips backend URLs from plain authorization errors', () => {
+    const err = new Error(
+      'Authorization failed: Backend returned 500 Internal Server Error for POST https://api.tinyhumans.ai/agent-integrations/composio/authorize: internal error'
+    );
+    const result = sanitizeAuthError(err);
+    expect(result).not.toContain('api.tinyhumans.ai');
+    expect(result).not.toContain('https://');
+  });
+
+  it('strips raw JSON payloads', () => {
+    const err = new Error(
+      'Authorization failed: something happened: {"error":{"code":500,"message":"internal"}}'
+    );
+    const result = sanitizeAuthError(err);
+    expect(result).not.toContain('"code"');
+    expect(result).not.toContain('"message"');
+  });
+
+  it('returns a safe fallback for null/undefined', () => {
+    expect(sanitizeAuthError(null)).toBe('Something went wrong.');
+    expect(sanitizeAuthError(undefined)).toBe('Something went wrong.');
+  });
+
+  it('handles non-Error thrown values', () => {
+    const result = sanitizeAuthError('plain string error');
+    expect(typeof result).toBe('string');
+    expect(result.length).toBeGreaterThan(0);
+  });
+});
+
+// ── Component render tests ────────────────────────────────────────────
 
 describe('<ComposioConnectModal>', () => {
   it('hides raw connection ID and "id:" label in connected phase', () => {
@@ -96,5 +216,151 @@ describe('<ComposioConnectModal>', () => {
     expect(screen.getByText('(foo@bar.com)')).toBeInTheDocument();
     expect(screen.queryByText('(Acme)')).not.toBeInTheDocument();
     expect(screen.queryByText('(oxox)')).not.toBeInTheDocument();
+  });
+});
+
+// ── Jira-specific flow tests ──────────────────────────────────────────
+
+describe('<ComposioConnectModal> — Jira subdomain collection', () => {
+  it('shows the Atlassian subdomain input in the idle phase for Jira', () => {
+    render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
+
+    expect(screen.getByLabelText(/Atlassian subdomain/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('your-subdomain')).toBeInTheDocument();
+  });
+
+  it('does NOT show the Atlassian subdomain input for non-Jira toolkits', () => {
+    render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
+
+    expect(screen.queryByLabelText(/Atlassian subdomain/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('your-subdomain')).not.toBeInTheDocument();
+  });
+
+  it('shows a validation error when connect is clicked with an empty subdomain', async () => {
+    render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
+
+    const connectButton = screen.getByRole('button', { name: /Connect Jira/i });
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Please enter your Atlassian subdomain/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows a validation error when the subdomain looks like a full URL', async () => {
+    render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
+
+    const input = screen.getByPlaceholderText('your-subdomain');
+    fireEvent.change(input, { target: { value: 'https://acme.atlassian.net' } });
+
+    const connectButton = screen.getByRole('button', { name: /Connect Jira/i });
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/short subdomain only/i)).toBeInTheDocument();
+    });
+  });
+
+  it('clears subdomain validation error when the user types', async () => {
+    render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
+
+    // Trigger validation error
+    const connectButton = screen.getByRole('button', { name: /Connect Jira/i });
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Please enter your Atlassian subdomain/i)).toBeInTheDocument();
+    });
+
+    // Type to clear the error
+    const input = screen.getByPlaceholderText('your-subdomain');
+    fireEvent.change(input, { target: { value: 'a' } });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Please enter your Atlassian subdomain/i)).not.toBeInTheDocument();
+    });
+  });
+});
+
+// ── needs-subdomain phase tests ───────────────────────────────────────
+
+describe('<ComposioConnectModal> — needs-subdomain recovery phase', () => {
+  it('transitions to needs-subdomain phase when Composio returns the missing-required-fields error', async () => {
+    const { authorize } = await import('../../lib/composio/composioApi');
+    vi.mocked(authorize).mockRejectedValueOnce(
+      new Error(
+        'Authorization failed: Backend returned 400: {"error":{"slug":"ConnectedAccount_MissingRequiredFields","code":612}}'
+      )
+    );
+
+    render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
+
+    const connectButton = screen.getByRole('button', { name: /Connect Gmail/i });
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Retry connection/i })).toBeInTheDocument();
+      expect(screen.getByText(/requires your Atlassian subdomain/i)).toBeInTheDocument();
+    });
+  });
+
+  it('does NOT show the raw error message in the needs-subdomain phase', async () => {
+    const { authorize } = await import('../../lib/composio/composioApi');
+    vi.mocked(authorize).mockRejectedValueOnce(
+      new Error(
+        'Authorization failed: Backend returned 400: {"error":{"slug":"ConnectedAccount_MissingRequiredFields","code":612,"message":"very sensitive backend payload"}}'
+      )
+    );
+
+    render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
+
+    const connectButton = screen.getByRole('button', { name: /Connect Gmail/i });
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/very sensitive backend payload/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/ConnectedAccount_MissingRequiredFields/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('clicking Cancel in needs-subdomain goes back to idle', async () => {
+    const { authorize } = await import('../../lib/composio/composioApi');
+    vi.mocked(authorize).mockRejectedValueOnce(new Error('ConnectedAccount_MissingRequiredFields'));
+
+    render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Connect Gmail/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Retry connection/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Connect Gmail/i })).toBeInTheDocument();
+    });
+  });
+
+  it('surfaces a sanitized (non-raw) error for unrelated authorization failures', async () => {
+    const { authorize } = await import('../../lib/composio/composioApi');
+    vi.mocked(authorize).mockRejectedValueOnce(
+      new Error(
+        'Authorization failed: Backend returned 500 Internal Server Error for POST https://api.tinyhumans.ai/agent-integrations/composio/authorize: {"error":{"message":"internal server error payload","code":500}}'
+      )
+    );
+
+    render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Connect Gmail/i }));
+
+    await waitFor(() => {
+      // Should be in error phase, not needs-subdomain
+      expect(screen.getByRole('button', { name: /Dismiss/i })).toBeInTheDocument();
+      // Raw URL should not be shown
+      expect(screen.queryByText(/api.tinyhumans.ai/i)).not.toBeInTheDocument();
+      // Raw JSON payload should not be shown
+      expect(screen.queryByText(/internal server error payload/i)).not.toBeInTheDocument();
+    });
   });
 });
