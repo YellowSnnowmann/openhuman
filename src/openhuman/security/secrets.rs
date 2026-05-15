@@ -27,7 +27,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Length of the random encryption key in bytes (256-bit, matches `ChaCha20`).
 const KEY_LEN: usize = 32;
@@ -187,8 +187,17 @@ impl SecretStore {
             return Ok(cached);
         }
 
+        // If a previous read attempt failed recently, return the cached error
+        // immediately. This prevents repeated polls (e.g. every ~2 s from
+        // `app_state_snapshot`) from each triggering 5×retry disk I/O and a
+        // new Sentry event. The TTL lets the next attempt retry disk so the
+        // process self-heals if the transient lock (AV scanner, etc.) clears.
+        if let Some(err_msg) = cached_failure(&cache_key_path) {
+            return Err(anyhow::anyhow!("{err_msg}"));
+        }
+
         if self.key_path.exists() {
-            let hex_key = read_key_file_with_retry(&self.key_path).with_context(|| {
+            let hex_key = match read_key_file_with_retry(&self.key_path).with_context(|| {
                 let mut msg = format!(
                     "Failed to read secret key file at {}",
                     self.key_path.display()
@@ -203,13 +212,27 @@ impl SecretStore {
                     );
                 }
                 msg
-            })?;
+            }) {
+                Ok(k) => k,
+                Err(e) => {
+                    let msg = e.to_string();
+                    cache_failure(&cache_key_path, &msg);
+                    log::warn!(
+                        "[secrets] key file unreadable (cached for {}s): {}",
+                        FAILURE_CACHE_TTL.as_secs(),
+                        msg
+                    );
+                    return Err(anyhow::anyhow!("{msg}"));
+                }
+            };
             let key = hex_decode(hex_key.trim()).context("Secret key file is corrupt")?;
             anyhow::ensure!(
                 key.len() == KEY_LEN,
                 "Secret key file has wrong length: expected {KEY_LEN} bytes, got {}",
                 key.len()
             );
+            // Successful read — clear any stale failure cache entry and store the key.
+            clear_failure_cache(&cache_key_path);
             cache_key(&cache_key_path, &key);
             Ok(key)
         } else {
@@ -308,6 +331,53 @@ pub(super) fn clear_cached_key(path: &Path) {
     if let Ok(mut cache) = key_cache().lock() {
         cache.remove(&normalized);
     }
+}
+
+/// How long to remember a key-file read failure before retrying disk I/O.
+///
+/// Windows AV scanners hold the file for a few seconds at most, so 60 s is
+/// generous. The important property is that repeated polls (e.g. every 2 s
+/// from `app_state_snapshot`) don't each trigger 5×retry disk I/O and a new
+/// Sentry event — they return the cached error immediately within the window.
+const FAILURE_CACHE_TTL: Duration = Duration::from_secs(60);
+
+/// Process-wide cache of key-file read failures, keyed by normalized path.
+///
+/// Maps path → (time of first failure, stringified error message).
+/// Entries expire after `FAILURE_CACHE_TTL`. Production code never evicts
+/// them manually — the TTL expiry lets the next attempt retry disk in case
+/// a transient lock (AV scanner, etc.) has been released.
+fn key_failure_cache() -> &'static Mutex<HashMap<PathBuf, (Instant, String)>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, (Instant, String)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cached_failure(path: &Path) -> Option<String> {
+    key_failure_cache()
+        .lock()
+        .ok()?
+        .get(path)
+        .filter(|(t, _)| t.elapsed() < FAILURE_CACHE_TTL)
+        .map(|(_, msg)| msg.clone())
+}
+
+fn cache_failure(path: &Path, message: &str) {
+    if let Ok(mut cache) = key_failure_cache().lock() {
+        cache.insert(path.to_path_buf(), (Instant::now(), message.to_string()));
+    }
+}
+
+fn clear_failure_cache(path: &Path) {
+    if let Ok(mut cache) = key_failure_cache().lock() {
+        cache.remove(path);
+    }
+}
+
+/// Clear the cached failure for `path`. Test-only.
+#[cfg(test)]
+pub(super) fn clear_cached_failure(path: &Path) {
+    let normalized = normalize_cache_path(path);
+    clear_failure_cache(&normalized);
 }
 
 /// Read the key file, retrying transient errors a handful of times.

@@ -131,6 +131,20 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
                     error = %redacted,
                     "[rpc] transient downstream failure — not reporting to Sentry (message redacted)"
                 );
+            } else if is_secret_key_file_error(&display_message) {
+                // The `.secret_key` file is unreadable — usually a Windows AV
+                // scanner holding a transient lock or an ACL regression. The
+                // failure cache in `SecretStore::load_or_create_key` already
+                // throttles repeated disk I/O to once per 60 s and logs a
+                // `warn!`. Re-reporting every surviving poll as a Sentry event
+                // caused OPENHUMAN-TAURI-GN (12k+ events in one session). Log
+                // at warn for local observability and skip the Sentry report.
+                tracing::warn!(
+                    method = %method,
+                    elapsed_ms = ms as u64,
+                    "[rpc] secret key file unreadable — not reporting to Sentry (Windows AV/permissions): {}",
+                    display_message
+                );
             } else {
                 crate::core::observability::report_error_or_expected(
                     display_message.as_str(),
@@ -267,6 +281,16 @@ fn is_param_validation_error(msg: &str) -> bool {
     msg.starts_with("unknown param '")
         || msg.starts_with("missing required param '")
         || msg.starts_with("invalid params: ")
+}
+
+/// Returns true when the error originates from a `.secret_key` file read
+/// failure. On Windows, AV scanners (Defender, etc.) can hold a transient read
+/// lock on the file; a persistent ACL regression produces the same error on
+/// every call. The `SecretStore` failure cache already throttles disk I/O to
+/// once per 60 s — this filter prevents the surviving first error per window
+/// from being reported to Sentry (OPENHUMAN-TAURI-GN: 12 k+ events/session).
+fn is_secret_key_file_error(msg: &str) -> bool {
+    msg.contains("Failed to read secret key file")
 }
 
 /// Internal method invocation logic.

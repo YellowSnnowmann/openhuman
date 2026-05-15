@@ -616,3 +616,51 @@ fn key_file_has_restricted_permissions() {
         "Key file must be owner-only (0600)"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn key_file_read_failure_is_cached_for_ttl() {
+    // When the key file exists but is unreadable (mode 0000 on Unix, or an
+    // AV-scanner hold on Windows), the first failed read must be cached so
+    // subsequent calls within the TTL return immediately without retrying
+    // disk I/O.  This is the fix for OPENHUMAN-TAURI-GN: 12 k+ Sentry
+    // events per session caused by every `app_state_snapshot` poll retrying
+    // and failing to read `.secret_key`.
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = TempDir::new().unwrap();
+    let store = SecretStore::new(tmp.path(), true);
+
+    // Write a valid key file, then make it unreadable.
+    store.encrypt("setup").unwrap();
+    fs::set_permissions(&store.key_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+    // Clear success cache so the next call actually hits disk.
+    super::clear_cached_key(&store.key_path);
+
+    // First call: hits disk, fails, caches the failure.
+    let err1 = store.encrypt("should fail").unwrap_err();
+    assert!(
+        err1.to_string().contains("Failed to read secret key file"),
+        "expected key-file error, got: {err1:?}"
+    );
+
+    // Make the file readable again — but the failure cache should prevent a
+    // new disk read for the duration of the TTL.
+    fs::set_permissions(&store.key_path, fs::Permissions::from_mode(0o600)).unwrap();
+
+    // Second call within TTL: must return the cached error without touching disk.
+    let err2 = store.encrypt("still cached failure").unwrap_err();
+    assert!(
+        err2.to_string().contains("Failed to read secret key file"),
+        "expected cached failure, got: {err2:?}"
+    );
+
+    // Clearing the failure cache allows the next attempt to succeed.
+    super::clear_cached_failure(&store.key_path);
+    let ok = store.encrypt("now succeeds").unwrap();
+    assert!(
+        ok.starts_with("enc2:"),
+        "expected encrypted value after cache cleared"
+    );
+}
