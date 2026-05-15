@@ -716,3 +716,306 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     });
   });
 });
+
+// ── Worker thread UI surface (#1624) ───────────────────────────────────────
+
+describe('Conversations — worker thread UI surface (#1624)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetThreadMessages.mockResolvedValue({ messages: [], count: 0 });
+    mockUseUsageState.mockReturnValue({
+      teamUsage: null,
+      currentPlan: null,
+      currentTier: 'FREE' as const,
+      isFreeTier: true,
+      usagePct10h: 0,
+      usagePct7d: 0,
+      isNearLimit: false,
+      isAtLimit: false,
+      isRateLimited: false,
+      isBudgetExhausted: false,
+      shouldShowBudgetCompletedMessage: false,
+      isLoading: false,
+      refresh: vi.fn(),
+    });
+  });
+
+  it('worker threads do NOT appear in the main thread list', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Thread', parentThreadId: 'p-1' });
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    // Parent thread must appear in the main list
+    await waitFor(() => {
+      expect(screen.getAllByText('Parent Thread').length).toBeGreaterThan(0);
+    });
+
+    // Worker thread must NOT appear in the main list — it only shows after
+    // the "Background work" section is expanded.
+    const mainList = screen.queryAllByText('Worker Thread');
+    expect(mainList.length).toBe(0);
+  });
+
+  it('renders the "Background work" toggle when worker threads exist', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Task', parentThreadId: 'p-1' });
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Background work')).toBeInTheDocument();
+    });
+    // Count badge
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('worker thread appears in the sidebar after expanding Background work section', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Task', parentThreadId: 'p-1' });
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Background work')).toBeInTheDocument();
+    });
+
+    // Expand the section
+    await act(async () => {
+      fireEvent.click(screen.getByText('Background work'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Worker Task')).toBeInTheDocument();
+    });
+
+    // Parent context sub-line
+    expect(screen.getByText(/via Parent Thread/)).toBeInTheDocument();
+  });
+
+  it('does NOT render "Background work" section when no worker threads exist', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    mockGetThreads.mockResolvedValue({ threads: [parent], count: 1 });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Parent Thread').length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByText('Background work')).not.toBeInTheDocument();
+  });
+
+  it('shows "← Parent thread" breadcrumb in header when a worker thread is selected', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Task', parentThreadId: 'p-1' });
+    // loadThreads returns both; mount auto-selects parent (worker filtered from visibleThreads)
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    let renderedStore: ReturnType<typeof buildStore> | undefined;
+    await act(async () => {
+      renderedStore = await renderConversations({ thread: emptyThreadState });
+    });
+
+    // After mount, parent is auto-selected. Now expand the Background section
+    // and click the worker thread to select it.
+    await waitFor(() => {
+      expect(screen.getByText('Background work')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Background work'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Worker Task')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Worker Task'));
+    });
+
+    // Worker thread is now selected — breadcrumb must appear
+    await waitFor(() => {
+      expect(screen.getByTitle('Go to parent thread')).toBeInTheDocument();
+    });
+    expect(screen.getByTitle('Go to parent thread').textContent).toContain('Parent Thread');
+
+    void renderedStore;
+  });
+
+  it('clicking "Back to parent" navigates to the parent thread', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Task', parentThreadId: 'p-1' });
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    let renderedStore: ReturnType<typeof buildStore> | undefined;
+    await act(async () => {
+      renderedStore = await renderConversations({ thread: emptyThreadState });
+    });
+
+    // Expand Background section and select the worker thread
+    await waitFor(() => {
+      expect(screen.getByText('Background work')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Background work'));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Worker Task')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Worker Task'));
+    });
+    await waitFor(() => {
+      const state = renderedStore?.getState() as { thread: { selectedThreadId: string | null } };
+      expect(state.thread.selectedThreadId).toBe('w-1');
+    });
+
+    // Now click "Back to parent"
+    await waitFor(() => {
+      expect(screen.getByTitle('Go to parent thread')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('Go to parent thread'));
+    });
+
+    await waitFor(() => {
+      const state = renderedStore?.getState() as { thread: { selectedThreadId: string | null } };
+      expect(state.thread.selectedThreadId).toBe('p-1');
+    });
+  });
+
+  // ── Lifecycle state badges ─────────────────────────────────────────────────
+  // Criterion 3: running / completed / failed states must surface.
+
+  it('shows amber "running" dot when parent inference phase is subagent', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Task', parentThreadId: 'p-1' });
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    await act(async () => {
+      await renderConversations({
+        thread: emptyThreadState,
+        chatRuntime: {
+          inferenceStatusByThread: {
+            'p-1': {
+              phase: 'subagent',
+              activeSubagent: 'researcher',
+              iteration: 1,
+              maxIterations: 10,
+            },
+          },
+          streamingAssistantByThread: {},
+          toolTimelineByThread: {},
+          inferenceTurnLifecycleByThread: {},
+          sessionTokenUsage: { inputTokens: 0, outputTokens: 0, turns: 0, lastUpdated: 0 },
+        },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText('Background work')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText('Background work'));
+    });
+    await waitFor(() => expect(screen.getByText('Worker Task')).toBeInTheDocument());
+
+    // The amber "running" dot must be present
+    expect(screen.getByLabelText('running')).toBeInTheDocument();
+  });
+
+  it('shows coral "failed" dot when the parent timeline has a failed dedicated-thread entry', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Task', parentThreadId: 'p-1' });
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    const failedEntry = {
+      id: 'p-1:subagent:task-1:researcher',
+      name: 'subagent:researcher',
+      round: 1,
+      status: 'error',
+      subagent: {
+        taskId: 'task-1',
+        agentId: 'researcher',
+        mode: 'typed',
+        dedicatedThread: true,
+        toolCalls: [],
+      },
+    };
+
+    await act(async () => {
+      await renderConversations({
+        thread: emptyThreadState,
+        chatRuntime: {
+          inferenceStatusByThread: {},
+          streamingAssistantByThread: {},
+          toolTimelineByThread: { 'p-1': [failedEntry] },
+          inferenceTurnLifecycleByThread: {},
+          sessionTokenUsage: { inputTokens: 0, outputTokens: 0, turns: 0, lastUpdated: 0 },
+        },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText('Background work')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText('Background work'));
+    });
+    await waitFor(() => expect(screen.getByText('Worker Task')).toBeInTheDocument());
+
+    // The coral "failed" dot must be present; amber "running" must NOT
+    expect(screen.getByLabelText('failed')).toBeInTheDocument();
+    expect(screen.queryByLabelText('running')).not.toBeInTheDocument();
+  });
+
+  it('shows sage "completed" dot when the parent timeline has a successful dedicated-thread entry', async () => {
+    const parent = makeThread({ id: 'p-1', title: 'Parent Thread' });
+    const worker = makeThread({ id: 'w-1', title: 'Worker Task', parentThreadId: 'p-1' });
+    mockGetThreads.mockResolvedValue({ threads: [parent, worker], count: 2 });
+
+    const successEntry = {
+      id: 'p-1:subagent:task-1:researcher',
+      name: 'subagent:researcher',
+      round: 1,
+      status: 'success',
+      subagent: {
+        taskId: 'task-1',
+        agentId: 'researcher',
+        mode: 'typed',
+        dedicatedThread: true,
+        toolCalls: [],
+      },
+    };
+
+    await act(async () => {
+      await renderConversations({
+        thread: emptyThreadState,
+        chatRuntime: {
+          inferenceStatusByThread: {},
+          streamingAssistantByThread: {},
+          toolTimelineByThread: { 'p-1': [successEntry] },
+          inferenceTurnLifecycleByThread: {},
+          sessionTokenUsage: { inputTokens: 0, outputTokens: 0, turns: 0, lastUpdated: 0 },
+        },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText('Background work')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText('Background work'));
+    });
+    await waitFor(() => expect(screen.getByText('Worker Task')).toBeInTheDocument());
+
+    // The sage "completed" dot must be present; amber and coral must NOT
+    expect(screen.getByLabelText('completed')).toBeInTheDocument();
+    expect(screen.queryByLabelText('running')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('failed')).not.toBeInTheDocument();
+  });
+});
