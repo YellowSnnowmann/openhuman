@@ -41,9 +41,14 @@ function clearUserScopedStorage(userId: string | null): void {
       // so we don't leave orphaned blobs with no way to scope the deletion.
       localStorage.clear();
     }
-    sessionStorage.clear();
   } catch (err) {
     console.warn('[clearAllAppData] storage clear failed:', err);
+  } finally {
+    try {
+      sessionStorage.clear();
+    } catch {
+      // best-effort
+    }
   }
 }
 
