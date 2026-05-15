@@ -199,6 +199,7 @@ const Conversations = ({ variant = 'page', composer = 'text' }: ConversationsPro
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const [isPlayingReply, setIsPlayingReply] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState<string>('all');
+  const [workerSectionOpen, setWorkerSectionOpen] = useState(false);
   const [inlineSuggestionValue, setInlineSuggestionValue] = useState('');
   const [sendError, setSendError] = useState<ChatSendError | null>(null);
   const [sendAdvisory, setSendAdvisory] = useState<string | null>(null);
@@ -332,6 +333,19 @@ const Conversations = ({ variant = 'page', composer = 'text' }: ConversationsPro
       void dispatch(fetchAndHydrateTurnState(selectedThreadId));
     }
   }, [selectedThreadId, dispatch]);
+
+  // Parent thread of the currently selected thread, if it is a worker thread.
+  const selectedThreadParentId = useMemo(() => {
+    if (!selectedThreadId) return null;
+    return threads.find(t => t.id === selectedThreadId)?.parentThreadId ?? null;
+  }, [threads, selectedThreadId]);
+
+  // Auto-expand the Background work section when the user navigates into a
+  // worker thread (e.g. via WorkerThreadRefCard) so it's always visible in
+  // the sidebar.
+  useEffect(() => {
+    if (selectedThreadParentId) setWorkerSectionOpen(true);
+  }, [selectedThreadParentId]);
 
   // [#1123] Commented out — welcome-agent onboarding replaced by Joyride walkthrough
   // Welcome lockdown unlock (#883) — when `chatOnboardingCompleted`
@@ -944,12 +958,9 @@ const Conversations = ({ variant = 'page', composer = 'text' }: ConversationsPro
   const shouldRenderTimelineBeforeLatestAgentMessage =
     selectedThreadToolTimeline.length > 0 && !isSending && Boolean(latestVisibleAgentMessage);
 
-  const filteredThreads = useMemo(() => {
+  const filteredParentThreads = useMemo(() => {
     const base = threads.filter(t => {
-      // Hide worker/subagent threads from the conversation list. They are
-      // currently surfaced inline inside the parent thread via WorkerThreadRefCard.
-      // A dedicated showcase is tracked in tinyhumansai/openhuman#1624.
-      if (t.parentThreadId) return false;
+      if (t.parentThreadId) return false; // worker threads go to their own section
       if (selectedLabel === 'all') return true;
       return t.labels?.includes(selectedLabel);
     });
@@ -967,11 +978,18 @@ const Conversations = ({ variant = 'page', composer = 'text' }: ConversationsPro
     return base;
   }, [threads, selectedLabel]);
 
-  const sortedThreads = useMemo(() => {
-    return [...filteredThreads].sort(
+  const sortedParentThreads = useMemo(() => {
+    return [...filteredParentThreads].sort(
       (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
     );
-  }, [filteredThreads]);
+  }, [filteredParentThreads]);
+
+  // Worker threads surface in their own "Background work" sidebar section.
+  const sortedWorkerThreads = useMemo(() => {
+    return [...threads.filter(t => Boolean(t.parentThreadId))].sort(
+      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+    );
+  }, [threads]);
 
   // Fixed tab set so categories don't disappear when empty and the active
   // filter state remains unambiguous regardless of what threads exist.
@@ -1046,12 +1064,12 @@ const Conversations = ({ variant = 'page', composer = 'text' }: ConversationsPro
             />
           </div>
           <div className="flex-1 overflow-y-auto">
-            {sortedThreads.length === 0 ? (
+            {sortedParentThreads.length === 0 ? (
               <p className="px-4 py-6 text-xs text-stone-400 text-center">
                 {selectedLabel === 'all' ? 'No threads yet' : `No "${selectedLabel}" threads`}
               </p>
             ) : (
-              sortedThreads.map(thread => (
+              sortedParentThreads.map(thread => (
                 <div
                   key={thread.id}
                   role="button"
@@ -1129,6 +1147,138 @@ const Conversations = ({ variant = 'page', composer = 'text' }: ConversationsPro
               ))
             )}
           </div>
+
+          {/* Background work — collapsible section for worker/subagent threads */}
+          {sortedWorkerThreads.length > 0 && (
+            <div className="border-t border-stone-100 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setWorkerSectionOpen(prev => !prev)}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-stone-500 hover:text-stone-700 hover:bg-stone-50 transition-colors">
+                <span className="flex items-center gap-1.5">
+                  <svg
+                    className="w-3 h-3 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                    />
+                  </svg>
+                  Background work
+                  <span className="rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500">
+                    {sortedWorkerThreads.length}
+                  </span>
+                </span>
+                <svg
+                  className={`w-3 h-3 flex-shrink-0 transition-transform ${workerSectionOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {workerSectionOpen &&
+                sortedWorkerThreads.map(thread => {
+                  // ── Lifecycle state ─────────────────────────────────────
+                  // Running: parent's inference phase is 'subagent' — the orchestrator
+                  // is actively driving this worker thread right now.
+                  const isRunning =
+                    thread.parentThreadId != null &&
+                    inferenceStatusByThread[thread.parentThreadId]?.phase === 'subagent';
+
+                  // Failed / completed: look at the most recent dedicated-thread
+                  // subagent entry in the parent's tool timeline. The depth guard
+                  // (max 1 concurrent worker per parent) makes this attribution
+                  // accurate in practice.
+                  const parentTimeline =
+                    thread.parentThreadId != null
+                      ? (toolTimelineByThread[thread.parentThreadId] ?? [])
+                      : [];
+                  const dedicatedEntries = parentTimeline.filter(
+                    e => e.name.startsWith('subagent:') && e.subagent?.dedicatedThread === true
+                  );
+                  const lastDedicated = dedicatedEntries[dedicatedEntries.length - 1];
+                  const hasFailed = !isRunning && lastDedicated?.status === 'error';
+                  const hasCompleted =
+                    !isRunning && !hasFailed && lastDedicated?.status === 'success';
+
+                  const parentTitle = thread.parentThreadId
+                    ? resolveThreadDisplayTitle(thread.parentThreadId)
+                    : null;
+                  return (
+                    <div
+                      key={thread.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        dispatch(setSelectedThread(thread.id));
+                        void dispatch(loadThreadMessages(thread.id));
+                      }}
+                      onKeyDown={e => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          dispatch(setSelectedThread(thread.id));
+                          void dispatch(loadThreadMessages(thread.id));
+                        }
+                      }}
+                      className={`w-full text-left px-4 py-2.5 border-b border-stone-50 transition-colors cursor-pointer ${
+                        selectedThreadId === thread.id
+                          ? 'bg-primary-50 border-l-2 border-l-primary-500'
+                          : 'hover:bg-stone-50'
+                      }`}>
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            {/* Lifecycle dot — amber=running, coral=failed, sage=completed */}
+                            {isRunning && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0"
+                                aria-label="running"
+                              />
+                            )}
+                            {hasFailed && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-coral-500 flex-shrink-0"
+                                aria-label="failed"
+                              />
+                            )}
+                            {hasCompleted && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-sage-500 flex-shrink-0"
+                                aria-label="completed"
+                              />
+                            )}
+                            <p
+                              className={`text-xs truncate ${
+                                selectedThreadId === thread.id
+                                  ? 'font-medium text-primary-700'
+                                  : 'text-stone-600'
+                              }`}>
+                              {thread.title || 'Worker thread'}
+                            </p>
+                          </div>
+                          {parentTitle && (
+                            <p className="mt-0.5 text-[10px] text-stone-400 truncate">
+                              via {parentTitle}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1160,9 +1310,49 @@ const Conversations = ({ variant = 'page', composer = 'text' }: ConversationsPro
                 />
               </svg>
             </button>
-            <h3 className="text-sm font-medium text-stone-700 truncate flex-1">
-              {resolveThreadDisplayTitle(selectedThreadId)}
-            </h3>
+            {selectedThreadParentId ? (
+              <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch(setSelectedThread(selectedThreadParentId));
+                    void dispatch(loadThreadMessages(selectedThreadParentId));
+                  }}
+                  className="flex items-center gap-1 shrink-0 text-xs text-primary-600 hover:text-primary-800 transition-colors"
+                  title="Go to parent thread">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  <span className="max-w-[100px] truncate">
+                    {resolveThreadDisplayTitle(selectedThreadParentId)}
+                  </span>
+                </button>
+                <svg
+                  className="w-3 h-3 text-stone-300 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+                <h3 className="text-sm font-medium text-stone-700 truncate">
+                  {resolveThreadDisplayTitle(selectedThreadId)}
+                </h3>
+              </div>
+            ) : (
+              <h3 className="text-sm font-medium text-stone-700 truncate flex-1">
+                {resolveThreadDisplayTitle(selectedThreadId)}
+              </h3>
+            )}
             {/* [#1123] welcomeLocked guard removed — always show token usage + new thread button */}
             <>
               <TokenUsagePill />
