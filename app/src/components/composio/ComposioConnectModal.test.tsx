@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { authorize } from '../../lib/composio/composioApi';
 import { type ComposioConnection } from '../../lib/composio/types';
 import ComposioConnectModal, {
   isMissingRequiredFieldsError,
@@ -76,9 +77,11 @@ describe('isMissingRequiredFieldsError', () => {
     expect(isMissingRequiredFieldsError(err)).toBe(true);
   });
 
-  it('matches the error code alone', () => {
+  it('does NOT match on the numeric code alone — avoids false positives from port/resource numbers', () => {
+    // The slug-only check prevents unrelated "612" occurrences (e.g. port numbers, IDs)
+    // from being misidentified as the Composio missing-fields error.
     const err = new Error('error code 612 from server');
-    expect(isMissingRequiredFieldsError(err)).toBe(true);
+    expect(isMissingRequiredFieldsError(err)).toBe(false);
   });
 
   it('returns false for unrelated errors', () => {
@@ -222,6 +225,10 @@ describe('<ComposioConnectModal>', () => {
 // ── Jira-specific flow tests ──────────────────────────────────────────
 
 describe('<ComposioConnectModal> — Jira subdomain collection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('shows the Atlassian subdomain input in the idle phase for Jira', () => {
     render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
 
@@ -285,8 +292,33 @@ describe('<ComposioConnectModal> — Jira subdomain collection', () => {
 // ── needs-subdomain phase tests ───────────────────────────────────────
 
 describe('<ComposioConnectModal> — needs-subdomain recovery phase', () => {
-  it('transitions to needs-subdomain phase when Composio returns the missing-required-fields error', async () => {
-    const { authorize } = await import('../../lib/composio/composioApi');
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('transitions to needs-subdomain phase for Jira when Composio returns the missing-required-fields error', async () => {
+    // needs-subdomain phase is only shown for Atlassian toolkits (jira).
+    vi.mocked(authorize).mockRejectedValueOnce(
+      new Error(
+        'Authorization failed: Backend returned 400: {"error":{"slug":"ConnectedAccount_MissingRequiredFields","code":612}}'
+      )
+    );
+
+    render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
+
+    const input = screen.getByPlaceholderText('your-subdomain');
+    fireEvent.change(input, { target: { value: 'acme' } });
+    fireEvent.click(screen.getByRole('button', { name: /Connect Jira/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Retry connection/i })).toBeInTheDocument();
+      expect(screen.getByText(/To connect Jira/i)).toBeInTheDocument();
+    });
+  });
+
+  it('routes non-Jira missing-required-fields errors to the error phase (not needs-subdomain)', async () => {
+    // Gmail does not have an Atlassian subdomain — showing the Atlassian subdomain
+    // form for it would be misleading and the retry would loop forever.
     vi.mocked(authorize).mockRejectedValueOnce(
       new Error(
         'Authorization failed: Backend returned 400: {"error":{"slug":"ConnectedAccount_MissingRequiredFields","code":612}}'
@@ -294,28 +326,26 @@ describe('<ComposioConnectModal> — needs-subdomain recovery phase', () => {
     );
 
     render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
-
-    const connectButton = screen.getByRole('button', { name: /Connect Gmail/i });
-    fireEvent.click(connectButton);
+    fireEvent.click(screen.getByRole('button', { name: /Connect Gmail/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Retry connection/i })).toBeInTheDocument();
-      expect(screen.getByText(/requires your Atlassian subdomain/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Dismiss/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Retry connection/i })).not.toBeInTheDocument();
     });
   });
 
-  it('does NOT show the raw error message in the needs-subdomain phase', async () => {
-    const { authorize } = await import('../../lib/composio/composioApi');
+  it('does NOT show raw backend payload in the needs-subdomain phase', async () => {
     vi.mocked(authorize).mockRejectedValueOnce(
       new Error(
         'Authorization failed: Backend returned 400: {"error":{"slug":"ConnectedAccount_MissingRequiredFields","code":612,"message":"very sensitive backend payload"}}'
       )
     );
 
-    render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
+    render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
 
-    const connectButton = screen.getByRole('button', { name: /Connect Gmail/i });
-    fireEvent.click(connectButton);
+    const input = screen.getByPlaceholderText('your-subdomain');
+    fireEvent.change(input, { target: { value: 'acme' } });
+    fireEvent.click(screen.getByRole('button', { name: /Connect Jira/i }));
 
     await waitFor(() => {
       expect(screen.queryByText(/very sensitive backend payload/i)).not.toBeInTheDocument();
@@ -324,12 +354,13 @@ describe('<ComposioConnectModal> — needs-subdomain recovery phase', () => {
   });
 
   it('clicking Cancel in needs-subdomain goes back to idle', async () => {
-    const { authorize } = await import('../../lib/composio/composioApi');
     vi.mocked(authorize).mockRejectedValueOnce(new Error('ConnectedAccount_MissingRequiredFields'));
 
-    render(<ComposioConnectModal toolkit={mockToolkit} onClose={() => {}} />);
+    render(<ComposioConnectModal toolkit={jiraToolkit} onClose={() => {}} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Connect Gmail/i }));
+    const input = screen.getByPlaceholderText('your-subdomain');
+    fireEvent.change(input, { target: { value: 'acme' } });
+    fireEvent.click(screen.getByRole('button', { name: /Connect Jira/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Retry connection/i })).toBeInTheDocument();
@@ -338,12 +369,11 @@ describe('<ComposioConnectModal> — needs-subdomain recovery phase', () => {
     fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Connect Gmail/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Connect Jira/i })).toBeInTheDocument();
     });
   });
 
   it('surfaces a sanitized (non-raw) error for unrelated authorization failures', async () => {
-    const { authorize } = await import('../../lib/composio/composioApi');
     vi.mocked(authorize).mockRejectedValueOnce(
       new Error(
         'Authorization failed: Backend returned 500 Internal Server Error for POST https://api.tinyhumans.ai/agent-integrations/composio/authorize: {"error":{"message":"internal server error payload","code":500}}'

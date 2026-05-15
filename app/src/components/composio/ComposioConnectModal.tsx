@@ -47,11 +47,10 @@ function deriveConnectionLabel(c: ComposioConnection): string | null {
 }
 
 /**
- * Composio error code 612 — the authorize endpoint requires at least one
- * additional field (e.g. Atlassian subdomain for Jira) that was not supplied
- * in the request body.
+ * The Composio error slug for missing required fields (code 612). Matching
+ * on the slug string is more precise than matching the numeric code, which
+ * could appear in unrelated messages (e.g. port numbers, resource IDs).
  */
-const COMPOSIO_MISSING_REQUIRED_FIELDS_CODE = 612;
 const COMPOSIO_MISSING_REQUIRED_FIELDS_SLUG = 'ConnectedAccount_MissingRequiredFields';
 
 /**
@@ -67,16 +66,14 @@ export function isValidAtlassianSubdomain(value: string): boolean {
 /**
  * Detect a `ConnectedAccount_MissingRequiredFields` (code 612) error from
  * the backend/Composio. Returns true if the thrown error message contains
- * the known slug or code. Safe to call with any value — returns false for
- * null/non-Error.
+ * the known slug. Matching only on the slug avoids false positives from
+ * unrelated messages that happen to contain the numeric code "612".
+ * Safe to call with any value — returns false for null/non-Error.
  */
 export function isMissingRequiredFieldsError(err: unknown): boolean {
   if (!err) return false;
   const msg = err instanceof Error ? err.message : String(err);
-  return (
-    msg.includes(COMPOSIO_MISSING_REQUIRED_FIELDS_SLUG) ||
-    msg.includes(String(COMPOSIO_MISSING_REQUIRED_FIELDS_CODE))
-  );
+  return msg.includes(COMPOSIO_MISSING_REQUIRED_FIELDS_SLUG);
 }
 
 /**
@@ -355,15 +352,27 @@ export default function ComposioConnectModal({
       );
 
       if (isMissingRequiredFieldsError(err)) {
-        // Composio reported a missing required field (code 612). Transition to
-        // a dedicated phase so the user can supply the subdomain and retry
-        // without restarting the whole flow.
+        // Composio reported a missing required field (code 612). For Atlassian
+        // toolkits, transition to the dedicated needs-subdomain phase so the
+        // user can supply the field and retry. For other toolkits, surface a
+        // sanitized message in the error phase — the needs-subdomain UI
+        // currently only collects an Atlassian subdomain, so showing it for
+        // non-Atlassian toolkits would be misleading and the Retry loop would
+        // never succeed.
         console.debug(
-          '[composio][authorize] missing-required-fields toolkit=%s — transitioning to needs-subdomain',
-          toolkit.slug
+          '[composio][authorize] missing-required-fields toolkit=%s needsAtlassianSubdomain=%s',
+          toolkit.slug,
+          needsAtlassianSubdomain
         );
-        setPhase('needs-subdomain');
-        setError(null);
+        if (needsAtlassianSubdomain) {
+          setPhase('needs-subdomain');
+          setError(null);
+        } else {
+          setPhase('error');
+          setError(
+            'This connection requires additional configuration. Please contact support for assistance.'
+          );
+        }
         return;
       }
 
@@ -587,8 +596,9 @@ export default function ComposioConnectModal({
           {phase === 'needs-subdomain' && (
             <>
               <p className="text-sm text-stone-600">
-                {toolkit.name} requires your Atlassian subdomain to complete authorization. Enter
-                the subdomain below and try again.
+                To connect {toolkit.name}, enter your Atlassian subdomain (e.g.{' '}
+                <span className="font-mono">acme</span> for{' '}
+                <span className="font-mono">acme.atlassian.net</span>) and try again.
               </p>
               <AtlassianSubdomainInput
                 value={atlassianSubdomain}
@@ -828,14 +838,20 @@ function AtlassianSubdomainInput({
           onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
           placeholder="your-subdomain"
           aria-describedby="atlassian-subdomain-hint"
+          aria-invalid={!!error}
           className="flex-1 min-w-0 px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 bg-transparent focus:outline-none"
         />
         <span className="pr-3 text-xs text-stone-400 select-none whitespace-nowrap">
           .atlassian.net
         </span>
       </div>
+      {/* Always render the hint paragraph with the same id so aria-describedby resolves
+          correctly regardless of error state. When there is an error, role="alert"
+          causes screen readers to announce the message immediately. */}
       {error ? (
-        <p className="text-[11px] text-coral-600">{error}</p>
+        <p id="atlassian-subdomain-hint" role="alert" className="text-[11px] text-coral-600">
+          {error}
+        </p>
       ) : (
         <p id="atlassian-subdomain-hint" className="text-[11px] leading-relaxed text-stone-400">
           Enter the short subdomain only — e.g. <span className="font-mono">acme</span> for{' '}
