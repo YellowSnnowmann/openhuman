@@ -1683,7 +1683,7 @@ fn append_platform_cef_gpu_workarounds(args: &mut Vec<CefCommandLineArg>, os: &s
     #[cfg(target_os = "linux")]
     {
         let uid = nix::unistd::getuid().as_raw();
-        if linux_is_root_uid(uid) {
+        if os == "linux" && linux_is_root_uid(uid) {
             args.push(("--no-sandbox", None));
             log::info!(
                 "[cef-startup] running as root (uid=0) on Linux: adding --no-sandbox \

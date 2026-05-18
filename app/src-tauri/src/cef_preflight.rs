@@ -223,6 +223,12 @@ mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
 
+    // Shared lock for all tests that mutate process-global env vars.
+    // Each test previously had its own local `static ENV_LOCK`, allowing
+    // concurrent test threads to race on OPENHUMAN_CEF_CACHE_PATH /
+    // XDG_CACHE_HOME. A single module-level lock serialises them.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn parse_target_simple() {
         assert_eq!(
@@ -339,7 +345,6 @@ mod tests {
     /// in production, but the configured-path branch must work on all platforms.
     #[test]
     fn check_default_cache_uses_configured_env_path() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         let prior = std::env::var_os("OPENHUMAN_CEF_CACHE_PATH");
@@ -361,7 +366,6 @@ mod tests {
     /// must return `CefLockError::Held`.
     #[test]
     fn check_default_cache_env_path_held_returns_err() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         let prior = std::env::var_os("OPENHUMAN_CEF_CACHE_PATH");
@@ -390,7 +394,6 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn check_default_cache_linux_xdg_fallback_no_lock() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         let prior_cache = std::env::var_os("OPENHUMAN_CEF_CACHE_PATH");
