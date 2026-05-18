@@ -402,15 +402,21 @@ fn is_permission_error(e: &std::io::Error) -> bool {
 
 /// Attempt to repair a locked key file by running `icacls /reset` on it.
 ///
-/// `icacls /reset` removes all explicit ACEs and re-enables ACL inheritance
-/// from the parent directory.  Because `.secret_key` lives under `%APPDATA%\openhuman\`
-/// — a user-owned directory — the inherited ACEs are always correct.  This
-/// undoes any prior bad icacls invocation that stripped inheritance without
-/// setting a valid explicit grant.
+/// Attempt to repair a locked key file.
 ///
-/// Returns `true` if icacls exited successfully.
+/// Two-step process:
+///   1. `icacls /reset` — removes all explicit ACEs and re-enables ACL
+///      inheritance from the parent directory.
+///   2. `icacls /grant:r <DOMAIN\USER>:F` — explicit grant for the current
+///      user as a belt-and-suspenders fallback for environments (e.g. CI
+///      temp dirs) where the parent's inheritance chain may not include the
+///      runner account.
+///
+/// Returns `true` if the file is actually readable after the repair attempt,
+/// regardless of which step(s) succeeded.
 #[cfg(windows)]
 pub(super) fn repair_windows_acl(path: &Path) -> bool {
+    // Step 1: restore inheritance.
     match std::process::Command::new("icacls")
         .arg(path)
         .args(["/reset"])
@@ -421,24 +427,60 @@ pub(super) fn repair_windows_acl(path: &Path) -> bool {
                 "[security] icacls /reset succeeded for '{}'; ACL inheritance restored",
                 path.display()
             );
-            true
         }
         Ok(o) => {
             log::warn!(
-                "[security] icacls /reset exited {:?} for '{}'; cannot self-repair ACL",
+                "[security] icacls /reset exited {:?} for '{}'",
                 o.status.code(),
                 path.display()
             );
-            false
         }
         Err(e) => {
             log::warn!(
                 "[security] could not run icacls /reset for '{}': {e}",
                 path.display()
             );
-            false
         }
     }
+
+    // Step 2: explicit grant for current user — handles CI environments
+    // where the temp/app dir's inheritable ACEs don't include the runner.
+    let username = std::env::var("USERNAME").unwrap_or_default();
+    let userdomain = std::env::var("USERDOMAIN").unwrap_or_default();
+    let computername = std::env::var("COMPUTERNAME").unwrap_or_default();
+    let qualified = qualify_windows_username(&username, &userdomain, &computername);
+    if let Some(grant_arg) = build_windows_icacls_grant_arg(&qualified) {
+        match std::process::Command::new("icacls")
+            .arg(path)
+            .args(["/grant:r"])
+            .arg(&grant_arg)
+            .output()
+        {
+            Ok(o) if o.status.success() => {
+                log::debug!(
+                    "[security] explicit grant '{grant_arg}' succeeded during repair of '{}'",
+                    path.display()
+                );
+            }
+            Ok(o) => {
+                log::warn!(
+                    "[security] explicit grant '{grant_arg}' exited {:?} during repair of '{}'",
+                    o.status.code(),
+                    path.display()
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[security] could not run icacls /grant during repair of '{}': {e}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    // Return whether the file is actually readable now — callers use this
+    // for logging/metrics; the retry in load_or_create_key is unconditional.
+    std::fs::read(path).is_ok()
 }
 
 /// XOR cipher with repeating key. Same function for encrypt and decrypt.
