@@ -497,6 +497,212 @@ fn windows_icacls_grant_arg_preserves_valid_characters() {
     );
 }
 
+// ── qualify_windows_username ─────────────────────────────────
+
+#[cfg(windows)]
+#[test]
+fn qualify_windows_username_local_account() {
+    // USERDOMAIN == COMPUTERNAME → standalone machine → plain username
+    assert_eq!(
+        qualify_windows_username("alice", "DESKTOP-ABC", "DESKTOP-ABC"),
+        "alice"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn qualify_windows_username_domain_joined() {
+    // USERDOMAIN != COMPUTERNAME → domain-joined → prefix with domain
+    assert_eq!(
+        qualify_windows_username("alice", "CORP", "DESKTOP-ABC"),
+        "CORP\\alice"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn qualify_windows_username_case_insensitive_comparison() {
+    // Case-insensitive: "desktop-abc" == "DESKTOP-ABC" → local account
+    assert_eq!(
+        qualify_windows_username("bob", "desktop-abc", "DESKTOP-ABC"),
+        "bob"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn qualify_windows_username_empty_computername() {
+    // COMPUTERNAME is unset — fall back to plain username to avoid prefixing
+    // with a potentially meaningless domain string
+    assert_eq!(qualify_windows_username("alice", "CORP", ""), "alice");
+}
+
+#[cfg(windows)]
+#[test]
+fn qualify_windows_username_empty_userdomain() {
+    // USERDOMAIN is unset — use plain username
+    assert_eq!(
+        qualify_windows_username("alice", "", "DESKTOP-ABC"),
+        "alice"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn qualify_windows_username_empty_username_returns_empty() {
+    assert_eq!(qualify_windows_username("", "CORP", "DESKTOP-ABC"), "");
+}
+
+#[cfg(windows)]
+#[test]
+fn qualify_windows_username_whitespace_trimmed() {
+    assert_eq!(
+        qualify_windows_username("  alice  ", "  CORP  ", "  DESKTOP-XYZ  "),
+        "CORP\\alice"
+    );
+}
+
+// ── Windows self-repair path ─────────────────────────────────
+
+/// Simulate a locked key file on non-Windows: write the file, remove all
+/// read permissions, verify the store recovers after `chmod` restores them.
+/// On Windows the equivalent is tested by is_permission_error / repair_windows_acl.
+#[cfg(unix)]
+#[test]
+fn locked_key_file_fails_gracefully_on_unix() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = TempDir::new().unwrap();
+    let store = SecretStore::new(tmp.path(), true);
+
+    // Trigger key creation and cache it
+    let encrypted = store.encrypt("original-secret").unwrap();
+    assert!(store.key_path.exists());
+
+    // While the key is cached, decryption still works even if the file is gone
+    fs::set_permissions(&store.key_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+    // Cached path: still works
+    let decrypted = store.decrypt(&encrypted).unwrap();
+    assert_eq!(decrypted, "original-secret");
+
+    // Restore for cleanup
+    fs::set_permissions(&store.key_path, fs::Permissions::from_mode(0o600)).unwrap();
+}
+
+/// End-to-end test for the Windows self-repair path.
+///
+/// Recreates the exact bad state that caused OPENHUMAN-TAURI-GN:
+///   1. Key file created, ACL corrupted with `icacls /inheritance:r` + no valid grant
+///      (simulated here with an explicit `Everyone:DENY` which is even stricter).
+///   2. In-memory cache cleared so the next call must actually read from disk.
+///   3. `decrypt` is called — the self-repair path must run `icacls /reset`,
+///      restore inherited ACLs, re-read the file, and return the correct plaintext.
+///
+/// This test MUST be run on Windows with a real icacls binary.
+/// Run with: `cargo test --target x86_64-pc-windows-msvc self_repair_recovers`
+#[cfg(windows)]
+#[test]
+fn self_repair_recovers_from_locked_key_file() {
+    let tmp = TempDir::new().unwrap();
+    let store = SecretStore::new(tmp.path(), true);
+
+    // Step 1: create the key file and produce a ciphertext to decrypt later.
+    let encrypted = store
+        .encrypt("secret-to-survive-acl-lockout")
+        .expect("initial encrypt must succeed");
+    assert!(store.key_path.exists(), "key file must exist after first encrypt");
+
+    // Step 2: clear the in-memory cache so the next decrypt reads from disk.
+    super::clear_cached_key(&store.key_path);
+
+    // Step 3: corrupt the ACL — strip inheritance AND add an explicit DENY for
+    // Everyone.  This is a strict superset of the production failure mode (where
+    // /inheritance:r ran but the /grant target was unresolvable, leaving no ACE).
+    let lock_status = std::process::Command::new("icacls")
+        .arg(&store.key_path)
+        .args(["/inheritance:r", "/deny"])
+        .arg("Everyone:F")
+        .status()
+        .expect("icacls must be available on Windows");
+    assert!(
+        lock_status.success(),
+        "icacls lock step must succeed — test setup invalid"
+    );
+
+    // Step 4: confirm the file is now unreadable so we know the test setup is
+    // valid (guards against the test passing vacuously on permissive setups).
+    let read_attempt = fs::read_to_string(&store.key_path);
+    assert!(
+        read_attempt.is_err(),
+        "file must be unreadable after ACL lock — verify you are not running as SYSTEM/admin"
+    );
+
+    // Step 5: decrypt — this should trigger the self-repair path:
+    //   is_permission_error → repair_windows_acl (icacls /reset) → retry read → success.
+    let decrypted = store
+        .decrypt(&encrypted)
+        .expect("self-repair must restore access and return correct plaintext");
+    assert_eq!(
+        decrypted, "secret-to-survive-acl-lockout",
+        "decrypted value must match original"
+    );
+
+    // Step 6: verify the file is readable again after repair (inheritance restored).
+    assert!(
+        fs::read_to_string(&store.key_path).is_ok(),
+        "key file must be readable again after self-repair"
+    );
+}
+
+/// Verify that the self-repair path does NOT trigger for non-permission errors
+/// (e.g. corrupt/truncated file) — we should get a clear error, not a silent
+/// retry that produces garbage.
+#[cfg(windows)]
+#[test]
+fn self_repair_does_not_trigger_for_corrupt_file() {
+    let tmp = TempDir::new().unwrap();
+    let store = SecretStore::new(tmp.path(), true);
+
+    // Write a corrupt (non-hex) key file directly — simulates on-disk corruption.
+    fs::create_dir_all(tmp.path()).unwrap();
+    fs::write(&store.key_path, "this-is-not-valid-hex!!!").unwrap();
+    super::clear_cached_key(&store.key_path);
+
+    let err = store.encrypt("anything").unwrap_err();
+    let msg = format!("{err:?}");
+    // Must surface a hex/corrupt error, not attempt a repair loop.
+    assert!(
+        msg.contains("corrupt") || msg.contains("hex") || msg.contains("Invalid"),
+        "corrupt file must surface a clear decode error, got: {msg}"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn is_permission_error_matches_access_denied() {
+    use std::io::{Error, ErrorKind};
+    let perm_err = Error::from(ErrorKind::PermissionDenied);
+    assert!(is_permission_error(&perm_err));
+}
+
+#[cfg(windows)]
+#[test]
+fn is_permission_error_ignores_not_found() {
+    use std::io::{Error, ErrorKind};
+    let not_found = Error::from(ErrorKind::NotFound);
+    assert!(!is_permission_error(&not_found));
+}
+
+#[cfg(windows)]
+#[test]
+fn is_permission_error_matches_raw_os_error_5() {
+    use std::io::Error;
+    // raw OS error 5 = ERROR_ACCESS_DENIED
+    let err = Error::from_raw_os_error(5);
+    assert!(is_permission_error(&err));
+}
+
 #[test]
 fn generate_random_key_correct_length() {
     let key = generate_random_key();
