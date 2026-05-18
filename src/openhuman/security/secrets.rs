@@ -410,7 +410,7 @@ fn is_permission_error(e: &std::io::Error) -> bool {
 ///
 /// Returns `true` if icacls exited successfully.
 #[cfg(windows)]
-fn repair_windows_acl(path: &Path) -> bool {
+pub(super) fn repair_windows_acl(path: &Path) -> bool {
     match std::process::Command::new("icacls")
         .arg(path)
         .args(["/reset"])
