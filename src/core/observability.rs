@@ -326,6 +326,10 @@ fn is_provider_user_state_message(lower: &str) -> bool {
         return true;
     }
 
+    if lower.contains("bad request to upstream provider") && lower.contains("upstream_error") {
+        return true;
+    }
+
     // OPENHUMAN-TAURI-97: composio authorize with a blank required field —
     // SharePoint Subdomain, WhatsApp WABA ID, Tenant Name, etc.
     // Backend returns 500 with `"Missing required fields: …"` body.
@@ -1409,6 +1413,29 @@ mod tests {
                 "tool.invoke failed: Backend returned 400 Bad Request for POST \
                  /agent-integrations/composio/execute: Toolkit \"linear\" is not enabled \
                  for this account"
+            ),
+            Some(ExpectedErrorKind::ProviderUserState)
+        );
+    }
+
+    #[test]
+    fn classifies_custom_openai_upstream_bad_request_as_provider_user_state() {
+        assert_eq!(
+            expected_error_kind(
+                "custom_openai API error (400 Bad Request): \
+                 {\"error\":{\"message\":\"Bad request to upstream provider\",\
+                 \"type\":\"upstream_error\",\"status\":400}}"
+            ),
+            Some(ExpectedErrorKind::ProviderUserState)
+        );
+
+        // Wrapped by higher-level callers (`agent.run_single`,
+        // `rpc.invoke_method`) must still classify.
+        assert_eq!(
+            expected_error_kind(
+                "agent.run_single failed: custom_openai API error (400 Bad Request): \
+                 {\"error\":{\"message\":\"Bad request to upstream provider\",\
+                 \"type\":\"upstream_error\",\"status\":400}}"
             ),
             Some(ExpectedErrorKind::ProviderUserState)
         );
