@@ -667,7 +667,7 @@ fn self_repair_recovers_from_locked_key_file() {
     } else {
         // Elevated runner: lock was bypassed.  Verify repair_windows_acl runs
         // cleanly on an already-accessible file (icacls /reset is idempotent).
-        let repaired = super::super::repair_windows_acl(&store.key_path);
+        let repaired = super::repair_windows_acl(&store.key_path);
         assert!(
             repaired,
             "repair_windows_acl must succeed on an accessible file"
