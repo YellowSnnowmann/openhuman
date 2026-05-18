@@ -586,13 +586,18 @@ fn locked_key_file_fails_gracefully_on_unix() {
     // Clear the cache so the decrypt path actually hits the disk.
     super::clear_cached_key(&store.key_path);
 
-    // With the cache gone and the file unreadable, decrypt must return a
-    // clean error — not panic or hang.
-    let result = store.decrypt(&encrypted);
-    assert!(
-        result.is_err(),
-        "decrypt must fail gracefully when key file is locked and cache is empty"
-    );
+    // Linux CI containers commonly run as root, which bypasses file permission
+    // checks — chmod 0o000 has no effect and the file stays readable.  Only
+    // assert the graceful-failure behaviour when the lock actually took hold;
+    // otherwise the test would fail vacuously on root runners.
+    let file_is_locked = fs::read_to_string(&store.key_path).is_err();
+    if file_is_locked {
+        let result = store.decrypt(&encrypted);
+        assert!(
+            result.is_err(),
+            "decrypt must fail gracefully when key file is locked and cache is empty"
+        );
+    }
 
     // Restore permissions so TempDir cleanup can remove the file.
     fs::set_permissions(&store.key_path, fs::Permissions::from_mode(0o600)).unwrap();
