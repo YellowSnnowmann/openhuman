@@ -7,9 +7,16 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
+
+/// Matches the value used by `memory/tree/store.rs`. Without this, any
+/// concurrent writer (e.g. an overlapping `whatsapp_data_ingest` tick, or
+/// ingest racing with a UI-triggered list/search read on the same DB) gets
+/// `SQLITE_BUSY` returned immediately as `database is locked`.
+const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(15);
 
 use crate::openhuman::whatsapp_data::types::{
     ChatMeta, IngestMessage, ListChatsRequest, ListMessagesRequest, SearchMessagesRequest,
@@ -77,8 +84,11 @@ impl WhatsAppDataStore {
     }
 
     fn open_conn(&self) -> Result<Connection> {
-        Connection::open(&self.db_path)
-            .with_context(|| format!("open whatsapp_data db: {}", self.db_path.display()))
+        let conn = Connection::open(&self.db_path)
+            .with_context(|| format!("open whatsapp_data db: {}", self.db_path.display()))?;
+        conn.busy_timeout(SQLITE_BUSY_TIMEOUT)
+            .context("configure whatsapp_data busy_timeout")?;
+        Ok(conn)
     }
 
     fn now_secs() -> i64 {
