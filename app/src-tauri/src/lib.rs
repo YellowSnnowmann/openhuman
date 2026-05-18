@@ -1609,7 +1609,10 @@ fn linux_display_server_present(display: bool, wayland_display: bool) -> bool {
 /// Detect it here and exit with a clear message before `CefRuntime::init` runs.
 #[cfg(target_os = "linux")]
 fn check_linux_display_server() {
-    if linux_display_server_present(has_non_empty_env("DISPLAY"), has_non_empty_env("WAYLAND_DISPLAY")) {
+    if linux_display_server_present(
+        has_non_empty_env("DISPLAY"),
+        has_non_empty_env("WAYLAND_DISPLAY"),
+    ) {
         log::debug!(
             "[cef-preflight] Linux display server present: DISPLAY={:?} WAYLAND_DISPLAY={:?}",
             std::env::var("DISPLAY").ok(),
