@@ -1634,6 +1634,13 @@ fn check_linux_display_server() {}
 
 type CefCommandLineArg = (&'static str, Option<&'static str>);
 
+/// Returns `true` when the process is running as root (UID 0) on Linux.
+/// Testable pure function; takes the uid directly.
+#[cfg(any(target_os = "linux", test))]
+fn linux_is_root_uid(uid: u32) -> bool {
+    uid == 0
+}
+
 fn append_platform_cef_gpu_workarounds(args: &mut Vec<CefCommandLineArg>, os: &str, arch: &str) {
     // Issue #1697: on Arch/Manjaro-family Linux systems, the AppImage can
     // abort during CEF GPU process startup when EGL context creation fails
@@ -1658,6 +1665,28 @@ fn append_platform_cef_gpu_workarounds(args: &mut Vec<CefCommandLineArg>, os: &s
         log::info!(
             "[cef-startup] Intel macOS detected: adding --disable-gpu-compositing (issue #1012)"
         );
+    }
+
+    // Sentry OPENHUMAN-TAURI-K1: `cef::initialize` returns 0 when running as
+    // root (uid 0) on Linux unless `--no-sandbox` is passed as a command-line
+    // argument. The `no_sandbox: 1` field in `cef::Settings` disables the
+    // sub-process sandbox but does NOT satisfy Chromium's separate root-user
+    // check in the browser process — that check requires the CLI flag.
+    //
+    // This hits CI / coder-bot / Docker environments (e.g.
+    // `/root/.hermes/profiles/coder-bot/home`) that run as root inside a
+    // container. Without the flag, `cef_initialize` returns 0 and the vendored
+    // runtime assertion fires (`left: 0, right: 1`).
+    #[cfg(target_os = "linux")]
+    {
+        let uid = nix::unistd::getuid().as_raw();
+        if linux_is_root_uid(uid) {
+            args.push(("--no-sandbox", None));
+            log::info!(
+                "[cef-startup] running as root (uid=0) on Linux: adding --no-sandbox \
+                 (OPENHUMAN-TAURI-K1)"
+            );
+        }
     }
 }
 
@@ -3273,6 +3302,17 @@ mod tests {
     #[test]
     fn linux_display_absent_without_either() {
         assert!(!linux_display_server_present(false, false));
+    }
+
+    #[test]
+    fn linux_root_uid_detected() {
+        assert!(linux_is_root_uid(0));
+    }
+
+    #[test]
+    fn linux_non_root_uid_not_detected() {
+        assert!(!linux_is_root_uid(1000));
+        assert!(!linux_is_root_uid(1));
     }
 
     // -------------------------------------------------------------------------
