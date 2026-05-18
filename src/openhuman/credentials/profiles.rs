@@ -7,7 +7,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const CURRENT_SCHEMA_VERSION: u32 = 1;
 const PROFILES_FILENAME: &str = "auth-profiles.json";
@@ -538,7 +538,15 @@ impl AuthProfilesStore {
                 .with_context(|| "Failed to create auth profile lock directory".to_string())?;
         }
 
-        let mut waited = 0_u64;
+        // Drive timeout + stale-recheck off wall-clock elapsed time, not the
+        // sum of explicit `thread::sleep(LOCK_WAIT_MS)` calls. The earlier
+        // counter-based approach excluded time spent inside
+        // `retry_with_backoff` (which can sleep up to ~30s on its own
+        // schedule before returning AlreadyExists) and the lock-file I/O
+        // syscalls. Under Windows AV contention that drift could push
+        // both `LOCK_TIMEOUT_MS` and `next_stale_recheck_ms` significantly
+        // later than intended.
+        let started_at = Instant::now();
         let mut cleared_stale = false;
         // Periodically re-probe for stale locks during the busy-wait. A
         // lock that started fresh (live pid, recent mtime) can age past
@@ -600,23 +608,25 @@ impl AuthProfilesStore {
                             if self.clear_lock_if_stale() {
                                 continue;
                             }
-                        } else if waited >= next_stale_recheck_ms {
-                            // The age-based reclaim check is cheap (one
-                            // `fs::metadata` call in the common case) and
-                            // safely no-ops on fresh, legitimate locks.
-                            // Re-probing periodically lets us recover from
-                            // a leaked-mid-wait lock without bailing at
-                            // the 10s timeout.
-                            next_stale_recheck_ms = next_stale_recheck_ms.saturating_add(1_000);
-                            if self.clear_lock_if_stale() {
-                                continue;
+                        } else {
+                            let elapsed_ms = started_at.elapsed().as_millis() as u64;
+                            if elapsed_ms >= next_stale_recheck_ms {
+                                // The age-based reclaim check is cheap (one
+                                // `fs::metadata` call in the common case) and
+                                // safely no-ops on fresh, legitimate locks.
+                                // Re-probing periodically lets us recover from
+                                // a leaked-mid-wait lock without bailing at
+                                // the 10s timeout.
+                                next_stale_recheck_ms = next_stale_recheck_ms.saturating_add(1_000);
+                                if self.clear_lock_if_stale() {
+                                    continue;
+                                }
                             }
                         }
-                        if waited >= LOCK_TIMEOUT_MS {
+                        if started_at.elapsed().as_millis() as u64 >= LOCK_TIMEOUT_MS {
                             anyhow::bail!("Timed out waiting for auth profile lock");
                         }
                         thread::sleep(Duration::from_millis(LOCK_WAIT_MS));
-                        waited = waited.saturating_add(LOCK_WAIT_MS);
                     } else {
                         return Err(e).context("Failed to create auth profile lock");
                     }

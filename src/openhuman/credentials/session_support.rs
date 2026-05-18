@@ -135,7 +135,15 @@ pub fn session_state_from_profile(profile: Option<&AuthProfile>) -> AuthStateRes
 }
 
 pub fn session_token_from_profile(profile: Option<&AuthProfile>) -> Option<String> {
-    profile.and_then(|entry| entry.token.clone())
+    // Mirror the `is_authenticated` check in `session_state_from_profile`
+    // (trim + non-empty) so the two views of the same profile never
+    // disagree — i.e. we never return `Some("   ")` while reporting
+    // `is_authenticated = false`.
+    profile
+        .and_then(|entry| entry.token.as_deref())
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -329,6 +337,29 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let config = test_config(&tmp);
         assert!(get_session_token(&config).unwrap().is_none());
+    }
+
+    /// Regression for CodeRabbit feedback on PR #2085: a profile whose
+    /// token is whitespace-only must come back as `None`, matching the
+    /// `is_authenticated` view (which trims + filters empty).
+    #[test]
+    fn session_token_from_profile_normalises_blank_tokens_to_none() {
+        let p_blank = profile_fixture(AuthProfileKind::Token, Some("   "));
+        assert!(session_token_from_profile(Some(&p_blank)).is_none());
+
+        let p_empty = profile_fixture(AuthProfileKind::Token, Some(""));
+        assert!(session_token_from_profile(Some(&p_empty)).is_none());
+
+        let p_none = profile_fixture(AuthProfileKind::Token, None);
+        assert!(session_token_from_profile(Some(&p_none)).is_none());
+
+        let p_real = profile_fixture(AuthProfileKind::Token, Some("  tok  "));
+        // Trim leaks into the returned value — this matches the
+        // `is_authenticated` semantic that "  tok  " is a real token.
+        assert_eq!(
+            session_token_from_profile(Some(&p_real)).as_deref(),
+            Some("tok")
+        );
     }
 
     #[test]
