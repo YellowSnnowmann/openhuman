@@ -623,7 +623,10 @@ fn self_repair_recovers_from_locked_key_file() {
     let encrypted = store
         .encrypt("secret-to-survive-acl-lockout")
         .expect("initial encrypt must succeed");
-    assert!(store.key_path.exists(), "key file must exist after first encrypt");
+    assert!(
+        store.key_path.exists(),
+        "key file must exist after first encrypt"
+    );
 
     // Step 2: clear the in-memory cache so the next decrypt reads from disk.
     super::clear_cached_key(&store.key_path);
@@ -665,7 +668,10 @@ fn self_repair_recovers_from_locked_key_file() {
         // Elevated runner: lock was bypassed.  Verify repair_windows_acl runs
         // cleanly on an already-accessible file (icacls /reset is idempotent).
         let repaired = super::super::repair_windows_acl(&store.key_path);
-        assert!(repaired, "repair_windows_acl must succeed on an accessible file");
+        assert!(
+            repaired,
+            "repair_windows_acl must succeed on an accessible file"
+        );
         let decrypted = store
             .decrypt(&encrypted)
             .expect("decrypt must succeed when file is accessible");
