@@ -12,11 +12,7 @@
  */
 import { waitForApp } from '../helpers/app-helpers';
 import { textExists, waitForText } from '../helpers/element-helpers';
-import {
-  navigateToBilling,
-  navigateToHome,
-  performFullLogin,
-} from '../helpers/shared-flows';
+import { navigateToBilling, navigateToHome, performFullLogin } from '../helpers/shared-flows';
 import { clearRequestLog, startMockServer, stopMockServer } from '../mock-server';
 
 const LOG_PREFIX = '[CryptoPayment]';

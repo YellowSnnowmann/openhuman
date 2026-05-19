@@ -39,7 +39,7 @@ import {
   waitForWindowVisible,
 } from '../helpers/element-helpers';
 import { resetApp } from '../helpers/reset-app';
-import { walkOnboarding, waitForHomePage } from '../helpers/shared-flows';
+import { waitForHomePage, walkOnboarding } from '../helpers/shared-flows';
 import {
   clearRequestLog,
   getRequestLog,

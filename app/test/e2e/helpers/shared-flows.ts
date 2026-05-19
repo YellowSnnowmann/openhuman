@@ -66,10 +66,7 @@ export async function waitForHomePage(timeout = 15_000) {
   // Home page (Home.tsx) renders t('home.askAssistant') = 'Ask your assistant anything...'
   // as a stable CTA button. The animated typewriter heading ('Welcome, <name> 👋' etc.)
   // and old strings ('Good morning', 'Message OpenHuman', 'Upgrade to Premium') are gone.
-  const candidates = [
-    'Ask your assistant anything',
-    'Your device is connected',
-  ];
+  const candidates = ['Ask your assistant anything', 'Your device is connected'];
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     for (const text of candidates) {

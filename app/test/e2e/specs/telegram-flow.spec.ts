@@ -561,7 +561,9 @@ describe.skip('Telegram Integration Flows', () => {
       // Verify the "Ask your assistant anything" button exists and is clickable
       const hasButton = await textExists('Ask your assistant anything');
       expect(hasButton).toBe(true);
-      console.log(`${LOG_PREFIX} 7.2.3: "Ask your assistant anything" button is present for auth user`);
+      console.log(
+        `${LOG_PREFIX} 7.2.3: "Ask your assistant anything" button is present for auth user`
+      );
 
       // The button should be interactable — it's the entry point for initiating Telegram actions
       const buttonEl = await waitForText('Ask your assistant anything', 10_000);

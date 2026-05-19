@@ -64,7 +64,9 @@ describe('Card Payment Flow', () => {
       await browser.pause(1_500);
       // Should be back on a settings page
       const onSettings =
-        (await textExists('Settings')) || (await textExists('Account')) || (await textExists('Data'));
+        (await textExists('Settings')) ||
+        (await textExists('Account')) ||
+        (await textExists('Data'));
       expect(onSettings).toBe(true);
       console.log(`${LOG_PREFIX} 5.3 — back-to-settings navigation works`);
     } else {
