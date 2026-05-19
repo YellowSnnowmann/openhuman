@@ -67,6 +67,8 @@ run "test/e2e/specs/runtime-picker-login.spec.ts"           "runtime-picker-logi
 # Navigation & core UI
 # ---------------------------------------------------------------------------
 run "test/e2e/specs/navigation.spec.ts"                     "navigation"
+run "test/e2e/specs/navigation-smoothness.spec.ts"          "navigation-smoothness"
+run "test/e2e/specs/navigation-settings-panels.spec.ts"     "navigation-settings"
 run "test/e2e/specs/command-palette.spec.ts"                "command-palette"
 run "test/e2e/specs/channels-smoke.spec.ts"                 "channels-smoke"
 run "test/e2e/specs/insights-dashboard.spec.ts"             "insights-dashboard"
@@ -79,6 +81,9 @@ run "test/e2e/specs/chat-harness-cancel.spec.ts"            "chat-cancel"
 run "test/e2e/specs/chat-harness-scroll-render.spec.ts"     "chat-scroll-render"
 run "test/e2e/specs/chat-harness-subagent.spec.ts"          "chat-subagent"
 run "test/e2e/specs/chat-harness-wallet-flow.spec.ts"       "chat-wallet"
+run "test/e2e/specs/chat-tool-call-flow.spec.ts"            "chat-tool-call"
+run "test/e2e/specs/chat-multi-tool-round.spec.ts"          "chat-multi-tool"
+run "test/e2e/specs/chat-tool-error-recovery.spec.ts"       "chat-error-recovery"
 run "test/e2e/specs/agent-review.spec.ts"                   "agent-review"
 run "test/e2e/specs/mega-flow.spec.ts"                      "mega-flow"
 
@@ -99,6 +104,13 @@ run "test/e2e/specs/notifications.spec.ts"                  "notifications"
 run "test/e2e/specs/memory-roundtrip.spec.ts"               "memory-roundtrip"
 run "test/e2e/specs/cron-jobs-flow.spec.ts"                 "cron-jobs"
 run "test/e2e/specs/autocomplete-flow.spec.ts"              "autocomplete"
+
+# ---------------------------------------------------------------------------
+# User journeys
+# ---------------------------------------------------------------------------
+run "test/e2e/specs/user-journey-full-task.spec.ts"              "journey-full-task"
+run "test/e2e/specs/user-journey-settings-round-trip.spec.ts"    "journey-settings"
+run "test/e2e/specs/chat-conversation-history.spec.ts"           "chat-history"
 
 # ---------------------------------------------------------------------------
 # Webhooks & tools
