@@ -110,7 +110,7 @@ export async function clickFirstMatch(candidates, timeout = 5_000) {
 const HASH_TO_SIDEBAR_LABEL = {
   '/skills': 'Skills',
   '/home': 'Home',
-  '/conversations': 'Conversations',
+  '/chat': 'Chat',
   '/notifications': 'Alerts',
   '/settings': 'Settings',
   '/settings/intelligence': 'Intelligence',
@@ -282,7 +282,7 @@ export async function navigateToIntelligence() {
 }
 
 export async function navigateToConversations() {
-  await navigateViaHash('/conversations');
+  await navigateViaHash('/chat');
 }
 
 export async function navigateToNotifications() {
