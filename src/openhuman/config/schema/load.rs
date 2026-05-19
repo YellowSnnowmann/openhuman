@@ -998,8 +998,13 @@ impl Config {
         // silently clobbered the LLM model and 400'd every backend call
         // (Sentry OPENHUMAN-TAURI-J8).
         if let Some(model) = env.get("OPENHUMAN_MODEL") {
-            if !model.is_empty() {
-                self.default_model = Some(model);
+            // Trim before checking so `OPENHUMAN_MODEL="   "` (a common
+            // shape from shells that pass through an unset-but-declared
+            // variable) doesn't clobber the configured default with a
+            // non-usable value.
+            let trimmed = model.trim();
+            if !trimmed.is_empty() {
+                self.default_model = Some(trimmed.to_string());
             }
         }
 
