@@ -78,6 +78,13 @@ fn is_stream_error_non_retryable(err: &StreamError) -> bool {
             false
         }
         StreamError::Provider(msg) => {
+            // Mirror the non-streaming classifier: session-expired is a
+            // user-auth-state boundary, not a transient provider outage —
+            // fail fast so the streaming caller can prompt sign-in instead
+            // of burning the retry budget.
+            if crate::core::observability::is_session_expired_message(msg) {
+                return true;
+            }
             let lower = msg.to_lowercase();
             lower.contains("invalid api key")
                 || lower.contains("unauthorized")
