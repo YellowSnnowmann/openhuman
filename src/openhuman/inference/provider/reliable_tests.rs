@@ -216,6 +216,9 @@ fn non_retryable_detects_common_patterns() {
     assert!(is_non_retryable(&anyhow::anyhow!(
         "OpenAI Codex stream error: Your input exceeds the context window of this model."
     )));
+    assert!(is_non_retryable(&anyhow::anyhow!(
+        "SESSION_EXPIRED: backend session not active — sign in to resume LLM work"
+    )));
 }
 
 #[tokio::test]
@@ -251,6 +254,44 @@ async fn context_window_error_aborts_retries_and_model_fallbacks() {
     assert!(msg.contains("context window"));
     assert!(msg.contains("skipped"));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn session_expired_aborts_retries() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let provider = ReliableProvider::new(
+        vec![(
+            "openhuman".into(),
+            Box::new(MockProvider {
+                calls: Arc::clone(&calls),
+                fail_until_attempt: usize::MAX,
+                response: "never",
+                error: "SESSION_EXPIRED: backend session not active — sign in to resume LLM work",
+            }),
+        )],
+        3,
+        1,
+    );
+
+    let err = provider
+        .simple_chat("hello", "reasoning-v1", 0.0)
+        .await
+        .expect_err("session-expired should fail fast");
+    let msg = err.to_string();
+
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "session-expired must skip retry loop"
+    );
+    assert!(
+        msg.contains("non_retryable"),
+        "aggregate should classify SESSION_EXPIRED as non_retryable: {msg}"
+    );
+    assert!(
+        !msg.contains("attempt 2/4"),
+        "aggregate should contain only the first attempt for this provider: {msg}"
+    );
 }
 
 #[tokio::test]
