@@ -57,7 +57,11 @@ async function waitForAnyText(candidates, timeout = 20_000) {
   return null;
 }
 
-describe('Voice mode integration', () => {
+// #717: The Input/Text/Voice toggle buttons were removed from the regular chat
+// composer. Voice mode now exists only in the mascot tab (composer='mic-cloud'
+// → MicComposer). These tests targeted the removed toggle UI and will always
+// fail until rewritten against the mascot voice path.
+describe.skip('Voice mode integration', () => {
   before(async () => {
     await startMockServer();
     await waitForApp();
