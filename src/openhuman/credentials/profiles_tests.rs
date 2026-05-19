@@ -442,6 +442,53 @@ fn acquire_lock_writes_pid_so_future_callers_can_recover() {
     assert!(!lock_path.exists(), "guard must remove lock on drop");
 }
 
+/// Sentry OPENHUMAN-TAURI-H8: when `OpenOptions::create_new` fails with
+/// anything other than `AlreadyExists`, the error surfaced to Sentry
+/// must embed the underlying `io::ErrorKind` and `raw_os_error()` so we
+/// can tell which OS code is firing. Driven here on Unix by stripping
+/// write permission from the state dir so `create_new` fails with
+/// `PermissionDenied`; the assertion is on the embedded markers, not on
+/// the kind itself (Windows would surface a different kind for the same
+/// scenario).
+#[cfg(unix)]
+#[test]
+fn acquire_lock_error_message_includes_io_kind_and_os_code() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new().unwrap();
+    let state_dir = tmp.path().join("ro-state");
+    std::fs::create_dir_all(&state_dir).unwrap();
+
+    // Strip write permission so create_new on the lock file fails.
+    let mut perms = std::fs::metadata(&state_dir).unwrap().permissions();
+    perms.set_mode(0o500);
+    std::fs::set_permissions(&state_dir, perms).unwrap();
+
+    let store = AuthProfilesStore::new(&state_dir, false);
+    let err = match store.acquire_lock() {
+        Ok(_) => panic!("create_new in a read-only dir must fail"),
+        Err(e) => e,
+    };
+    let msg = format!("{err:?}");
+
+    // Restore permissions so TempDir cleanup works even if assertions fail.
+    let mut perms = std::fs::metadata(&state_dir).unwrap().permissions();
+    perms.set_mode(0o700);
+    std::fs::set_permissions(&state_dir, perms).unwrap();
+
+    assert!(
+        msg.contains("Failed to create auth profile lock"),
+        "stable top-level message missing: {msg}"
+    );
+    assert!(
+        msg.contains("kind="),
+        "context must include io::ErrorKind for Sentry diagnosis: {msg}"
+    );
+    assert!(
+        msg.contains("os_code="),
+        "context must include raw OS code for Sentry diagnosis: {msg}"
+    );
+}
+
 #[test]
 fn auth_profile_kind_serde_roundtrip() {
     let json = serde_json::to_string(&AuthProfileKind::OAuth).unwrap();
