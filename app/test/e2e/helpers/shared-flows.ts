@@ -34,7 +34,8 @@ import { supportsExecuteScript } from './platform';
 export async function openAddAccountModal(): Promise<void> {
   const opened = await browser.execute(() => {
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'));
-    const addBtn = buttons.find(b => b.getAttribute('aria-label') === 'Add app');
+    // aria-label is t('accounts.addAccount') = 'Add Account'
+    const addBtn = buttons.find(b => b.getAttribute('aria-label') === 'Add Account');
     if (addBtn) {
       addBtn.click();
       return true;
@@ -42,7 +43,7 @@ export async function openAddAccountModal(): Promise<void> {
     return false;
   });
   if (!opened) {
-    throw new Error('Could not locate Add app button on /accounts');
+    throw new Error('Could not locate Add Account button on /chat');
   }
   await waitForText('Add account', 5_000);
 }
