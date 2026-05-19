@@ -445,6 +445,18 @@ fn env_overlay_model_only_honours_namespaced_var() {
         cfg.default_model, original,
         "bare MODEL env var must not override default_model"
     );
+
+    // Whitespace-only OPENHUMAN_MODEL must not clobber either. Some
+    // shells/CI runners pass an unset-but-declared env var through as
+    // `"   "`, which `is_empty()` alone wouldn't reject.
+    let env = HashMapEnv::new().with("OPENHUMAN_MODEL", "   ");
+    let mut cfg = Config::default();
+    let original = cfg.default_model.clone();
+    cfg.apply_env_overlay_with(&env);
+    assert_eq!(
+        cfg.default_model, original,
+        "whitespace-only OPENHUMAN_MODEL must not clobber default_model"
+    );
 }
 
 #[test]
