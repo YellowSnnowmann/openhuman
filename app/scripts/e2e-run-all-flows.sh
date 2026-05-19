@@ -11,7 +11,7 @@
 set -uo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$APP_DIR"
+cd "$APP_DIR" || { echo "FATAL: could not cd to $APP_DIR" >&2; exit 1; }
 
 # Parallel arrays: names + exit codes collected during the run.
 _spec_names=()
