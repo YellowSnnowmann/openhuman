@@ -593,7 +593,15 @@ impl AuthProfilesStore {
                         thread::sleep(Duration::from_millis(LOCK_WAIT_MS));
                         waited = waited.saturating_add(LOCK_WAIT_MS);
                     } else {
-                        return Err(e).context("Failed to create auth profile lock");
+                        let io = e.chain().find_map(|c| c.downcast_ref::<std::io::Error>());
+                        let kind = io.map(|ioe| ioe.kind());
+                        let os_code = io.and_then(|ioe| ioe.raw_os_error());
+                        return Err(e).with_context(|| {
+                            format!(
+                                "Failed to create auth profile lock (kind={:?}, os_code={:?})",
+                                kind, os_code
+                            )
+                        });
                     }
                 }
             }
