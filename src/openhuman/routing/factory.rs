@@ -116,13 +116,8 @@ pub fn new_provider(
         AuthStyle::None
     };
     let local: Box<dyn Provider> = Box::new(
-        OpenAiCompatibleProvider::new(
-            provider_label,
-            &local_base,
-            local_api_key,
-            local_auth_style,
-        )
-        .with_temperature_unsupported_models(temperature_unsupported_models.to_vec()),
+        OpenAiCompatibleProvider::new(provider_label, &local_base, local_api_key, local_auth_style)
+            .with_temperature_unsupported_models(temperature_unsupported_models.to_vec()),
     );
 
     IntelligentRoutingProvider::new(
