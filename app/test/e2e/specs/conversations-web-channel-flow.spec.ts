@@ -2,7 +2,6 @@
 import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
 import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
 import {
-  clickText,
   dumpAccessibilityTree,
   textExists,
   waitForText,

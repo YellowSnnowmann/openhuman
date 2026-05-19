@@ -31,7 +31,6 @@
 import { waitForApp, waitForAppReady, waitForAuthBootstrap } from '../helpers/app-helpers';
 import { buildBypassJwt, triggerAuthDeepLink, triggerDeepLink } from '../helpers/deep-link-helpers';
 import {
-  clickText,
   dumpAccessibilityTree,
   hasAppChrome,
   textExists,
@@ -74,20 +73,6 @@ async function waitForAnyText(candidates, timeout = 15_000) {
       if (await textExists(text)) return text;
     }
     await browser.pause(500);
-  }
-  return null;
-}
-
-/**
- * Click the first matching text from a list of candidates.
- * Returns the clicked text or null if none found.
- */
-async function clickFirstMatch(candidates, timeout = 5_000) {
-  for (const text of candidates) {
-    if (await textExists(text)) {
-      await clickText(text, timeout);
-      return text;
-    }
   }
   return null;
 }
