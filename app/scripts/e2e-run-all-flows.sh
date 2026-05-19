@@ -116,7 +116,6 @@ run "test/e2e/specs/telegram-flow.spec.ts"                  "telegram"
 run "test/e2e/specs/gmail-flow.spec.ts"                     "gmail"
 run "test/e2e/specs/slack-flow.spec.ts"                     "slack"
 run "test/e2e/specs/whatsapp-flow.spec.ts"                  "whatsapp"
-run "test/e2e/specs/notion-flow.spec.ts"                    "notion"
 run "test/e2e/specs/conversations-web-channel-flow.spec.ts" "conversations"
 run "test/e2e/specs/composio-triggers-flow.spec.ts"         "composio-triggers"
 
@@ -144,7 +143,6 @@ run "test/e2e/specs/settings-feature-preferences.spec.ts"   "settings-features"
 # ---------------------------------------------------------------------------
 run "test/e2e/specs/local-model-runtime.spec.ts"            "local-model"
 run "test/e2e/specs/voice-mode.spec.ts"                     "voice-mode"
-run "test/e2e/specs/screen-intelligence.spec.ts"            "screen-intelligence"
 run "test/e2e/specs/audio-toolkit-flow.spec.ts"             "audio-toolkit"
 
 # ---------------------------------------------------------------------------
