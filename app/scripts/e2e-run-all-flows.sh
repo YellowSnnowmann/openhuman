@@ -3,14 +3,55 @@
 # Run all E2E WDIO specs sequentially (Appium restarted per spec).
 # Requires a prior E2E app build: pnpm --filter openhuman-app test:e2e:build
 #
-set -euo pipefail
+# Each spec runs to completion regardless of prior failures; a pass/fail
+# summary is printed at the end and the script exits non-zero if any spec
+# failed. (Previously `set -e` caused the first failure to abort the run
+# and made the terminal appear to crash.)
+#
+set -uo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$APP_DIR"
 
+# Parallel arrays: names + exit codes collected during the run.
+_spec_names=()
+_spec_results=()
+
 run() {
-  "$APP_DIR/scripts/e2e-run-spec.sh" "$1" "$2"
+  local spec="$1"
+  local label="${2:-$1}"
+  _spec_names+=("$label")
+  if "$APP_DIR/scripts/e2e-run-spec.sh" "$spec" "$label"; then
+    _spec_results+=(0)
+  else
+    _spec_results+=(1)
+  fi
 }
+
+# Print summary and exit with the appropriate code.
+finish() {
+  local pass=0 fail=0
+  echo ""
+  echo "══════════════════════════════════════════════"
+  echo "  E2E run summary  ($(uname -s))"
+  echo "══════════════════════════════════════════════"
+  for i in "${!_spec_names[@]}"; do
+    if [[ "${_spec_results[$i]}" -eq 0 ]]; then
+      printf "  ✓  %s\n" "${_spec_names[$i]}"
+      (( pass++ )) || true
+    else
+      printf "  ✗  %s\n" "${_spec_names[$i]}"
+      (( fail++ )) || true
+    fi
+  done
+  echo "──────────────────────────────────────────────"
+  printf "  Passed: %d   Failed: %d   Total: %d\n" "$pass" "$fail" "${#_spec_names[@]}"
+  echo "══════════════════════════════════════════════"
+  if [[ $fail -gt 0 ]]; then
+    exit 1
+  fi
+}
+trap finish EXIT
 
 # ---------------------------------------------------------------------------
 # Auth & onboarding
@@ -110,12 +151,11 @@ run "test/e2e/specs/audio-toolkit-flow.spec.ts"             "audio-toolkit"
 # System / Tauri
 # ---------------------------------------------------------------------------
 run "test/e2e/specs/tauri-commands.spec.ts"                 "tauri-commands"
-OPENHUMAN_SERVICE_MOCK=1 run "test/e2e/specs/service-connectivity-flow.spec.ts" "service-connectivity"
+OPENHUMAN_SERVICE_MOCK=1 \
+  run "test/e2e/specs/service-connectivity-flow.spec.ts" "service-connectivity"
 
 # linux-cef-deb-runtime.spec.ts is Linux-only (tests /usr/bin path resolution
 # for .deb package installs) — skipped on macOS/Windows.
 if [[ "$(uname -s)" == "Linux" ]]; then
   run "test/e2e/specs/linux-cef-deb-runtime.spec.ts" "linux-cef-deb-runtime"
 fi
-
-echo "All E2E flows completed ($(uname -s))."
