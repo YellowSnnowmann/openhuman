@@ -248,6 +248,16 @@ async fn embed_429_uses_canonical_transient_format() {
         msg.contains("(429 Too Many Requests)"),
         "expected canonical transient HTTP shape, got: {msg}"
     );
+    // Pin the shape to the exact substring `is_transient_upstream_http_message`
+    // matches on (`"api error (<status> "`). The broader
+    // `is_transient_message_failure` classifier below also passes for the *old*
+    // `"Embedding API error 429 …"` format, so without this assertion a future
+    // refactor could silently revert the format and the test would still go
+    // green.
+    assert!(
+        msg.to_ascii_lowercase().contains("api error (429 "),
+        "message must match is_transient_upstream_http_message classifier arm: {msg}"
+    );
     assert!(
         crate::core::observability::is_transient_message_failure(&msg),
         "message should classify as transient: {msg}"
