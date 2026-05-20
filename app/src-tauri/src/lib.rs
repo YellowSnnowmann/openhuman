@@ -3521,18 +3521,16 @@ mod tests {
 
     #[test]
     fn dbus_address_unix_is_supported() {
-        assert!(dbus_address_is_supported(
-            "unix:path=/run/user/1000/bus"
-        ));
-        assert!(dbus_address_is_supported(
-            "unix:abstract=/tmp/dbus-abc"
-        ));
+        assert!(dbus_address_is_supported("unix:path=/run/user/1000/bus"));
+        assert!(dbus_address_is_supported("unix:abstract=/tmp/dbus-abc"));
     }
 
     #[test]
     fn dbus_address_tcp_and_launchd_supported() {
         assert!(dbus_address_is_supported("tcp:host=localhost,port=1234"));
-        assert!(dbus_address_is_supported("launchd:env=DBUS_LAUNCHD_SESSION_BUS_SOCKET"));
+        assert!(dbus_address_is_supported(
+            "launchd:env=DBUS_LAUNCHD_SESSION_BUS_SOCKET"
+        ));
         assert!(dbus_address_is_supported("autolaunch:"));
     }
 
