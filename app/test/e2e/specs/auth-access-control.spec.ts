@@ -186,7 +186,11 @@ describe('Auth & Access Control', () => {
         );
         return !!consumed;
       },
-      { timeout: 10_000, interval: 500, timeoutMsg: 'Timed out waiting for re-auth deep-link to be processed' }
+      {
+        timeout: 10_000,
+        interval: 500,
+        timeoutMsg: 'Timed out waiting for re-auth deep-link to be processed',
+      }
     );
 
     const homeText = await waitForHomePage(15_000);
@@ -210,7 +214,11 @@ describe('Auth & Access Control', () => {
         );
         return !!consumed;
       },
-      { timeout: 10_000, interval: 500, timeoutMsg: 'Timed out waiting for device-2 token consume call' }
+      {
+        timeout: 10_000,
+        interval: 500,
+        timeoutMsg: 'Timed out waiting for device-2 token consume call',
+      }
     );
 
     const homeText = await waitForHomePage(15_000);
@@ -320,7 +328,11 @@ describe('Auth & Access Control', () => {
         );
         return !!consumed;
       },
-      { timeout: 10_000, interval: 500, timeoutMsg: 'Timed out waiting for pre-logout token consume call' }
+      {
+        timeout: 10_000,
+        interval: 500,
+        timeoutMsg: 'Timed out waiting for pre-logout token consume call',
+      }
     );
 
     const homeCheck = await waitForHomePage(10_000);
@@ -453,7 +465,11 @@ describe('Auth & Access Control', () => {
         );
         return !!consumed;
       },
-      { timeout: 12_000, interval: 500, timeoutMsg: 'Timed out waiting for revoked-session response' }
+      {
+        timeout: 12_000,
+        interval: 500,
+        timeoutMsg: 'Timed out waiting for revoked-session response',
+      }
     );
 
     // The app should auto-log out when it gets a 401

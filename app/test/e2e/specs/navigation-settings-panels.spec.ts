@@ -109,7 +109,9 @@ async function verifyPanelLoaded(panel: PanelCheck): Promise<void> {
   } else {
     // Non-fatal: the panel may render different text depending on config / state.
     // The char-count check above is the authoritative blank-screen guard.
-    console.log(`${LOG_PREFIX} ${panel.hash}: loaded (${chars} chars, no marker matched — acceptable)`);
+    console.log(
+      `${LOG_PREFIX} ${panel.hash}: loaded (${chars} chars, no marker matched — acceptable)`
+    );
   }
 }
 

@@ -30,12 +30,35 @@ interface RouteCheck {
 const ROUTES: RouteCheck[] = [
   { hash: '/chat', markers: ['Threads', 'Chat', 'Message', 'New thread'] },
   { hash: '/skills', markers: ['Skills', 'Skill', 'Install', 'Browse'] },
-  { hash: '/home', markers: ['Good morning', 'Good afternoon', 'Good evening', 'Message OpenHuman', 'Test', 'Upgrade'] },
+  {
+    hash: '/home',
+    markers: [
+      'Good morning',
+      'Good afternoon',
+      'Good evening',
+      'Message OpenHuman',
+      'Test',
+      'Upgrade',
+    ],
+  },
   { hash: '/channels', markers: ['Channels', 'Channel', 'Connect', 'Add', 'Gmail', 'Telegram'] },
-  { hash: '/notifications', markers: ['Notifications', 'Alerts', 'Notification', 'No notifications'] },
+  {
+    hash: '/notifications',
+    markers: ['Notifications', 'Alerts', 'Notification', 'No notifications'],
+  },
   { hash: '/rewards', markers: ['Rewards', 'Referral', 'Credits', 'Earn', 'Invite'] },
   { hash: '/settings', markers: ['Settings', 'Account', 'Billing', 'Advanced'] },
-  { hash: '/home', markers: ['Good morning', 'Good afternoon', 'Good evening', 'Message OpenHuman', 'Test', 'Upgrade'] },
+  {
+    hash: '/home',
+    markers: [
+      'Good morning',
+      'Good afternoon',
+      'Good evening',
+      'Message OpenHuman',
+      'Test',
+      'Upgrade',
+    ],
+  },
 ];
 
 async function rootTextLength(): Promise<number> {
@@ -60,11 +83,15 @@ async function verifyRouteLoaded(route: RouteCheck, pass: string): Promise<void>
     }
   }
   if (foundMarker) {
-    console.log(`${LOG_PREFIX} ${pass} ${route.hash}: loaded (found "${foundMarker}", ${chars} chars)`);
+    console.log(
+      `${LOG_PREFIX} ${pass} ${route.hash}: loaded (found "${foundMarker}", ${chars} chars)`
+    );
   } else {
     // Non-fatal: some routes may have different text depending on state.
     // The char count check above is the authoritative blank-screen guard.
-    console.log(`${LOG_PREFIX} ${pass} ${route.hash}: loaded (${chars} chars, no marker matched — acceptable)`);
+    console.log(
+      `${LOG_PREFIX} ${pass} ${route.hash}: loaded (${chars} chars, no marker matched — acceptable)`
+    );
   }
 }
 

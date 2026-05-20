@@ -48,9 +48,7 @@ const FORCED_RESPONSES = [
       },
     ],
   },
-  {
-    content: `Here is the fetched content: ${CANARY_FINAL}`,
-  },
+  { content: `Here is the fetched content: ${CANARY_FINAL}` },
 ];
 
 interface RuntimeSnapshot {
@@ -160,7 +158,9 @@ describe('Chat tool-call lifecycle', () => {
     // before our first poll we still accept the final-answer path.
     const finalArrived = await textExists(CANARY_FINAL);
     expect(sawToolTimeline || finalArrived).toBe(true);
-    console.log(`${LOG_PREFIX} T1.1: passed (sawTimeline=${sawToolTimeline}, finalArrived=${finalArrived})`);
+    console.log(
+      `${LOG_PREFIX} T1.1: passed (sawTimeline=${sawToolTimeline}, finalArrived=${finalArrived})`
+    );
   });
 
   it('T1.2 — tool timeline entry shows tool name web_fetch', async () => {
@@ -224,9 +224,7 @@ describe('Chat tool-call lifecycle', () => {
         );
         if (!snap.ok) return false;
         const entries = snap.result?.result?.entries ?? [];
-        const stillRunning = entries.some(e =>
-          e.key.endsWith(`::${threadId as string}`)
-        );
+        const stillRunning = entries.some(e => e.key.endsWith(`::${threadId as string}`));
         return !stillRunning;
       },
       {

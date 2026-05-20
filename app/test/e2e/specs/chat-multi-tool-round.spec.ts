@@ -61,9 +61,7 @@ const FORCED_RESPONSES = [
       },
     ],
   },
-  {
-    content: `Found the content using both tools: ${CANARY_FINAL}`,
-  },
+  { content: `Found the content using both tools: ${CANARY_FINAL}` },
 ];
 
 interface ToolTimelineSnapshot {
@@ -241,12 +239,18 @@ describe('Chat multi-tool round', () => {
       const grepIndex = snap.names.findIndex(n => n.includes('grep'));
       if (fileReadIndex !== -1 && grepIndex !== -1) {
         expect(fileReadIndex).toBeLessThan(grepIndex);
-        console.log(`${LOG_PREFIX} T2.5: order confirmed — file_read[${fileReadIndex}] < grep[${grepIndex}]`);
+        console.log(
+          `${LOG_PREFIX} T2.5: order confirmed — file_read[${fileReadIndex}] < grep[${grepIndex}]`
+        );
       } else {
-        console.log(`${LOG_PREFIX} T2.5: one or both tools already pruned from timeline — relying on T2.3/T2.4`);
+        console.log(
+          `${LOG_PREFIX} T2.5: one or both tools already pruned from timeline — relying on T2.3/T2.4`
+        );
       }
     } else {
-      console.log(`${LOG_PREFIX} T2.5: timeline has ${snap.names.length} entries after completion — tools pruned`);
+      console.log(
+        `${LOG_PREFIX} T2.5: timeline has ${snap.names.length} entries after completion — tools pruned`
+      );
     }
 
     // Primary assertion: the full turn produced the canary (tools ran in order).

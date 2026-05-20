@@ -23,11 +23,7 @@ import { callOpenhumanRpc } from './core-rpc';
 import { triggerAuthDeepLinkBypass } from './deep-link-helpers';
 import { waitForWebView, waitForWindowVisible } from './element-helpers';
 import { supportsExecuteScript } from './platform';
-import {
-  dismissBootCheckGateIfVisible,
-  waitForHomePage,
-  walkOnboarding,
-} from './shared-flows';
+import { dismissBootCheckGateIfVisible, waitForHomePage, walkOnboarding } from './shared-flows';
 
 interface ResetAppOptions {
   /** Skip the auth + onboarding bootstrap. Use for specs that test the welcome/login screens themselves. */
@@ -86,10 +82,9 @@ export async function resetApp(userId: string, options: ResetAppOptions = {}): P
     // test_reset clears onboarding_completed=false (mirrors a fresh install).
     // E2E specs assume an already-onboarded user — restore the flag so
     // App.tsx's onboarding gate doesn't redirect every spec into the wizard.
-    const setOnboarding = await callOpenhumanRpc(
-      'openhuman.config_set_onboarding_completed',
-      { value: true }
-    ).catch((err: unknown) => {
+    const setOnboarding = await callOpenhumanRpc('openhuman.config_set_onboarding_completed', {
+      value: true,
+    }).catch((err: unknown) => {
       stepLog(`config_set_onboarding_completed failed (non-fatal): ${err}`);
       return { ok: false as const };
     });

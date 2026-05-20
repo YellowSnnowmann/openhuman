@@ -31,12 +31,7 @@ import { callOpenhumanRpc } from '../helpers/core-rpc';
 import { textExists } from '../helpers/element-helpers';
 import { resetApp } from '../helpers/reset-app';
 import { navigateToHome, navigateViaHash, waitForHomePage } from '../helpers/shared-flows';
-import {
-  clearRequestLog,
-  setMockBehavior,
-  startMockServer,
-  stopMockServer,
-} from '../mock-server';
+import { clearRequestLog, setMockBehavior, startMockServer, stopMockServer } from '../mock-server';
 
 const LOG_PREFIX = '[user-journey-full-task]';
 const USER_ID = 'e2e-user-journey-full-task';
@@ -54,9 +49,7 @@ const FORCED_RESPONSES = [
       },
     ],
   },
-  {
-    content: `Here is the fetched page content: ${CANARY_FINAL}`,
-  },
+  { content: `Here is the fetched page content: ${CANARY_FINAL}` },
 ];
 
 describe('User journey — full research task', () => {
@@ -122,18 +115,14 @@ describe('User journey — full research task', () => {
     let sawToolTimeline = false;
     const deadline = Date.now() + 45_000;
     while (Date.now() < deadline) {
-      const snap = await browser.execute((tid: string) => {
+      const snap = (await browser.execute((tid: string) => {
         const winAny = window as unknown as { __OPENHUMAN_STORE__?: { getState: () => unknown } };
         const state = winAny.__OPENHUMAN_STORE__?.getState() as
-          | {
-              chatRuntime?: {
-                toolTimelineByThread?: Record<string, Array<{ name?: string }>>;
-              };
-            }
+          | { chatRuntime?: { toolTimelineByThread?: Record<string, Array<{ name?: string }>> } }
           | undefined;
         const timeline = state?.chatRuntime?.toolTimelineByThread?.[tid] ?? [];
         return timeline.map((e: { name?: string }) => e?.name ?? '');
-      }, threadId) as string[];
+      }, threadId)) as string[];
 
       if (snap.length > 0) {
         sawToolTimeline = true;

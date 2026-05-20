@@ -22,12 +22,7 @@ import { callOpenhumanRpc } from '../helpers/core-rpc';
 import { textExists } from '../helpers/element-helpers';
 import { resetApp } from '../helpers/reset-app';
 import { navigateViaHash } from '../helpers/shared-flows';
-import {
-  clearRequestLog,
-  setMockBehavior,
-  startMockServer,
-  stopMockServer,
-} from '../mock-server';
+import { clearRequestLog, setMockBehavior, startMockServer, stopMockServer } from '../mock-server';
 
 const LOG_PREFIX = '[chat-tool-error-recovery]';
 const USER_ID = 'e2e-chat-tool-error-recovery';
@@ -41,9 +36,7 @@ const ERROR_STREAM_SCRIPT = JSON.stringify([
 
 // Second turn: a clean response for the recovery assertion.
 const RECOVERY_CANARY = 'canary-recovery-7g8h9i';
-const RECOVERY_FORCED = [
-  { content: `Recovery successful: ${RECOVERY_CANARY}` },
-];
+const RECOVERY_FORCED = [{ content: `Recovery successful: ${RECOVERY_CANARY}` }];
 
 describe('Chat tool-error recovery', () => {
   let threadId: string;
@@ -103,7 +96,15 @@ describe('Chat tool-error recovery', () => {
     // After the error is injected, the UI should surface an error indicator.
     // The exact text varies by implementation: could be "error", "failed",
     // "retry", or a generic error message. We poll broadly.
-    const errorIndicators = ['error', 'Error', 'failed', 'Failed', 'retry', 'Retry', 'Something went wrong'];
+    const errorIndicators = [
+      'error',
+      'Error',
+      'failed',
+      'Failed',
+      'retry',
+      'Retry',
+      'Something went wrong',
+    ];
     let sawError = false;
     const deadline = Date.now() + TIMEOUT;
     while (Date.now() < deadline) {

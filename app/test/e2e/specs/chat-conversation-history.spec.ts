@@ -52,7 +52,9 @@ const FORCED_RESPONSES_TURN1 = [
   { content: `Got it! I will remember that the secret word is ${SECRET_WORD}.` },
 ];
 const FORCED_RESPONSES_TURN2 = [
-  { content: `The secret word you told me was ${SECRET_WORD}. Here is the confirmation: ${CANARY_SECOND}` },
+  {
+    content: `The secret word you told me was ${SECRET_WORD}. Here is the confirmation: ${CANARY_SECOND}`,
+  },
 ];
 
 describe('Chat conversation history', () => {
@@ -97,7 +99,9 @@ describe('Chat conversation history', () => {
     await typeIntoComposer(FIRST_PROMPT);
     const socketReady = await waitForSocketConnected(30_000);
     if (!socketReady) {
-      console.warn('[chat-conversation-history] socket did not connect within 30 s — send may fail');
+      console.warn(
+        '[chat-conversation-history] socket did not connect within 30 s — send may fail'
+      );
     }
     expect(
       await browser.waitUntil(async () => await clickSend(), {
@@ -189,7 +193,9 @@ describe('Chat conversation history', () => {
     let messages: Array<{ role: string; content: string }> = [];
     try {
       const parsedBody =
-        typeof secondLlmCall.body === 'string' ? JSON.parse(secondLlmCall.body) : secondLlmCall.body;
+        typeof secondLlmCall.body === 'string'
+          ? JSON.parse(secondLlmCall.body)
+          : secondLlmCall.body;
       messages = Array.isArray(parsedBody?.messages) ? parsedBody.messages : [];
     } catch (e) {
       console.log(`${LOG_PREFIX} H1.2: failed to parse LLM request body: ${e}`);

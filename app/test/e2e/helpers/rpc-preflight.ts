@@ -6,7 +6,6 @@
  * If any method is missing from the registry, the test fails immediately
  * rather than silently returning "method not found" mid-test (RC-7 class fault).
  */
-
 import { callOpenhumanRpc } from './core-rpc';
 
 // The full list of openhuman.* RPC methods called across all E2E specs.
@@ -61,12 +60,10 @@ export async function validateRpcContract(): Promise<{
     (result.result as any)?.result?.controllers ??
     [];
 
-  const registered = controllers
-    .map((c) => c.method ?? c.name ?? '')
-    .filter(Boolean);
+  const registered = controllers.map(c => c.method ?? c.name ?? '').filter(Boolean);
 
   const missing = REQUIRED_RPC_METHODS.filter(
-    (m) => !registered.includes(m) && m !== 'core.ping' // core.ping is not a controller
+    m => !registered.includes(m) && m !== 'core.ping' // core.ping is not a controller
   );
 
   return { ok: missing.length === 0, missing, registered };
@@ -88,7 +85,7 @@ export async function assertRpcContract(logPrefix = '[RpcPreflight]'): Promise<v
   if (missing.length > 0) {
     const msg =
       `${logPrefix} FATAL: ${missing.length} RPC method(s) not found in registry:\n` +
-      missing.map((m) => `  - ${m}`).join('\n') +
+      missing.map(m => `  - ${m}`).join('\n') +
       '\nThis is an RC-7 class fault — the spec calls ghost RPCs. ' +
       'Fix: update REQUIRED_RPC_METHODS or restore the missing controllers.';
     console.error(msg);

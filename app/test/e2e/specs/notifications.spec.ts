@@ -147,9 +147,7 @@ describe('Notifications', () => {
       notifId = (fresh.result as any)?.id as string | undefined;
     }
 
-    const result = await callOpenhumanRpc('openhuman.notification_mark_read', {
-      id: notifId,
-    });
+    const result = await callOpenhumanRpc('openhuman.notification_mark_read', { id: notifId });
     stepLog('notification_mark_read result', { ok: result.ok, result: result.result });
     expect(result.ok).toBe(true);
 

@@ -4,11 +4,7 @@ import { resetApp } from '../helpers/reset-app';
 import { startMockServer, stopMockServer } from '../mock-server';
 
 // Map option names to WebDriver key strings (W3C Actions API codes).
-const WD_KEY: Record<string, string> = {
-  meta: '\uE03D',
-  ctrl: '\uE009',
-  shift: '\uE008',
-};
+const WD_KEY: Record<string, string> = { meta: '\uE03D', ctrl: '\uE009', shift: '\uE008' };
 
 // Dispatch a key combination to the active page.
 //
