@@ -42,6 +42,7 @@ import {
   getSelectedThreadId,
   hexEncodeThreadId,
   typeIntoComposer,
+  waitForSocketConnected,
 } from '../helpers/chat-harness';
 import { callOpenhumanRpc } from '../helpers/core-rpc';
 import { textExists } from '../helpers/element-helpers';
@@ -137,6 +138,10 @@ describe('Chat harness — orchestrator → subagent flow', () => {
     expect(typeof threadId).toBe('string');
 
     await typeIntoComposer(PROMPT);
+    const socketReady = await waitForSocketConnected(30_000);
+    if (!socketReady) {
+      console.warn('[chat-harness-subagent] socket did not connect within 30 s — send may fail');
+    }
     expect(
       await browser.waitUntil(async () => await clickSend(), {
         timeout: 5_000,

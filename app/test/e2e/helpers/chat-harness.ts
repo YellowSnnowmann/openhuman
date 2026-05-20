@@ -84,7 +84,17 @@ export async function typeIntoComposer(text: string): Promise<void> {
 }
 
 /** Click the chat composer's send button. Returns `false` if the
- *  button isn't there yet or is `disabled` (so the caller can poll). */
+ *  button isn't there yet or is `disabled` (so the caller can poll).
+ *
+ *  Implementation notes:
+ *  - We dispatch synthetic mouse events + click() via JS to avoid the
+ *    AppUpdatePrompt overlay (z-[9998], fixed bottom-4 right-4) that
+ *    intercepts coordinate-based WebDriver clicks.
+ *  - The composer clears AFTER `handleSendMessage` awaits `addMessageLocal`
+ *    (a Rust RPC call that can take 100–500 ms). We wait up to 5 s for
+ *    the value to become empty before declaring success; if it hasn't
+ *    cleared after 5 s we re-focus via JS (never coordinate-click) and
+ *    press Enter as a final fallback. */
 export async function clickSend(): Promise<boolean> {
   const clicked = await browser.execute(() => {
     const sendEl = document.querySelector(
@@ -102,49 +112,57 @@ export async function clickSend(): Promise<boolean> {
   if (!clicked) return false;
 
   const composer = await browser.$(COMPOSER_SELECTOR);
+
+  // Primary wait: addMessageLocal (Rust RPC) runs before setInputValue('')
+  // so the composer can take up to several hundred ms to clear.  5 s covers
+  // even slow CI machines.
   try {
-    await browser.waitUntil(async () => (await composer.getValue()) === '', { timeout: 1_000 });
+    await browser.waitUntil(async () => (await composer.getValue()) === '', { timeout: 5_000 });
     return true;
   } catch {
-    await composer.click();
-    await browser.keys('Enter');
-  }
-
-  try {
-    await browser.waitUntil(async () => (await composer.getValue()) === '', { timeout: 2_000 });
-    return true;
-  } catch {
-    const dispatched = await browser.execute(() => {
-      const composerEl = document.querySelector(
-        'textarea[placeholder="Type a message..."]'
-      ) as HTMLTextAreaElement | null;
-      const sendEl = document.querySelector(
-        'button[aria-label="Send message"]'
-      ) as HTMLButtonElement | null;
-      if (!composerEl || !sendEl || sendEl.disabled) return false;
-
-      sendEl.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
-      sendEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      sendEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-      sendEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-
-      if (composerEl.value.trim()) {
-        composerEl.focus();
-        composerEl.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-        );
-      }
+    // Fallback: re-focus via JS (avoids AppUpdatePrompt overlay) and press Enter.
+    // This handles the edge case where the click was registered but the React
+    // handler is still waiting for the socket to deliver the ack.
+    const refocused = await browser.execute((sel: string) => {
+      const el = document.querySelector(sel) as HTMLTextAreaElement | null;
+      if (!el) return false;
+      el.focus();
       return true;
-    });
-    if (!dispatched) return false;
+    }, COMPOSER_SELECTOR);
+    if (refocused) {
+      await browser.keys('Enter');
+    }
   }
 
   try {
-    await browser.waitUntil(async () => (await composer.getValue()) === '', { timeout: 2_000 });
+    await browser.waitUntil(async () => (await composer.getValue()) === '', { timeout: 3_000 });
     return true;
   } catch {
     return false;
   }
+}
+
+/** Poll the Redux store until `socketStatus === 'connected'` for the
+ *  active user.  Chat sends are blocked by `composerSendDecision` while
+ *  the Socket.IO connection to the in-process Rust core is not yet up —
+ *  call this before the first `clickSend()` in any chat spec.
+ *
+ *  Returns `true` when connected, `false` on timeout. */
+export async function waitForSocketConnected(timeoutMs = 30_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const connected = await browser.execute(() => {
+      const winAny = window as unknown as { __OPENHUMAN_STORE__?: { getState: () => unknown } };
+      const state = winAny.__OPENHUMAN_STORE__?.getState() as
+        | { socket?: { byUser?: Record<string, { status?: string }> } }
+        | undefined;
+      const byUser = state?.socket?.byUser ?? {};
+      return Object.values(byUser).some(u => u?.status === 'connected');
+    });
+    if (connected) return true;
+    await browser.pause(400);
+  }
+  return false;
 }
 
 /** Read `redux.thread.selectedThreadId` straight from the exposed

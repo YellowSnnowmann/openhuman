@@ -27,6 +27,7 @@ import {
   getSelectedThreadId,
   hexEncodeThreadId,
   typeIntoComposer,
+  waitForSocketConnected,
 } from '../helpers/chat-harness';
 import { callOpenhumanRpc } from '../helpers/core-rpc';
 import { clickText, clickToggle, textExists } from '../helpers/element-helpers';
@@ -172,6 +173,10 @@ describe('Chat harness — wallet flow', () => {
     expect(typeof threadId).toBe('string');
 
     await typeIntoComposer(WALLET_PROMPT);
+    const socketReady = await waitForSocketConnected(30_000);
+    if (!socketReady) {
+      console.warn('[chat-harness-wallet-flow] socket did not connect within 30 s — send may fail');
+    }
     expect(
       await browser.waitUntil(async () => await clickSend(), {
         timeout: 5_000,

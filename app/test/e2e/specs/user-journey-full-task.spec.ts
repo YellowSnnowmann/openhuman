@@ -25,6 +25,7 @@ import {
   clickSend,
   getSelectedThreadId,
   typeIntoComposer,
+  waitForSocketConnected,
 } from '../helpers/chat-harness';
 import { callOpenhumanRpc } from '../helpers/core-rpc';
 import { textExists } from '../helpers/element-helpers';
@@ -97,6 +98,10 @@ describe('User journey — full research task', () => {
     console.log(`${LOG_PREFIX} J1.1: thread created: ${threadId}`);
 
     await typeIntoComposer(PROMPT);
+    const socketReady = await waitForSocketConnected(30_000);
+    if (!socketReady) {
+      console.warn('[user-journey-full-task] socket did not connect within 30 s — send may fail');
+    }
     expect(
       await browser.waitUntil(async () => await clickSend(), {
         timeout: 5_000,

@@ -34,6 +34,7 @@ import {
   getSelectedThreadId,
   hexEncodeThreadId,
   typeIntoComposer,
+  waitForSocketConnected,
 } from '../helpers/chat-harness';
 import { callOpenhumanRpc } from '../helpers/core-rpc';
 import { textExists } from '../helpers/element-helpers';
@@ -86,8 +87,16 @@ describe('Chat harness — send + stream', () => {
     expect(typeof threadId).toBe('string');
   });
 
-  it('sends a message, observes streaming deltas, and lands the full reply', async function () {
-    this.timeout(90_000);
+  it('sends a message, observes streaming deltas, and lands the full reply', async () => {
+    // Wait for Socket.IO to connect to the in-process Rust core before sending.
+    // composerSendDecision blocks the send with 'socket_disconnected' when the
+    // socket is not yet up — without this the user sees the "Realtime socket is
+    // not connected" error toast instead of a message being delivered.
+    const socketReady = await waitForSocketConnected(30_000);
+    if (!socketReady) {
+      console.warn('[chat-harness-send-stream] socket did not connect within 30 s — send may fail');
+    }
+
     await typeIntoComposer(PROMPT);
     const sent = await browser.waitUntil(async () => await clickSend(), {
       timeout: 5_000,
