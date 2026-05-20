@@ -40,7 +40,7 @@ export async function clickByTitle(title: string, timeoutMs = 6_000): Promise<bo
 }
 
 const COMPOSER_SELECTOR = 'textarea[placeholder="Type a message..."]';
-const SEND_SELECTOR = 'button[aria-label="Send message"]';
+
 
 /** Type into the chat composer through WebDriver so React's controlled
  *  input state and the DOM stay in sync. */

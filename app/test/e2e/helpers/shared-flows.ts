@@ -12,7 +12,6 @@ import {
   clickText,
   dumpAccessibilityTree,
   textExists,
-  waitForText,
   waitForWebView,
   waitForWindowVisible,
 } from './element-helpers';

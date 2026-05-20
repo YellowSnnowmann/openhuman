@@ -29,10 +29,6 @@ import { clearRequestLog, setMockBehavior, startMockServer, stopMockServer } fro
 
 const LOG = '[ComposioTriggersE2E]';
 
-function step(msg: string, ctx?: unknown) {
-  if (ctx === undefined) console.log(`${LOG} ${msg}`);
-  else console.log(`${LOG} ${msg}`, JSON.stringify(ctx, null, 2));
-}
 
 describe('Composio trigger toggles (UI + core RPC)', () => {
   before(async () => {

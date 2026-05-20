@@ -75,7 +75,7 @@ export async function validateRpcContract(): Promise<{
  */
 export async function assertRpcContract(logPrefix = '[RpcPreflight]'): Promise<void> {
   console.log(`${logPrefix} Validating RPC contract...`);
-  const { ok, missing, registered } = await validateRpcContract();
+  const { missing, registered } = await validateRpcContract();
 
   if (registered.length === 0) {
     console.warn(`${logPrefix} Could not fetch controller registry — skipping validation`);
