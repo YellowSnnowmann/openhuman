@@ -666,6 +666,10 @@ pub fn create_routed_provider_with_options(
                 router::Route {
                     provider_name: INFERENCE_BACKEND_ID.to_string(),
                     model: r.model.clone(),
+                    context_window:
+                        crate::openhuman::inference::model_context::context_window_for_model(
+                            &r.model,
+                        ),
                 },
             )
         })
@@ -747,6 +751,10 @@ pub fn create_intelligent_routing_provider(
                     router::Route {
                         provider_name: INFERENCE_BACKEND_ID.to_string(),
                         model: r.model.clone(),
+                        context_window:
+                            crate::openhuman::inference::model_context::context_window_for_model(
+                                &r.model,
+                            ),
                     },
                 )
             })
