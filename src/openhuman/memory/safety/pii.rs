@@ -188,9 +188,18 @@ pub fn redact_pii(text: &str) -> Sanitized<String> {
 /// True if `value` looks like it carries any PII. Used to *reject*
 /// namespace/key inputs at boundary checks (analogous to
 /// [`super::has_likely_secret`]).
+///
+/// Uses the **strict** match set — only formatted / keyword-gated patterns.
+/// Bare-numeric patterns whose only gate is a checksum (credit card via Luhn,
+/// bare CPF, bare CNPJ) are excluded here because their false-positive rate
+/// against random digit runs (millisecond timestamps, sequence IDs, padded
+/// counters) is too high to use as a hard rejection signal on internal
+/// identifiers. Content scrubbing via [`redact_pii`] still applies those
+/// patterns — false positives are tolerable there because they only replace
+/// bytes inside a string, not reject the whole write.
 pub fn has_likely_pii(value: &str) -> bool {
     let nview = NormalizedView::build(value);
-    SCREEN.is_match(&nview.normalized) && !collect_redactions(&nview.normalized).is_empty()
+    SCREEN.is_match(&nview.normalized) && !collect_strict_redactions(&nview.normalized).is_empty()
 }
 
 // ---------- Match collection ----------
@@ -203,6 +212,19 @@ struct Hit {
 }
 
 fn collect_redactions(norm: &str) -> Vec<Hit> {
+    collect_redactions_inner(norm, true)
+}
+
+/// Variant of [`collect_redactions`] that omits bare-numeric checksum
+/// patterns (credit card via Luhn, bare CPF, bare CNPJ). Used for
+/// boundary checks like [`has_likely_pii`] where rejection on a checksum
+/// hit alone would have too many false positives on internal identifiers
+/// (timestamps, padded counters).
+fn collect_strict_redactions(norm: &str) -> Vec<Hit> {
+    collect_redactions_inner(norm, false)
+}
+
+fn collect_redactions_inner(norm: &str, include_bare_checksum: bool) -> Vec<Hit> {
     let mut hits: Vec<Hit> = Vec::new();
 
     // Priority order: most specific / highest-confidence first.
@@ -219,15 +241,17 @@ fn collect_redactions(norm: &str) -> Vec<Hit> {
     // IBAN before credit card: CC can match an IBAN tail of all digits.
     push_checksum(&mut hits, norm, &IBAN_RE, PII_IBAN, |s| valid_iban(s));
 
-    // Credit card before bare CPF/CNPJ to avoid catching a 13-19 digit run as CPF/CNPJ.
-    push_checksum(&mut hits, norm, &CC_RE, PII_CC, |s| valid_luhn(s));
+    if include_bare_checksum {
+        // Credit card before bare CPF/CNPJ to avoid catching a 13-19 digit run as CPF/CNPJ.
+        push_checksum(&mut hits, norm, &CC_RE, PII_CC, |s| valid_luhn(s));
 
-    push_checksum(&mut hits, norm, &CNPJ_BARE_RE, PII_CNPJ, |s| {
-        valid_cnpj(digits(s).as_slice())
-    });
-    push_checksum(&mut hits, norm, &CPF_BARE_RE, PII_CPF, |s| {
-        valid_cpf(digits(s).as_slice())
-    });
+        push_checksum(&mut hits, norm, &CNPJ_BARE_RE, PII_CNPJ, |s| {
+            valid_cnpj(digits(s).as_slice())
+        });
+        push_checksum(&mut hits, norm, &CPF_BARE_RE, PII_CPF, |s| {
+            valid_cpf(digits(s).as_slice())
+        });
+    }
 
     push_checksum(&mut hits, norm, &AADHAAR_FMT_RE, PII_AADHAAR, |s| {
         valid_verhoeff(digits(s).as_slice())
@@ -924,6 +948,37 @@ Phone +15551234567.";
     #[test]
     fn has_likely_pii_quiet_on_normal_text() {
         assert!(!has_likely_pii("memory/global/preferences"));
+    }
+
+    /// Regression: zero-padded millisecond-timestamp keys must NOT be
+    /// flagged as PII even when the digit run happens to satisfy Luhn.
+    /// `redact_pii` content scrubbing may still flag the same string —
+    /// `has_likely_pii` (used for boundary rejection of internal keys)
+    /// must stay strict to formatted/keyword PII only.
+    #[test]
+    fn has_likely_pii_ignores_bare_luhn_timestamp_keys() {
+        // 18-digit padded timestamps where the digit total mod 10 == 0
+        // (the Luhn-passing case that previously rejected autocomplete
+        // KV writes and screen-intelligence document writes).
+        for key in [
+            "accepted:000001747729035001",
+            "completion:000001747729035011",
+            "screen_intelligence_vision-1747729035001-VSCode",
+        ] {
+            assert!(
+                !has_likely_pii(key),
+                "internal key {key:?} must not be rejected as PII"
+            );
+        }
+    }
+
+    /// Strict boundary check should still reject formatted PII even though
+    /// it skips bare-numeric checksum patterns.
+    #[test]
+    fn has_likely_pii_still_blocks_formatted_secrets() {
+        assert!(has_likely_pii("ssn-123-45-6789"));
+        assert!(has_likely_pii("cliente-RFC-VECJ880326XK4"));
+        assert!(has_likely_pii("cuit-20-11111111-2"));
     }
 
     #[test]
