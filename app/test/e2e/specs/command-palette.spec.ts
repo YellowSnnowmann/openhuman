@@ -1,37 +1,80 @@
-import { waitForApp } from '../helpers/app-helpers';
+import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
 import { waitForWebView } from '../helpers/element-helpers';
+import { resetApp } from '../helpers/reset-app';
+import { startMockServer, stopMockServer } from '../mock-server';
 
-// Dispatch a keydown on window (capture-phase hotkey listener lives there).
-// `browser.keys()` is unreliable on tauri-driver, so we synthesize the event
-// directly — this matches the manager's actual listener surface.
+// Map option names to WebDriver key strings (W3C Actions API codes).
+const WD_KEY: Record<string, string> = {
+  meta: '\uE03D',
+  ctrl: '\uE009',
+  shift: '\uE008',
+};
+
+// Dispatch a key combination to the active page.
+//
+// Primary: WebDriver Actions API via CDP `Input.dispatchKeyEvent` — this
+// injects a real key event into the Chromium renderer's input pipeline and
+// reliably reaches `window.addEventListener('keydown', ..., { capture:true })`.
+//
+// Fallback: synthetic DOM event (kept for older driver compat).
 async function dispatchKey(
   key: string,
   opts: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {}
 ): Promise<void> {
-  await browser.execute(
-    (k: string, meta: boolean, ctrl: boolean, shift: boolean) => {
-      const ev = new KeyboardEvent('keydown', {
-        key: k,
-        metaKey: meta,
-        ctrlKey: ctrl,
-        shiftKey: shift,
-        bubbles: true,
-        cancelable: true,
-      });
-      window.dispatchEvent(ev);
-    },
-    key,
-    !!opts.meta,
-    !!opts.ctrl,
-    !!opts.shift
-  );
+  // Build the modifier sequence for the Actions API.
+  const mods: string[] = [];
+  if (opts.meta) mods.push(WD_KEY.meta);
+  if (opts.ctrl) mods.push(WD_KEY.ctrl);
+  if (opts.shift) mods.push(WD_KEY.shift);
+
+  try {
+    // Use the W3C Key Action source — CDP translates this to
+    // Input.dispatchKeyEvent which fires a native-level keydown in the
+    // renderer. This is more reliable than a synthetic DOM event because it
+    // goes through Chromium's own input dispatch path.
+    let action = browser.action('key');
+    for (const mod of mods) action = action.down(mod);
+    action = action.down(key);
+    action = action.up(key);
+    for (const mod of [...mods].reverse()) action = action.up(mod);
+    await action.perform();
+  } catch {
+    // Fallback: synthetic DOM KeyboardEvent dispatched directly on window.
+    // Reaches capture-phase listeners even when the Actions API is unavailable.
+    await browser.execute(
+      (k: string, meta: boolean, ctrl: boolean, shift: boolean) => {
+        window.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: k,
+            metaKey: meta,
+            ctrlKey: ctrl,
+            shiftKey: shift,
+            bubbles: true,
+            cancelable: true,
+          })
+        );
+      },
+      key,
+      !!opts.meta,
+      !!opts.ctrl,
+      !!opts.shift
+    );
+  }
 }
 
 describe('Command palette', () => {
-  before(async function beforeSuite() {
-    this.timeout(90_000);
+  before(async () => {
+    // CommandProvider is mounted inside the auth-gated provider chain.
+    // We must be logged in or mod+K will find no listener.
+    await startMockServer();
     await waitForApp();
     await waitForWebView();
+    await resetApp('e2e-command-palette');
+    await waitForAppReady(10_000);
+  });
+
+  after(async () => {
+    await stopMockServer();
   });
 
   it('opens via mod+K, runs an action, closes and navigates', async () => {
