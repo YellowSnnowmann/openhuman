@@ -496,7 +496,7 @@ impl OpenAiCompatibleProvider {
                     self.name.as_str(),
                     Some(model),
                     status,
-                    );
+                );
             } else if super::should_report_provider_http_failure(status) {
                 crate::core::observability::report_error(
                     message.as_str(),
