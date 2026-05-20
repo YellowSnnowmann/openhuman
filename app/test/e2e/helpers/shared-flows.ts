@@ -32,20 +32,36 @@ import { supportsExecuteScript } from './platform';
  * explicit selector. Tracking a follow-up `clickByAriaLabel` helper.
  */
 export async function openAddAccountModal(): Promise<void> {
+  const page = await browser.$('[data-testid="accounts-page"]');
+  await page.waitForDisplayed({ timeout: 15_000 });
+
   const opened = await browser.execute(() => {
-    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'));
-    // aria-label is t('accounts.addAccount') = 'Add Account'
-    const addBtn = buttons.find(b => b.getAttribute('aria-label') === 'Add Account');
-    if (addBtn) {
-      addBtn.click();
-      return true;
-    }
-    return false;
+    const addBtn = document.querySelector<HTMLButtonElement>('[data-testid="accounts-add-button"]');
+    if (!addBtn) return false;
+    addBtn.click();
+    return true;
   });
   if (!opened) {
-    throw new Error('Could not locate Add Account button on /chat');
+    throw new Error('Could not locate Add Account button on /chat accounts page');
   }
-  await waitForText('Add account', 5_000);
+  const modal = await browser.$('[data-testid="add-account-modal"]');
+  await modal.waitForDisplayed({ timeout: 5_000 });
+}
+
+export async function waitForAccountsPage(timeout = 15_000): Promise<void> {
+  const page = await browser.$('[data-testid="accounts-page"]');
+  await page.waitForDisplayed({ timeout });
+}
+
+export async function clickAddAccountProvider(provider: string, timeout = 10_000): Promise<void> {
+  const tile = await browser.$(`[data-testid="add-account-provider-${provider}"]`);
+  await tile.waitForDisplayed({ timeout });
+  await tile.click();
+}
+
+export async function waitForAddAccountModalClosed(timeout = 5_000): Promise<void> {
+  const modal = await browser.$('[data-testid="add-account-modal"]');
+  await modal.waitForExist({ timeout, reverse: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -115,19 +131,93 @@ const HASH_TO_SIDEBAR_LABEL = {
 
 export async function navigateViaHash(hash) {
   const normalized = String(hash).replace(/\/$/, '') || hash;
+  const expectedHash = `#${normalized}`;
+  const hashMatches = currentHash =>
+    currentHash === expectedHash || String(currentHash).startsWith(`${expectedHash}/`);
+  const waitForHash = async (timeout = 8_000) =>
+    browser.waitUntil(
+      async () => {
+        const currentHash = await browser.execute(() => window.location.hash);
+        if (!hashMatches(currentHash)) return false;
+        await browser.pause(300);
+        const stableHash = await browser.execute(() => window.location.hash);
+        return hashMatches(stableHash);
+      },
+      { timeout, interval: 250, timeoutMsg: `hash did not settle on ${hash}` }
+    );
 
   if (supportsExecuteScript()) {
+    const label = HASH_TO_SIDEBAR_LABEL[normalized];
+    if (label) {
+      try {
+        const clicked = await browser.execute((targetLabel: string) => {
+          const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+          const button = buttons.find(btn => {
+            const aria = btn.getAttribute('aria-label')?.trim();
+            const title = btn.getAttribute('title')?.trim();
+            const text = btn.textContent?.trim();
+            return aria === targetLabel || title === targetLabel || text === targetLabel;
+          });
+          if (!button) return false;
+          button.click();
+          return true;
+        }, label);
+        if (clicked) {
+          await waitForHash();
+          const currentHash = await browser.execute(() => window.location.hash);
+          console.log(`[E2E] Navigated to ${hash} via "${label}" (current: ${currentHash})`);
+          return;
+        }
+      } catch (buttonErr) {
+        console.log(`[E2E] Button navigation to ${hash} failed:`, buttonErr);
+      }
+    }
+
     try {
-      await browser.execute(h => {
-        window.location.hash = h;
-      }, hash);
-      await browser.pause(2_000);
+      await browser.waitUntil(
+        async () => {
+          await browser.execute(h => {
+            window.location.hash = h;
+          }, hash);
+          const currentHash = await browser.execute(() => window.location.hash);
+          return hashMatches(currentHash);
+        },
+        { timeout: 8_000, interval: 250, timeoutMsg: `hash did not settle on ${hash}` }
+      );
       const currentHash = await browser.execute(() => window.location.hash);
       console.log(`[E2E] Navigated to ${hash} (current: ${currentHash})`);
+      return;
     } catch (err) {
       console.log(`[E2E] Hash navigation to ${hash} failed:`, err);
     }
-    return;
+
+    if (label) {
+      try {
+        const clicked = await browser.execute((targetLabel: string) => {
+          const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+          const button = buttons.find(btn => {
+            const aria = btn.getAttribute('aria-label')?.trim();
+            const title = btn.getAttribute('title')?.trim();
+            const text = btn.textContent?.trim();
+            return aria === targetLabel || title === targetLabel || text === targetLabel;
+          });
+          if (!button) return false;
+          button.click();
+          return true;
+        }, label);
+        if (!clicked) {
+          throw new Error(`could not find nav button "${label}"`);
+        }
+        await waitForHash();
+        const currentHash = await browser.execute(() => window.location.hash);
+        console.log(`[E2E] Navigated to ${hash} via "${label}" (current: ${currentHash})`);
+        return;
+      } catch (fallbackErr) {
+        console.log(`[E2E] Button navigation to ${hash} failed:`, fallbackErr);
+      }
+    }
+
+    throw new Error(`[E2E] Failed to navigate to ${hash}`);
   }
 
   // Appium Mac2 — Settings → Billing (nested route)
@@ -308,9 +398,21 @@ export const ONBOARDING_OVERLAY_TEXTS = [
   'Install Skills',
 ] as const;
 
-/** True when the full-screen onboarding overlay is likely visible. */
+/** True when the routed full-screen onboarding flow is visible. */
 async function onboardingOverlayLikelyVisible(): Promise<boolean> {
+  if (supportsExecuteScript()) {
+    const routedOnboarding = await browser.execute(() => {
+      const onOnboardingRoute = window.location.hash.startsWith('#/onboarding');
+      const hasOnboardingShell =
+        document.querySelector('[data-testid="onboarding-layout"]') !== null ||
+        document.querySelector('[data-testid="onboarding-next-button"]') !== null;
+      return onOnboardingRoute && hasOnboardingShell;
+    });
+    if (routedOnboarding) return true;
+  }
+
   for (const label of ONBOARDING_OVERLAY_TEXTS) {
+    if (label === 'Welcome') continue;
     if (await textExists(label)) return true;
   }
   return false;
@@ -333,6 +435,38 @@ export async function waitForOnboardingOverlayHidden(timeout = 10_000): Promise<
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (!(await onboardingOverlayLikelyVisible())) return true;
+    await browser.pause(400);
+  }
+  return false;
+}
+
+export async function dismissWalkthroughIfVisible(timeout = 6_000): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (supportsExecuteScript()) {
+      const status = await browser.execute(() => {
+        const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'));
+        const skip = buttons.find(button => (button.textContent ?? '').trim() === 'Skip tour');
+        if (!skip) return 'not-visible';
+        ['mousedown', 'mouseup', 'click'].forEach(type => {
+          skip.dispatchEvent(
+            new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 })
+          );
+        });
+        return 'clicked';
+      });
+      if (status === 'clicked') {
+        await browser.waitUntil(async () => !(await textExists('Skip tour')), {
+          timeout: 4_000,
+          interval: 250,
+          timeoutMsg: 'walkthrough skip button remained visible',
+        });
+        return true;
+      }
+    } else if (await textExists('Skip tour')) {
+      await clickText('Skip tour', 2_000);
+      return true;
+    }
     await browser.pause(400);
   }
   return false;
@@ -427,6 +561,7 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
 
   if (!appeared) {
     console.log(`${logPrefix} Onboarding next-button never appeared — assuming already onboarded`);
+    await dismissWalkthroughIfVisible(3_000);
     return;
   }
 
@@ -448,6 +583,7 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
 
     if (status === 'gone') {
       console.log(`${logPrefix} Onboarding dismissed after ${step} step(s)`);
+      await dismissWalkthroughIfVisible(8_000);
       return;
     }
     if (status === 'gone-but-onboarding-hash') {
@@ -471,6 +607,7 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
     await browser.pause(step >= 4 ? 3_000 : 1_500);
   }
   console.log(`${logPrefix} Onboarding hit max steps (${maxSteps}) — moving on`);
+  await dismissWalkthroughIfVisible(8_000);
 }
 
 /**
@@ -482,6 +619,7 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
  */
 export async function completeOnboardingIfVisible(logPrefix = '[E2E]') {
   await walkOnboarding(logPrefix);
+  await waitForHomePage(15_000);
 }
 
 export async function waitForLoggedOutState(timeout = 10_000): Promise<string | null> {
