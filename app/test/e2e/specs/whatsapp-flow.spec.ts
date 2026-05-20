@@ -1,17 +1,14 @@
 import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
 import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
-import {
-  clickButton,
-  textExists,
-  waitForText,
-  waitForWebView,
-  waitForWindowVisible,
-} from '../helpers/element-helpers';
+import { waitForWebView, waitForWindowVisible } from '../helpers/element-helpers';
 import { supportsExecuteScript } from '../helpers/platform';
 import {
+  clickAddAccountProvider,
   completeOnboardingIfVisible,
   navigateViaHash,
   openAddAccountModal,
+  waitForAccountsPage,
+  waitForAddAccountModalClosed,
 } from '../helpers/shared-flows';
 import { startMockServer, stopMockServer } from '../mock-server';
 
@@ -70,35 +67,29 @@ describe('WhatsApp account integration smoke', () => {
   it('shows WhatsApp Web as an addable provider in the Add Account modal', async () => {
     stepLog('navigating to /accounts');
     await navigateViaHash('/chat');
-    await waitForText('Add Account', 15_000);
+    await waitForAccountsPage();
 
     stepLog('opening Add Account modal');
     await openAddAccountModal();
 
     // Modal renders the WhatsApp Web tile (label sourced from PROVIDERS).
-    await waitForText('WhatsApp Web', 10_000);
-    expect(await textExists('WhatsApp Web')).toBe(true);
-    expect(await textExists('Open web.whatsapp.com inside the app and stream chat updates.')).toBe(
-      true
-    );
+    const whatsappTile = await browser.$('[data-testid="add-account-provider-whatsapp"]');
+    await whatsappTile.waitForDisplayed({ timeout: 10_000 });
+    expect(await whatsappTile.isDisplayed()).toBe(true);
   });
 
   it('selecting WhatsApp Web closes the modal and registers an account on the rail', async () => {
     // Set up route + modal independently so this case is runnable in isolation.
     stepLog('navigating to /accounts (independent setup)');
     await navigateViaHash('/chat');
-    await waitForText('Add Account', 15_000);
+    await waitForAccountsPage();
     await openAddAccountModal();
-    await waitForText('WhatsApp Web', 10_000);
 
     stepLog('clicking WhatsApp Web tile via shared helper');
-    await clickButton('WhatsApp Web');
+    await clickAddAccountProvider('whatsapp');
 
     // 1) Modal must close — primary UI outcome.
-    await browser.waitUntil(async () => !(await textExists('Add account')), {
-      timeout: 5_000,
-      timeoutMsg: 'Add account modal did not close after picking WhatsApp Web',
-    });
+    await waitForAddAccountModalClosed();
 
     // 2) Redux must record a new account with provider === "whatsapp" — the
     // backing-state mock-effect that proves registration happened, not just

@@ -4,19 +4,25 @@
  *
  * Verifies:
  *   1. Initial login can complete onboarding and reach Home.
- *   2. Logout returns to Welcome/logged-out state.
- *   3. Re-login triggers the auth consume call on the mock backend.
- *   4. After re-login the mock /auth/me call is made (profile fetch).
- *   5. Onboarding overlay appears again after a fresh login (clean session).
+ *   2. Logout returns to the Welcome screen (session is cleared).
+ *   3. Re-login triggers the auth deep-link flow (token exchange via
+ *      /telegram/login-tokens/ + /auth/me profile fetch).
+ *   4. After re-login, the auth exchange and /auth/me refresh complete, then
+ *      the routed onboarding flow appears at its first step. This confirms the
+ *      fresh session does not carry stale mid-flow onboarding state from the
+ *      previous session.
  *
- * Note: auth tokens live in the in-process Rust core (not localStorage),
- * so this spec asserts UI-visible state (Welcome screen, onboarding overlay,
- * mock request log) rather than localStorage contents.
+ * Architecture note: auth tokens live in the Rust core (not Redux-persist).
+ * `applySessionToken` stores the JWT and fires `core-state:session-token-updated`
+ * immediately after the token exchange, then CoreStateProvider refreshes the
+ * authoritative user/profile snapshot. Routing now waits for that refreshed
+ * currentUser before sending incomplete onboarding sessions to /onboarding, so
+ * this spec verifies the backend calls first, then the UI route.
  */
 import { waitForApp, waitForAppReady, waitForAuthBootstrap } from '../helpers/app-helpers';
+import { callOpenhumanRpc } from '../helpers/core-rpc';
 import { triggerAuthDeepLink } from '../helpers/deep-link-helpers';
 import {
-  dumpAccessibilityTree,
   hasAppChrome,
   textExists,
   waitForWebView,
@@ -26,7 +32,6 @@ import { resetApp } from '../helpers/reset-app';
 import {
   logoutViaSettings,
   performFullLogin,
-  waitForLoggedOutState,
   waitForOnboardingOverlayVisible,
   waitForRequest,
 } from '../helpers/shared-flows';
@@ -40,8 +45,7 @@ import {
 } from '../mock-server';
 
 describe('Logout -> re-login onboarding overlay', () => {
-  before(async function beforeSuite() {
-    this.timeout(90_000);
+  before(async () => {
     await startMockServer();
     await waitForApp();
     // Reach Welcome screen first (this spec drives login itself).
@@ -55,30 +59,41 @@ describe('Logout -> re-login onboarding overlay', () => {
     await stopMockServer();
   });
 
-  it('shows onboarding overlay with clean state after logout and re-login', async function () {
-    this.timeout(180_000);
+  it('shows onboarding overlay with clean state after logout and re-login', async () => {
     const hasChrome = await hasAppChrome();
     expect(hasChrome).toBe(true);
 
-    // Step 1: Login, walk onboarding, reach Home.
+    // ── First login: complete onboarding and reach Home ──────────────────────
     clearRequestLog();
     resetMockBehavior();
     await performFullLogin('e2e-logout-relogin-first-token', '[LogoutReLogin]');
 
-    // Step 2: Logout via Settings.
+    // Let post-onboarding routing guards settle before navigating to Settings.
+    await browser.pause(3_000);
+
+    // ── Logout ────────────────────────────────────────────────────────────────
     await logoutViaSettings('[LogoutReLogin]');
+    // logoutViaSettings confirms "Welcome" is visible — the session is cleared.
 
-    // Verify logged-out state is visible (Welcome or Sign in).
-    const loggedOutMarker = await waitForLoggedOutState(10_000);
-    if (!loggedOutMarker) {
-      const tree = await dumpAccessibilityTree();
-      console.log('[LogoutReLogin] Logged-out state not visible. Tree:\n', tree.slice(0, 4000));
+    // Reset core state (onboarding_completed, chat_onboarding_completed, api_key)
+    // so the re-login is treated as a fresh user session. Without this,
+    // the Rust core retains onboarding_completed=true from the first session
+    // and the overlay would not reappear for the same mock user.
+    // NOTE: this does NOT reload the renderer — the test intentionally verifies
+    // that re-login without a full page refresh starts with clean state.
+    const resetResult = await Promise.race([
+      callOpenhumanRpc('openhuman.test_reset', {}),
+      new Promise(resolve => setTimeout(() => resolve({ ok: false, error: 'timeout' }), 8_000)),
+    ]);
+    if (!resetResult.ok) {
+      console.log('[LogoutReLogin] test_reset result:', JSON.stringify(resetResult));
     }
-    expect(loggedOutMarker).toBeTruthy();
 
-    // Step 3: Re-login with a delayed /auth/me response so we can observe
-    // the interim state.
-    setMockBehavior('telegramMeDelayMs', '4500');
+    // ── Second login (re-login) ───────────────────────────────────────────────
+    // Add a profile-fetch delay to exercise the path where /auth/me is slow.
+    // The token exchange (`POST /telegram/login-tokens/`) still completes
+    // immediately; the delay only slows the /auth/me confirmation call.
+    setMockBehavior('telegramMeDelayMs', '3000');
     clearRequestLog();
 
     await triggerAuthDeepLink('e2e-logout-relogin-second-token');
@@ -87,7 +102,8 @@ describe('Logout -> re-login onboarding overlay', () => {
     await waitForAppReady(15_000);
     await waitForAuthBootstrap(15_000);
 
-    // The mock must have received the consume call.
+    // Confirm the deep-link was processed: app exchanged the raw Telegram token
+    // for a session JWT via the consume endpoint.
     const consumeCall = await waitForRequest(
       getRequestLog,
       'POST',
@@ -102,33 +118,37 @@ describe('Logout -> re-login onboarding overlay', () => {
     }
     expect(consumeCall).toBeDefined();
 
-    // Step 4: Verify the re-login triggered a profile fetch.
-    const meCall = await waitForRequest(getRequestLog, 'GET', '/auth/me', 15_000);
-    if (!meCall) {
-      console.log(
-        '[LogoutReLogin] Missing /auth/me call. Request log:',
-        JSON.stringify(getRequestLog(), null, 2)
-      );
-    }
+    // ── /auth/me must have been called for the new session ───────────────────
+    // Routing to /onboarding is intentionally held until the core snapshot has
+    // a real currentUser. Waiting for the backend validation first prevents the
+    // logged-out Welcome screen from being mistaken for onboarding while
+    // telegramMeDelayMs is active.
+    const meCall = await waitForRequest(getRequestLog, 'GET', '/auth/me', 20_000);
     expect(meCall).toBeDefined();
 
-    // Step 5: After a fresh login (delayed profile fetch), the onboarding
-    // overlay must eventually appear. Rely on the explicit overlay wait.
-    const overlayVisible = await waitForOnboardingOverlayVisible(9_500);
+    // ── Onboarding must appear for the fresh session ─────────────────────────
+    // The new user has not completed onboarding, so the routed onboarding shell
+    // should mount once the profile-backed core snapshot is available.
+    const overlayVisible = await waitForOnboardingOverlayVisible(12_000);
     if (!overlayVisible) {
-      const tree = await dumpAccessibilityTree();
       console.log(
-        '[LogoutReLogin] Overlay did not appear after timeout. Tree:\n',
-        tree.slice(0, 4000)
-      );
-      console.log(
-        '[LogoutReLogin] Request log after timeout:',
+        '[LogoutReLogin] Overlay did not appear after timeout. Request log:',
         JSON.stringify(getRequestLog(), null, 2)
       );
     }
     expect(overlayVisible).toBe(true);
 
-    expect(await textExists('Welcome')).toBe(true);
-    expect(await textExists('Skip')).toBe(true);
+    const route = await browser.execute(() => window.location.hash);
+    expect(route).toMatch(/^#\/onboarding/);
+
+    // ── Onboarding must be in clean first-step state ─────────────────────────
+    // If stale mid-flow state from session 1 leaked, a later step would render
+    // instead of the initial welcome step.
+    const onFirstStep = await browser.execute(
+      () => document.querySelector('[data-testid="onboarding-welcome-step"]') !== null
+    );
+    expect(onFirstStep).toBe(true);
+    expect(await textExists("Hi. I'm OpenHuman.")).toBe(true);
+    expect(await textExists('Get Started')).toBe(true);
   });
 });

@@ -17,6 +17,7 @@ import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
 import { hasAppChrome } from '../helpers/element-helpers';
 import { resetApp } from '../helpers/reset-app';
 import { navigateViaHash, waitForHomePage } from '../helpers/shared-flows';
+import { startMockServer, stopMockServer } from '../mock-server';
 
 const USER_ID = 'e2e-navigation';
 
@@ -44,10 +45,14 @@ async function rootTextLength(): Promise<number> {
 }
 
 describe('Navigation', () => {
-  before(async function beforeSuite() {
-    this.timeout(90_000);
+  before(async () => {
+    await startMockServer();
     await waitForApp();
     await resetApp(USER_ID);
+  });
+
+  after(async () => {
+    await stopMockServer();
   });
 
   it('app chrome stays visible', async () => {
