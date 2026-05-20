@@ -29,7 +29,6 @@ import { clearRequestLog, setMockBehavior, startMockServer, stopMockServer } fro
 
 const LOG = '[ComposioTriggersE2E]';
 
-
 describe('Composio trigger toggles (UI + core RPC)', () => {
   before(async () => {
     await startMockServer();
