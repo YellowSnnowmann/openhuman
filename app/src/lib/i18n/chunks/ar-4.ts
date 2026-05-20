@@ -46,6 +46,15 @@ const ar4: TranslationMap = {
   'composio.connect.subdomainInvalid':
     'أدخل النطاق الفرعي القصير فقط (مثل "acme")، وليس الرابط الكامل. يجب أن يحتوي فقط على أحرف وأرقام وشُرَط.',
   'composio.connect.subdomainRequired': 'يرجى إدخال نطاقك الفرعي في Atlassian للمتابعة.',
+  'composio.connect.dynamicsOrgNameLabel': 'اسم مؤسسة Dynamics 365',
+  'composio.connect.dynamicsOrgNameHint':
+    'على سبيل المثال، "myorg" لـ myorg.crm.dynamics.com. أدخل اسم المؤسسة المختصر فقط، وليس الرابط الكامل.',
+  'composio.connect.needsFieldsPrefix': 'للاتصال',
+  'composio.connect.needsFieldsSuffix':
+    'نحتاج إلى مزيد من المعلومات. املأ الحقول الناقصة أدناه وحاول مرة أخرى.',
+  'composio.connect.requiredFieldEmpty': 'هذا الحقل مطلوب.',
+  'composio.connect.wabaIdHint':
+    'احصل عليه عبر GET /me/businesses ثم GET /{business_id}/owned_whatsapp_business_accounts باستخدام رمز وصول Meta الخاص بك.',
   'composio.connect.wabaIdLabel': 'تسمية معرف WABA',
   'composio.connect.wabaIdRequired': 'يرجى إدخال معرف حساب WhatsApp Business (WABA ID) للمتابعة.',
   'composio.connect.waitingFor': 'بانتظار',
@@ -146,8 +155,14 @@ const ar4: TranslationMap = {
   'onboarding.contextGathering.title': 'جمع السياق',
   'openhuman.team_list_teams': 'قائمة الفرق',
   'overlay.ariaAttention': 'رسالة انتباه',
+  'overlay.ariaCompanion': 'الرفيق نشط',
   'overlay.ariaOrb': 'تراكب OpenHuman',
   'overlay.ariaVoiceActive': 'إدخال الصوت نشط',
+  'overlay.companion.error': 'خطأ',
+  'overlay.companion.listening': 'يستمع…',
+  'overlay.companion.pointing': 'يشير…',
+  'overlay.companion.speaking': 'يتحدث…',
+  'overlay.companion.thinking': 'يفكر…',
   'overlay.orbTitle': 'اسحب للتحريك · انقر مرتين لإعادة الضبط',
   'pages.settings.account.connections': 'الاتصالات',
   'pages.settings.account.connectionsDesc': 'وصف الاتصالات',
@@ -166,6 +181,9 @@ const ar4: TranslationMap = {
   'pages.settings.ai.voiceDesc': 'وصف الصوت',
   'pages.settings.aiSection.description': 'مزودو نماذج اللغة وOllama المحلي والصوت (STT / TTS).',
   'pages.settings.aiSection.title': 'الذكاء الاصطناعي',
+  'pages.settings.features.desktopCompanion': 'الرفيق المكتبي',
+  'pages.settings.features.desktopCompanionDesc':
+    'مساعد صوتي يدرك الشاشة — يستمع ويرى ويتحدث ويشير',
   'pages.settings.features.messagingChannels': 'قنوات المراسلة',
   'pages.settings.features.messagingChannelsDesc': 'وصف قنوات المراسلة',
   'pages.settings.features.notifications': 'الإشعارات',
