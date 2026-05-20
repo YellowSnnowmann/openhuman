@@ -27,7 +27,8 @@ impl UnifiedMemory {
             );
             return Err("document namespace/key cannot contain secrets".to_string());
         }
-        if safety::pii::has_likely_pii(&input.namespace) || safety::pii::has_likely_pii(&input.key) {
+        if safety::pii::has_likely_pii(&input.namespace) || safety::pii::has_likely_pii(&input.key)
+        {
             log::warn!(
                 "[memory:safety] document write rejected due to PII-like namespace/key namespace_chars={} key_chars={}",
                 input.namespace.chars().count(),
@@ -199,7 +200,8 @@ impl UnifiedMemory {
             );
             return Err("document namespace/key cannot contain secrets".to_string());
         }
-        if safety::pii::has_likely_pii(&input.namespace) || safety::pii::has_likely_pii(&input.key) {
+        if safety::pii::has_likely_pii(&input.namespace) || safety::pii::has_likely_pii(&input.key)
+        {
             log::warn!(
                 "[memory:safety] metadata-only write rejected due to PII-like namespace/key namespace_chars={} key_chars={}",
                 input.namespace.chars().count(),

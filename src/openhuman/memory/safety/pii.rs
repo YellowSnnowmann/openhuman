@@ -30,7 +30,7 @@
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexSet};
 
-use super::{Sanitized, SanitizationReport};
+use super::{SanitizationReport, Sanitized};
 
 // ---------- Replacement tokens ----------
 
@@ -65,13 +65,11 @@ static CNPJ_BARE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\d{14}\b").expect
 
 // Argentine CUIT/CUIL: NN-NNNNNNNN-N (formatted only — bare 11-digit with
 // single check digit has ~9% FP on random IDs, too noisy without context).
-static CUIT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b\d{2}-\d{8}-\d\b").expect("cuit"));
+static CUIT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\d{2}-\d{8}-\d\b").expect("cuit"));
 
 // Mexican RFC: 3-4 letters (incl. Ñ &) + 6 digits + 3 alphanumeric homoclave.
-static RFC_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b").expect("rfc")
-});
+static RFC_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b").expect("rfc"));
 
 // Japan My Number (12 digits) gated by a Japanese or English keyword within
 // ~30 chars. Bare 12-digit runs without keyword are too noisy.
@@ -81,38 +79,32 @@ static MYNUM_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 // E.164 phone: + followed by 7-15 digits, no separators.
-static PHONE_E164_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\+\d{7,15}\b").expect("e164"));
+static PHONE_E164_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\+\d{7,15}\b").expect("e164"));
 
 // NANP (US/Canada) formatted phone. Area code must start 2-9; first digit of
 // central-office code also 2-9 (real NANP rule).
 static PHONE_NANP_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"\b(?:\+?1[\s.\-]?)?\(?([2-9]\d{2})\)?[\s.\-]?([2-9]\d{2})[\s.\-]?(\d{4})\b",
-    )
-    .expect("nanp phone")
+    Regex::new(r"\b(?:\+?1[\s.\-]?)?\(?([2-9]\d{2})\)?[\s.\-]?([2-9]\d{2})[\s.\-]?(\d{4})\b")
+        .expect("nanp phone")
 });
 
 // US SSN: NNN-NN-NNNN. Range filter applied below.
 static SSN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\d{3}-\d{2}-\d{4}\b").expect("ssn"));
 
 // Credit card: 13-19 digits with optional spaces/dashes every 4. Luhn-gated.
-static CC_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b(?:\d[\s\-]?){13,19}\b").expect("credit card")
-});
+static CC_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b(?:\d[\s\-]?){13,19}\b").expect("credit card"));
 
 // IBAN: 2 letter country code + 2 check digits + 11-30 alphanumeric.
 // Allow optional spaces every 4 chars (common human format).
-static IBAN_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b[A-Z]{2}\d{2}(?:[\s]?[A-Z0-9]){11,30}\b").expect("iban")
-});
+static IBAN_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b[A-Z]{2}\d{2}(?:[\s]?[A-Z0-9]){11,30}\b").expect("iban"));
 
 // India Aadhaar: 4-4-4 digit groups (space or hyphen) OR contiguous 12 digits
 // gated by keyword. Verhoeff-checksum-gated when grouped, keyword-gated when
 // bare (Verhoeff alone has ~10% raw FP rate on random 12-digit runs).
-static AADHAAR_FMT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b\d{4}[\s\-]\d{4}[\s\-]\d{4}\b").expect("aadhaar formatted")
-});
+static AADHAAR_FMT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b\d{4}[\s\-]\d{4}[\s\-]\d{4}\b").expect("aadhaar formatted"));
 static AADHAAR_KW_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(?:aadhaar|aadhar|आधार|uidai|uid)[\s:#\-no.]{0,10}(\d{12})\b")
         .expect("aadhaar keyword")
@@ -128,8 +120,7 @@ static NINO_RE: Lazy<Regex> =
 
 // Spain DNI: 8 digits + check letter. NIE: starts X/Y/Z, then 7 digits + letter.
 static DNI_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b\d{8}[A-Z]\b").expect("dni"));
-static NIE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)\b[XYZ]\d{7}[A-Z]\b").expect("nie"));
+static NIE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b[XYZ]\d{7}[A-Z]\b").expect("nie"));
 
 // South Korea RRN: NNNNNN-CXXXXXX where C is gender/century digit (1-4).
 static RRN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\d{6}-[1-4]\d{6}\b").expect("rrn"));
@@ -138,23 +129,23 @@ static RRN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\d{6}-[1-4]\d{6}\b").ex
 // PII-free text. Each entry roughly corresponds to one of the patterns above.
 static SCREEN: Lazy<RegexSet> = Lazy::new(|| {
     RegexSet::new([
-        r"\d{11,}",                       // any long digit run → CPF/CNPJ/CC/Aadhaar/IBAN
-        r"\d{3}\.\d{3}\.\d{3}-\d{2}",     // CPF
-        r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}", // CNPJ
-        r"\d{2}-\d{8}-\d",                // CUIT
-        r"(?i)[A-Z]{3,4}\d{6}",           // RFC / general alphanumeric ID
+        r"\d{11,}",                               // any long digit run → CPF/CNPJ/CC/Aadhaar/IBAN
+        r"\d{3}\.\d{3}\.\d{3}-\d{2}",             // CPF
+        r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}",       // CNPJ
+        r"\d{2}-\d{8}-\d",                        // CUIT
+        r"(?i)[A-Z]{3,4}\d{6}",                   // RFC / general alphanumeric ID
         r"(?:マイナンバー|個人番号|My\s?Number)", // JP keyword
-        r"\+\d{7}",                       // E.164
+        r"\+\d{7}",                               // E.164
         r"\(?[2-9]\d{2}\)?[\s.\-]\d{3}[\s.\-]\d{4}", // NANP (parens optional)
-        r"\d{3}-\d{2}-\d{4}",             // SSN
-        r"\b[A-Z]{2}\d{2}[A-Z0-9]",       // IBAN prefix
-        r"\d{4}[\s\-]\d{4}[\s\-]\d{4}",   // Aadhaar formatted
-        r"(?i)aadhaar|aadhar|आधार|uidai", // Aadhaar keyword
-        r"(?i)[A-Z]{5}\d{4}[A-Z]",        // PAN-IN
-        r"(?i)[A-Z]{2}\d{6}[A-D]",        // NINO
-        r"\b\d{8}[A-Z]\b",                // DNI
-        r"(?i)[XYZ]\d{7}[A-Z]",           // NIE
-        r"\d{6}-[1-4]\d{6}",              // RRN
+        r"\d{3}-\d{2}-\d{4}",                     // SSN
+        r"\b[A-Z]{2}\d{2}[A-Z0-9]",               // IBAN prefix
+        r"\d{4}[\s\-]\d{4}[\s\-]\d{4}",           // Aadhaar formatted
+        r"(?i)aadhaar|aadhar|आधार|uidai",         // Aadhaar keyword
+        r"(?i)[A-Z]{5}\d{4}[A-Z]",                // PAN-IN
+        r"(?i)[A-Z]{2}\d{6}[A-D]",                // NINO
+        r"\b\d{8}[A-Z]\b",                        // DNI
+        r"(?i)[XYZ]\d{7}[A-Z]",                   // NIE
+        r"\d{6}-[1-4]\d{6}",                      // RRN
     ])
     .expect("screen regex set")
 });
@@ -181,7 +172,12 @@ pub fn redact_pii(text: &str) -> Sanitized<String> {
                 report,
             };
         }
-        return splice_redactions(text, &nview, collect_redactions(&nview.normalized), &mut report);
+        return splice_redactions(
+            text,
+            &nview,
+            collect_redactions(&nview.normalized),
+            &mut report,
+        );
     }
 
     let nview = NormalizedView::build(text);
@@ -210,9 +206,15 @@ fn collect_redactions(norm: &str) -> Vec<Hit> {
     let mut hits: Vec<Hit> = Vec::new();
 
     // Priority order: most specific / highest-confidence first.
-    push_checksum(&mut hits, norm, &CPF_FMT_RE, PII_CPF, |s| valid_cpf(digits(s).as_slice()));
-    push_checksum(&mut hits, norm, &CNPJ_FMT_RE, PII_CNPJ, |s| valid_cnpj(digits(s).as_slice()));
-    push_checksum(&mut hits, norm, &CUIT_RE, PII_CUIT, |s| valid_cuit(digits(s).as_slice()));
+    push_checksum(&mut hits, norm, &CPF_FMT_RE, PII_CPF, |s| {
+        valid_cpf(digits(s).as_slice())
+    });
+    push_checksum(&mut hits, norm, &CNPJ_FMT_RE, PII_CNPJ, |s| {
+        valid_cnpj(digits(s).as_slice())
+    });
+    push_checksum(&mut hits, norm, &CUIT_RE, PII_CUIT, |s| {
+        valid_cuit(digits(s).as_slice())
+    });
 
     // IBAN before credit card: CC can match an IBAN tail of all digits.
     push_checksum(&mut hits, norm, &IBAN_RE, PII_IBAN, |s| valid_iban(s));
@@ -220,8 +222,12 @@ fn collect_redactions(norm: &str) -> Vec<Hit> {
     // Credit card before bare CPF/CNPJ to avoid catching a 13-19 digit run as CPF/CNPJ.
     push_checksum(&mut hits, norm, &CC_RE, PII_CC, |s| valid_luhn(s));
 
-    push_checksum(&mut hits, norm, &CNPJ_BARE_RE, PII_CNPJ, |s| valid_cnpj(digits(s).as_slice()));
-    push_checksum(&mut hits, norm, &CPF_BARE_RE, PII_CPF, |s| valid_cpf(digits(s).as_slice()));
+    push_checksum(&mut hits, norm, &CNPJ_BARE_RE, PII_CNPJ, |s| {
+        valid_cnpj(digits(s).as_slice())
+    });
+    push_checksum(&mut hits, norm, &CPF_BARE_RE, PII_CPF, |s| {
+        valid_cpf(digits(s).as_slice())
+    });
 
     push_checksum(&mut hits, norm, &AADHAAR_FMT_RE, PII_AADHAAR, |s| {
         valid_verhoeff(digits(s).as_slice())
@@ -300,7 +306,11 @@ fn push_captured(
 // Sort by start asc, length desc. Then walk in order, dropping any hit whose
 // range overlaps a kept hit. Result: earlier + longer wins; no double-redact.
 fn dedupe_overlaps(hits: &mut Vec<Hit>) {
-    hits.sort_by(|a, b| a.start.cmp(&b.start).then((b.end - b.start).cmp(&(a.end - a.start))));
+    hits.sort_by(|a, b| {
+        a.start
+            .cmp(&b.start)
+            .then((b.end - b.start).cmp(&(a.end - a.start)))
+    });
     let mut kept: Vec<Hit> = Vec::with_capacity(hits.len());
     for h in hits.drain(..) {
         let overlaps = kept.last().map_or(false, |k| h.start < k.end);
@@ -376,7 +386,10 @@ impl NormalizedView {
             }
         }
         byte_map.push(original.len());
-        Self { normalized, byte_map }
+        Self {
+            normalized,
+            byte_map,
+        }
     }
 
     fn norm_to_orig(&self, norm_byte: usize) -> usize {
@@ -404,17 +417,11 @@ fn is_zero_width(c: char) -> bool {
 fn fold_char(c: char) -> char {
     match c {
         // Fullwidth digits 0-9
-        '\u{FF10}'..='\u{FF19}' => {
-            char::from_u32(c as u32 - 0xFF10 + 0x30).unwrap_or(c)
-        }
+        '\u{FF10}'..='\u{FF19}' => char::from_u32(c as u32 - 0xFF10 + 0x30).unwrap_or(c),
         // Arabic-Indic digits ٠-٩
-        '\u{0660}'..='\u{0669}' => {
-            char::from_u32(c as u32 - 0x0660 + 0x30).unwrap_or(c)
-        }
+        '\u{0660}'..='\u{0669}' => char::from_u32(c as u32 - 0x0660 + 0x30).unwrap_or(c),
         // Eastern Arabic-Indic digits ۰-۹
-        '\u{06F0}'..='\u{06F9}' => {
-            char::from_u32(c as u32 - 0x06F0 + 0x30).unwrap_or(c)
-        }
+        '\u{06F0}'..='\u{06F9}' => char::from_u32(c as u32 - 0x06F0 + 0x30).unwrap_or(c),
         // Common fullwidth punctuation we care about for PII formats
         '\u{FF0D}' => '-',
         '\u{FF0E}' => '.',
@@ -493,7 +500,11 @@ fn valid_luhn(s: &str) -> bool {
     for x in d.iter().rev() {
         let v = if alt {
             let doubled = x * 2;
-            if doubled > 9 { doubled - 9 } else { doubled }
+            if doubled > 9 {
+                doubled - 9
+            } else {
+                doubled
+            }
         } else {
             *x
         };
@@ -605,7 +616,9 @@ fn valid_dni_es(s: &str) -> bool {
     }
     let num_str = &upper[..8];
     let letter = bytes[8];
-    let Ok(num) = num_str.parse::<u32>() else { return false };
+    let Ok(num) = num_str.parse::<u32>() else {
+        return false;
+    };
     DNI_LETTERS[(num % 23) as usize] == letter
 }
 
@@ -621,8 +634,12 @@ fn valid_nie_es(s: &str) -> bool {
         b'Z' => 2,
         _ => return false,
     };
-    let Ok(rest) = std::str::from_utf8(&bytes[1..8]) else { return false };
-    let Ok(num) = rest.parse::<u32>() else { return false };
+    let Ok(rest) = std::str::from_utf8(&bytes[1..8]) else {
+        return false;
+    };
+    let Ok(num) = rest.parse::<u32>() else {
+        return false;
+    };
     let composed = prefix * 10_000_000 + num;
     DNI_LETTERS[(composed % 23) as usize] == bytes[8]
 }
@@ -665,37 +682,61 @@ mod tests {
 
     fn unchanged(input: &str) {
         let out = redact_pii(input);
-        assert_eq!(out.value, input, "expected no change; report={:?}", out.report);
+        assert_eq!(
+            out.value, input,
+            "expected no change; report={:?}",
+            out.report
+        );
         assert_eq!(out.report.pii_redactions, 0);
     }
 
     // --- CPF ---
     #[test]
-    fn cpf_formatted_valid_redacted() { redacts("CPF: 111.444.777-35.", PII_CPF); }
+    fn cpf_formatted_valid_redacted() {
+        redacts("CPF: 111.444.777-35.", PII_CPF);
+    }
     #[test]
-    fn cpf_formatted_invalid_kept() { unchanged("CPF 111.444.777-99 nope"); }
+    fn cpf_formatted_invalid_kept() {
+        unchanged("CPF 111.444.777-99 nope");
+    }
     #[test]
-    fn cpf_all_same_digits_rejected() { unchanged("Test 111.111.111-11"); }
+    fn cpf_all_same_digits_rejected() {
+        unchanged("Test 111.111.111-11");
+    }
     #[test]
-    fn cpf_bare_valid_redacted() { redacts("Sem mascara 11144477735 ok", PII_CPF); }
+    fn cpf_bare_valid_redacted() {
+        redacts("Sem mascara 11144477735 ok", PII_CPF);
+    }
 
     // --- CNPJ ---
     #[test]
-    fn cnpj_formatted_valid_redacted() { redacts("CNPJ 11.222.333/0001-81", PII_CNPJ); }
+    fn cnpj_formatted_valid_redacted() {
+        redacts("CNPJ 11.222.333/0001-81", PII_CNPJ);
+    }
     #[test]
-    fn cnpj_bare_valid_redacted() { redacts("contract 11222333000181 yes", PII_CNPJ); }
+    fn cnpj_bare_valid_redacted() {
+        redacts("contract 11222333000181 yes", PII_CNPJ);
+    }
 
     // --- CUIT ---
     #[test]
-    fn cuit_valid_redacted() { redacts("CUIT 20-11111111-2", PII_CUIT); }
+    fn cuit_valid_redacted() {
+        redacts("CUIT 20-11111111-2", PII_CUIT);
+    }
     #[test]
-    fn cuit_invalid_kept() { unchanged("noise 20-12345678-0 noise"); }
+    fn cuit_invalid_kept() {
+        unchanged("noise 20-12345678-0 noise");
+    }
 
     // --- RFC ---
     #[test]
-    fn rfc_redacted() { redacts("Mi RFC VECJ880326XK4 .", PII_RFC); }
+    fn rfc_redacted() {
+        redacts("Mi RFC VECJ880326XK4 .", PII_RFC);
+    }
     #[test]
-    fn rfc_lowercase_redacted() { redacts("rfc vecj880326xk4", PII_RFC); }
+    fn rfc_lowercase_redacted() {
+        redacts("rfc vecj880326xk4", PII_RFC);
+    }
 
     // --- My Number ---
     #[test]
@@ -709,21 +750,35 @@ mod tests {
 
     // --- E.164 + NANP phone ---
     #[test]
-    fn e164_redacted() { redacts("phone +15551234567", PII_PHONE); }
+    fn e164_redacted() {
+        redacts("phone +15551234567", PII_PHONE);
+    }
     #[test]
-    fn nanp_formatted_redacted() { redacts("call 415-555-0123 thanks", PII_PHONE); }
+    fn nanp_formatted_redacted() {
+        redacts("call 415-555-0123 thanks", PII_PHONE);
+    }
     #[test]
-    fn nanp_with_country_code_redacted() { redacts("+1 (212) 555-7890", PII_PHONE); }
+    fn nanp_with_country_code_redacted() {
+        redacts("+1 (212) 555-7890", PII_PHONE);
+    }
     #[test]
-    fn nanp_invalid_area_code_kept() { unchanged("score 115-555-0123 ish"); }
+    fn nanp_invalid_area_code_kept() {
+        unchanged("score 115-555-0123 ish");
+    }
 
     // --- SSN ---
     #[test]
-    fn ssn_valid_redacted() { redacts("ssn 123-45-6789", PII_SSN); }
+    fn ssn_valid_redacted() {
+        redacts("ssn 123-45-6789", PII_SSN);
+    }
     #[test]
-    fn ssn_reserved_area_kept() { unchanged("test 666-12-3456"); }
+    fn ssn_reserved_area_kept() {
+        unchanged("test 666-12-3456");
+    }
     #[test]
-    fn ssn_zero_serial_kept() { unchanged("test 123-45-0000"); }
+    fn ssn_zero_serial_kept() {
+        unchanged("test 123-45-0000");
+    }
 
     // --- Credit card / Luhn ---
     #[test]
@@ -768,27 +823,43 @@ mod tests {
 
     // --- PAN-IN ---
     #[test]
-    fn pan_in_redacted() { redacts("PAN: ABCDE1234F", PII_PAN_IN); }
+    fn pan_in_redacted() {
+        redacts("PAN: ABCDE1234F", PII_PAN_IN);
+    }
 
     // --- NINO ---
     #[test]
-    fn nino_redacted() { redacts("NI no AB123456C", PII_NINO); }
+    fn nino_redacted() {
+        redacts("NI no AB123456C", PII_NINO);
+    }
     #[test]
-    fn nino_reserved_prefix_kept() { unchanged("BG123456A"); }
+    fn nino_reserved_prefix_kept() {
+        unchanged("BG123456A");
+    }
 
     // --- DNI / NIE ---
     #[test]
-    fn dni_es_redacted() { redacts("DNI 12345678Z", PII_DNI); }
+    fn dni_es_redacted() {
+        redacts("DNI 12345678Z", PII_DNI);
+    }
     #[test]
-    fn dni_es_bad_letter_kept() { unchanged("ID 12345678A code"); }
+    fn dni_es_bad_letter_kept() {
+        unchanged("ID 12345678A code");
+    }
     #[test]
-    fn nie_es_redacted() { redacts("NIE X1234567L", PII_DNI); }
+    fn nie_es_redacted() {
+        redacts("NIE X1234567L", PII_DNI);
+    }
 
     // --- RRN Korea ---
     #[test]
-    fn rrn_kr_redacted() { redacts("주민번호 900101-1234567", PII_RRN); }
+    fn rrn_kr_redacted() {
+        redacts("주민번호 900101-1234567", PII_RRN);
+    }
     #[test]
-    fn rrn_kr_bad_gender_digit_kept() { unchanged("ref 900101-5234567 nope"); }
+    fn rrn_kr_bad_gender_digit_kept() {
+        unchanged("ref 900101-5234567 nope");
+    }
 
     // --- Bypass resistance ---
     #[test]
@@ -833,10 +904,14 @@ RRN 900101-1234567. \
 Phone +15551234567.";
         let out = redact_pii(input);
         for token in [
-            PII_RFC, PII_CNPJ, PII_CUIT, PII_CPF, PII_MYNUM, PII_SSN, PII_CC, PII_IBAN,
-            PII_PAN_IN, PII_NINO, PII_DNI, PII_RRN, PII_PHONE,
+            PII_RFC, PII_CNPJ, PII_CUIT, PII_CPF, PII_MYNUM, PII_SSN, PII_CC, PII_IBAN, PII_PAN_IN,
+            PII_NINO, PII_DNI, PII_RRN, PII_PHONE,
         ] {
-            assert!(out.value.contains(token), "missing {token} in: {}", out.value);
+            assert!(
+                out.value.contains(token),
+                "missing {token} in: {}",
+                out.value
+            );
         }
         assert!(out.report.pii_redactions >= 13);
     }
@@ -852,5 +927,7 @@ Phone +15551234567.";
     }
 
     #[test]
-    fn empty_text_is_noop() { unchanged(""); }
+    fn empty_text_is_noop() {
+        unchanged("");
+    }
 }
