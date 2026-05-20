@@ -6,14 +6,14 @@
  * blank screens or error states.
  *
  * Tests:
- *   N2.1 — /settings/account
- *   N2.2 — /settings/channels
- *   N2.3 — /settings/data
- *   N2.4 — /settings/ai-skills
- *   N2.5 — /settings/advanced
+ *   N2.1 — /settings (root index)
+ *   N2.2 — /settings/connections
+ *   N2.3 — /settings/memory-data
+ *   N2.4 — /settings/intelligence
+ *   N2.5 — /settings/developer-options
  *   N2.6 — /settings/billing
- *   N2.7 — /settings/dev
- *   N2.8 — /settings/features
+ *   N2.7 — /settings/appearance
+ *   N2.8 — /settings/tools
  *   N2.9 — back navigation to /home returns home content
  */
 import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
@@ -41,24 +41,29 @@ interface PanelCheck {
 
 const PANELS: PanelCheck[] = [
   {
-    hash: '/settings/account',
-    markers: ['Account', 'Profile', 'Name', 'Email', 'Settings'],
+    // N2.1 — root settings page (section index)
+    hash: '/settings',
+    markers: ['Settings', 'Account', 'Privacy', 'Appearance', 'Notifications'],
   },
   {
-    hash: '/settings/channels',
-    markers: ['Channels', 'Channel', 'Connect', 'Provider', 'Gmail', 'Telegram', 'Settings'],
+    // N2.2 — connections (channel providers)
+    hash: '/settings/connections',
+    markers: ['Connections', 'Connect', 'Provider', 'Gmail', 'Telegram', 'Settings'],
   },
   {
-    hash: '/settings/data',
-    markers: ['Data', 'Storage', 'Memory', 'Export', 'Import', 'Settings'],
+    // N2.3 — memory / data panel
+    hash: '/settings/memory-data',
+    markers: ['Memory', 'Data', 'Storage', 'Export', 'Import', 'Settings'],
   },
   {
-    hash: '/settings/ai-skills',
-    markers: ['Skills', 'AI Skills', 'Skill', 'Install', 'Browse', 'Settings'],
+    // N2.4 — intelligence / AI settings
+    hash: '/settings/intelligence',
+    markers: ['Intelligence', 'AI', 'Model', 'Skills', 'Settings'],
   },
   {
-    hash: '/settings/advanced',
-    markers: ['Advanced', 'Developer', 'Debug', 'Settings', 'Logs'],
+    // N2.5 — developer options
+    hash: '/settings/developer-options',
+    markers: ['Developer', 'Debug', 'Advanced', 'Settings', 'Logs'],
   },
   {
     hash: '/settings/billing',
@@ -66,12 +71,14 @@ const PANELS: PanelCheck[] = [
     useBillingHelper: true,
   },
   {
-    hash: '/settings/dev',
-    markers: ['Dev', 'Developer', 'Debug', 'Tools', 'Settings', 'Advanced'],
+    // N2.7 — appearance panel
+    hash: '/settings/appearance',
+    markers: ['Appearance', 'Theme', 'Color', 'Dark', 'Settings'],
   },
   {
-    hash: '/settings/features',
-    markers: ['Features', 'Feature', 'Enable', 'Disable', 'Preview', 'Settings'],
+    // N2.8 — tools panel
+    hash: '/settings/tools',
+    markers: ['Tools', 'Tool', 'Enable', 'Disable', 'Settings'],
   },
 ];
 
@@ -120,35 +127,35 @@ describe('Navigation — settings sub-panels', () => {
     console.log(`${LOG_PREFIX} Teardown complete`);
   });
 
-  it('N2.1 — /settings/account loads', async () => {
+  it('N2.1 — /settings (root index) loads', async () => {
     const panel = PANELS[0];
     console.log(`${LOG_PREFIX} N2.1: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);
     await verifyPanelLoaded(panel);
   });
 
-  it('N2.2 — /settings/channels loads', async () => {
+  it('N2.2 — /settings/connections loads', async () => {
     const panel = PANELS[1];
     console.log(`${LOG_PREFIX} N2.2: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);
     await verifyPanelLoaded(panel);
   });
 
-  it('N2.3 — /settings/data loads', async () => {
+  it('N2.3 — /settings/memory-data loads', async () => {
     const panel = PANELS[2];
     console.log(`${LOG_PREFIX} N2.3: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);
     await verifyPanelLoaded(panel);
   });
 
-  it('N2.4 — /settings/ai-skills loads', async () => {
+  it('N2.4 — /settings/intelligence loads', async () => {
     const panel = PANELS[3];
     console.log(`${LOG_PREFIX} N2.4: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);
     await verifyPanelLoaded(panel);
   });
 
-  it('N2.5 — /settings/advanced loads', async () => {
+  it('N2.5 — /settings/developer-options loads', async () => {
     const panel = PANELS[4];
     console.log(`${LOG_PREFIX} N2.5: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);
@@ -162,14 +169,14 @@ describe('Navigation — settings sub-panels', () => {
     console.log(`${LOG_PREFIX} N2.6: passed`);
   });
 
-  it('N2.7 — /settings/dev loads', async () => {
+  it('N2.7 — /settings/appearance loads', async () => {
     const panel = PANELS[6];
     console.log(`${LOG_PREFIX} N2.7: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);
     await verifyPanelLoaded(panel);
   });
 
-  it('N2.8 — /settings/features loads', async () => {
+  it('N2.8 — /settings/tools loads', async () => {
     const panel = PANELS[7];
     console.log(`${LOG_PREFIX} N2.8: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);

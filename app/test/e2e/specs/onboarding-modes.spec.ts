@@ -159,6 +159,11 @@ describe('Onboarding modes — Simple (Cloud) vs Advanced (Custom)', () => {
     // Reset state but skip the built-in onboarding walker — we walk it
     // ourselves to assert the per-step UI.
     await resetApp('e2e-onboarding-modes', { skipAuth: true });
+    // resetApp restores onboarding_completed=true for normal specs; this spec
+    // intentionally exercises the onboarding flow, so flip it back to false
+    // before triggering auth so App.tsx routes to /onboarding.
+    stepLog('Setting onboarding_completed=false for onboarding flow test');
+    await callOpenhumanRpc('openhuman.config_set_onboarding_completed', { value: false });
     await triggerAuthDeepLinkBypass('e2e-onboarding-modes');
     await waitForAuthBootstrap(15_000);
     await dismissBootCheckGateIfVisible(8_000);

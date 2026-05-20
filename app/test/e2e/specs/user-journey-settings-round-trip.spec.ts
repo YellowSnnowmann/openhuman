@@ -7,9 +7,9 @@
  *
  * Journey:
  *   1. Login + land on home
- *   2. /settings/account         — verify loads
- *   3. /settings/data            — verify loads
- *   4. /settings/advanced        — verify loads
+ *   2. /settings                 — verify root index loads
+ *   3. /settings/memory-data     — verify loads
+ *   4. /settings/developer-options — verify loads
  *   5. /settings/billing         — verify billing panel loads
  *   6. /home                     — verify home loads
  *   7. /chat                     — verify chat loads
@@ -71,17 +71,17 @@ describe('User journey — settings round-trip', () => {
     console.log(`${LOG_PREFIX} Home confirmed: "${homeText}"`);
   });
 
-  it('/settings/account — loads within 10s', async () => {
-    console.log(`${LOG_PREFIX} Navigating to /settings/account`);
-    await navigateViaHash('/settings/account');
-    await waitForPanelLoad('/settings/account');
+  it('/settings — settings root loads within 10s', async () => {
+    console.log(`${LOG_PREFIX} Navigating to /settings`);
+    await navigateViaHash('/settings');
+    await waitForPanelLoad('/settings');
 
-    // Look for account-related content (name, email, profile, account, settings).
-    const accountMarkers = ['Account', 'account', 'Profile', 'Name', 'Email', 'Settings'];
+    // Root settings page renders a section index with nav items.
+    const accountMarkers = ['Settings', 'Account', 'Privacy', 'Appearance', 'Notifications'];
     let found = false;
     for (const marker of accountMarkers) {
       if (await textExists(marker)) {
-        console.log(`${LOG_PREFIX} /settings/account: found marker "${marker}"`);
+        console.log(`${LOG_PREFIX} /settings: found marker "${marker}"`);
         found = true;
         break;
       }
@@ -89,16 +89,16 @@ describe('User journey — settings round-trip', () => {
     expect(found).toBe(true);
   });
 
-  it('/settings/data — loads within 10s', async () => {
-    console.log(`${LOG_PREFIX} Navigating to /settings/data`);
-    await navigateViaHash('/settings/data');
-    await waitForPanelLoad('/settings/data');
+  it('/settings/memory-data — loads within 10s', async () => {
+    console.log(`${LOG_PREFIX} Navigating to /settings/memory-data`);
+    await navigateViaHash('/settings/memory-data');
+    await waitForPanelLoad('/settings/memory-data');
 
-    const dataMarkers = ['Data', 'data', 'Storage', 'Memory', 'Export', 'Import', 'Settings'];
+    const dataMarkers = ['Memory', 'Data', 'Storage', 'Export', 'Import', 'Settings'];
     let found = false;
     for (const marker of dataMarkers) {
       if (await textExists(marker)) {
-        console.log(`${LOG_PREFIX} /settings/data: found marker "${marker}"`);
+        console.log(`${LOG_PREFIX} /settings/memory-data: found marker "${marker}"`);
         found = true;
         break;
       }
@@ -106,16 +106,16 @@ describe('User journey — settings round-trip', () => {
     expect(found).toBe(true);
   });
 
-  it('/settings/advanced — loads within 10s', async () => {
-    console.log(`${LOG_PREFIX} Navigating to /settings/advanced`);
-    await navigateViaHash('/settings/advanced');
-    await waitForPanelLoad('/settings/advanced');
+  it('/settings/developer-options — loads within 10s', async () => {
+    console.log(`${LOG_PREFIX} Navigating to /settings/developer-options`);
+    await navigateViaHash('/settings/developer-options');
+    await waitForPanelLoad('/settings/developer-options');
 
-    const advancedMarkers = ['Advanced', 'advanced', 'Developer', 'Debug', 'Settings', 'Logs'];
+    const advancedMarkers = ['Developer', 'Debug', 'Advanced', 'Settings', 'Logs'];
     let found = false;
     for (const marker of advancedMarkers) {
       if (await textExists(marker)) {
-        console.log(`${LOG_PREFIX} /settings/advanced: found marker "${marker}"`);
+        console.log(`${LOG_PREFIX} /settings/developer-options: found marker "${marker}"`);
         found = true;
         break;
       }
