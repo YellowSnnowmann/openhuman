@@ -140,7 +140,7 @@ static DETECTION_RULES: Lazy<Vec<DetectionRule>> = Lazy::new(|| {
             message: "Attempts to redefine assistant role or policy scope.",
             score: 0.30,
             regex: Regex::new(
-                r"(you\s+are\s+now|developer\s+mode|jailbreak|unrestricted\s+mode|\bdan\b)",
+                r"(you\s+are\s+now|developer\s+mode|jailbreak|unrestricted\s+mode|(you\s+are|pretend\s+you\s+are|act\s+as)\s+dan\b|(no\s+restrictions|unrestricted)\s+.*\bdan\b|\bdan\b\s+.*(no\s+restrictions|unrestricted))",
             )
             .expect("override.role_hijack regex"),
         },
