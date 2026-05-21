@@ -193,20 +193,6 @@ async function waitForHashRouteReady(hash, options = {}) {
 
 export async function navigateViaHash(hash) {
   const normalized = String(hash).replace(/\/$/, '') || hash;
-  const expectedHash = `#${normalized}`;
-  const hashMatches = currentHash =>
-    currentHash === expectedHash || String(currentHash).startsWith(`${expectedHash}/`);
-  const waitForHash = async (timeout = 8_000) =>
-    browser.waitUntil(
-      async () => {
-        const currentHash = await browser.execute(() => window.location.hash);
-        if (!hashMatches(currentHash)) return false;
-        await browser.pause(300);
-        const stableHash = await browser.execute(() => window.location.hash);
-        return hashMatches(stableHash);
-      },
-      { timeout, interval: 250, timeoutMsg: `hash did not settle on ${hash}` }
-    );
 
   if (supportsExecuteScript()) {
     const beforeHash = normalizeHash(await browser.execute(() => window.location.hash));
@@ -230,34 +216,6 @@ export async function navigateViaHash(hash) {
       wrapped.cause = err;
       throw wrapped;
     }
-
-    if (label) {
-      try {
-        const clicked = await browser.execute((targetLabel: string) => {
-          const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
-          const button = buttons.find(btn => {
-            const aria = btn.getAttribute('aria-label')?.trim();
-            const title = btn.getAttribute('title')?.trim();
-            const text = btn.textContent?.trim();
-            return aria === targetLabel || title === targetLabel || text === targetLabel;
-          });
-          if (!button) return false;
-          button.click();
-          return true;
-        }, label);
-        if (!clicked) {
-          throw new Error(`could not find nav button "${label}"`);
-        }
-        await waitForHash();
-        const currentHash = await browser.execute(() => window.location.hash);
-        console.log(`[E2E] Navigated to ${hash} via "${label}" (current: ${currentHash})`);
-        return;
-      } catch (fallbackErr) {
-        console.log(`[E2E] Button navigation to ${hash} failed:`, fallbackErr);
-      }
-    }
-
-    throw new Error(`[E2E] Failed to navigate to ${hash}`);
   }
 
   // Appium Mac2 — Settings → Billing (nested route)
