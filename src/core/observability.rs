@@ -1310,7 +1310,10 @@ mod tests {
             expected_error_kind("prompt injection detected in tool arguments"),
             None
         );
-        assert_eq!(expected_error_kind("security review required for deploy"), None);
+        assert_eq!(
+            expected_error_kind("security review required for deploy"),
+            None
+        );
     }
 
     #[test]

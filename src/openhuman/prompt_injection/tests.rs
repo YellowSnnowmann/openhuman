@@ -204,9 +204,16 @@ fn standalone_dan_jailbreak_still_catches() {
         decision.score
     );
     assert!(
-        decision.reasons.iter().any(|r| r.code == "override.role_hijack"),
+        decision
+            .reasons
+            .iter()
+            .any(|r| r.code == "override.role_hijack"),
         "DAN must trigger override.role_hijack; got reasons={:?}",
-        decision.reasons.iter().map(|r| r.code.as_str()).collect::<Vec<_>>()
+        decision
+            .reasons
+            .iter()
+            .map(|r| r.code.as_str())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -405,7 +412,11 @@ fn allows_borderline_roleplay_plus_reveal_intent() {
         "expected Allow for borderline score, got verdict={:?} score={:.3} reasons={:?}",
         decision.verdict,
         decision.score,
-        decision.reasons.iter().map(|r| r.code.as_str()).collect::<Vec<_>>()
+        decision
+            .reasons
+            .iter()
+            .map(|r| r.code.as_str())
+            .collect::<Vec<_>>()
     );
 }
 
