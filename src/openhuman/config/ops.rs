@@ -487,7 +487,30 @@ pub async fn apply_model_settings(
         config.model_routes = routes;
     }
     if let Some(providers) = update.cloud_providers {
+        // The schema handlers strip reserved-slug entries (e.g. the built-in
+        // "openhuman" provider seeded by `migrations::unify_ai_provider_settings`)
+        // from the user's payload. Preserve any reserved-slug entries that
+        // already live in the stored config so a routine settings save
+        // doesn't accidentally delete them — `primary_cloud` and the
+        // per-workload routing fields can reference these built-ins, and
+        // losing them would break inference routing.
+        use crate::openhuman::config::schema::cloud_providers::is_slug_reserved;
+        let preserved: Vec<_> = config
+            .cloud_providers
+            .iter()
+            .filter(|e| is_slug_reserved(e.slug.trim()))
+            .cloned()
+            .collect();
         config.cloud_providers = providers;
+        for entry in preserved {
+            // Defensive: don't double-add if the payload (somehow) already
+            // contained an entry with this reserved slug — the schema-handler
+            // filter is the canonical guard, but apply_model_settings is also
+            // reachable from tests and CLI paths that bypass that filter.
+            if !config.cloud_providers.iter().any(|e| e.slug == entry.slug) {
+                config.cloud_providers.push(entry);
+            }
+        }
     }
     if let Some(primary) = update.primary_cloud {
         let trimmed = primary.trim();
