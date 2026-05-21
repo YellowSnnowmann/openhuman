@@ -135,7 +135,7 @@ pub enum ExpectedErrorKind {
     /// A user prompt was rejected by the in-process prompt-injection guard
     /// before it reached the model. Both enforcement actions that produce a
     /// user-visible error — `Blocked` (score ≥ 0.70) and `ReviewBlocked`
-    /// (score ≥ 0.45) — are expected, user-input conditions: the detector
+    /// (score ≥ 0.55) — are expected, user-input conditions: the detector
     /// fired on the user's own message and the UI already surfaces an
     /// actionable "please rephrase" message. Sentry has no remediation path
     /// and the volume is high (OPENHUMAN-TAURI-140: ~1 480 events in 2 days,
@@ -774,7 +774,7 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
         }
         ExpectedErrorKind::PromptInjectionBlocked => {
             // User-input condition: the prompt-injection guard rejected the
-            // user's message before it reached the model (score ≥ 0.45 →
+            // user's message before it reached the model (score ≥ 0.55 →
             // ReviewBlocked, or score ≥ 0.70 → Blocked). The UI already
             // shows an actionable "please rephrase" message — Sentry has no
             // remediation path. OPENHUMAN-TAURI-140: ~1 480 events in 2 days,
