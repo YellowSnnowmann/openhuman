@@ -128,6 +128,69 @@ const HASH_TO_SIDEBAR_LABEL = {
   '/settings/intelligence': 'Intelligence',
 };
 
+function normalizeHash(value) {
+  const raw = String(value || '');
+  const withPrefix = raw.startsWith('#') ? raw : `#${raw}`;
+  return withPrefix.replace(/\/$/, '');
+}
+
+function routeReadySelector(hash) {
+  const path = normalizeHash(hash).replace(/^#/, '');
+  const selectors = {
+    '/notifications': '[data-testid="integration-notifications-section"]',
+    '/settings/cron-jobs': '[data-testid="cron-jobs-panel"]',
+    '/settings/privacy': '[data-testid="settings-privacy-panel"]',
+    '/settings/migration': '[data-testid="migration-form"]',
+    '/settings/voice': '[data-testid="voice-providers-section"]',
+    '/settings/memory-data': '[data-testid="memory-workspace"]',
+    '/settings/intelligence': '[data-testid="memory-workspace"]',
+  };
+  return selectors[path] || null;
+}
+
+async function routeSignature() {
+  return browser.execute(() => {
+    const root = document.getElementById('root');
+    return (root?.innerText || root?.textContent || '').trim().slice(0, 500);
+  });
+}
+
+async function waitForHashRouteReady(hash, options = {}) {
+  const { timeout = 10_000, previousSignature = '', allowSameSignature = false } = options;
+  const expected = normalizeHash(hash);
+  const readySelector = routeReadySelector(hash);
+  await browser.waitUntil(
+    async () =>
+      Boolean(
+        await browser.execute(
+          ({ target, selector, before, allowSame }) => {
+            if (document.readyState !== 'complete') return false;
+            const current = window.location.hash.replace(/\/$/, '');
+            if (current !== target) return false;
+            const root = document.getElementById('root');
+            if (!root) return false;
+            if (selector && root.querySelector(selector)) return true;
+
+            const signature = (root.innerText || root.textContent || '').trim().slice(0, 500);
+            if (!signature) return false;
+            return allowSame || signature !== before;
+          },
+          {
+            target: expected,
+            selector: readySelector,
+            before: previousSignature,
+            allowSame: allowSameSignature,
+          }
+        )
+      ),
+    {
+      timeout,
+      interval: 250,
+      timeoutMsg: `hash route ${expected} did not become ready within ${timeout}ms`,
+    }
+  );
+}
+
 export async function navigateViaHash(hash) {
   const normalized = String(hash).replace(/\/$/, '') || hash;
   const expectedHash = `#${normalized}`;
@@ -146,48 +209,26 @@ export async function navigateViaHash(hash) {
     );
 
   if (supportsExecuteScript()) {
-    const label = HASH_TO_SIDEBAR_LABEL[normalized];
-    if (label) {
-      try {
-        const clicked = await browser.execute((targetLabel: string) => {
-          const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
-          const button = buttons.find(btn => {
-            const aria = btn.getAttribute('aria-label')?.trim();
-            const title = btn.getAttribute('title')?.trim();
-            const text = btn.textContent?.trim();
-            return aria === targetLabel || title === targetLabel || text === targetLabel;
-          });
-          if (!button) return false;
-          button.click();
-          return true;
-        }, label);
-        if (clicked) {
-          await waitForHash();
-          const currentHash = await browser.execute(() => window.location.hash);
-          console.log(`[E2E] Navigated to ${hash} via "${label}" (current: ${currentHash})`);
-          return;
-        }
-      } catch (buttonErr) {
-        console.log(`[E2E] Button navigation to ${hash} failed:`, buttonErr);
-      }
-    }
-
+    const beforeHash = normalizeHash(await browser.execute(() => window.location.hash));
+    const beforeSignature = await routeSignature();
+    const targetHash = normalizeHash(hash);
     try {
-      await browser.waitUntil(
-        async () => {
-          await browser.execute(h => {
-            window.location.hash = h;
-          }, hash);
-          const currentHash = await browser.execute(() => window.location.hash);
-          return hashMatches(currentHash);
-        },
-        { timeout: 8_000, interval: 250, timeoutMsg: `hash did not settle on ${hash}` }
-      );
+      await browser.execute(h => {
+        window.location.hash = h;
+      }, hash);
+      await waitForHashRouteReady(hash, {
+        previousSignature: beforeSignature,
+        allowSameSignature: beforeHash === targetHash,
+      });
       const currentHash = await browser.execute(() => window.location.hash);
       console.log(`[E2E] Navigated to ${hash} (current: ${currentHash})`);
       return;
     } catch (err) {
       console.log(`[E2E] Hash navigation to ${hash} failed:`, err);
+      const detail = err instanceof Error ? err.message : String(err);
+      const wrapped = new Error(`[E2E] Hash navigation to ${hash} failed: ${detail}`);
+      wrapped.cause = err;
+      throw wrapped;
     }
 
     if (label) {
@@ -524,6 +565,29 @@ export async function dismissBootCheckGateIfVisible(timeoutMs = 12_000): Promise
   return everSeen;
 }
 
+async function waitForPostOnboardingHome(logPrefix, timeout = 20_000) {
+  if (supportsExecuteScript()) {
+    await browser.waitUntil(
+      async () =>
+        Boolean(await browser.execute(() => window.location.hash.replace(/\/$/, '') === '#/home')),
+      {
+        timeout: Math.min(timeout, 10_000),
+        interval: 300,
+        timeoutMsg: 'onboarding completed but hash did not settle on #/home',
+      }
+    );
+  }
+
+  const homeText = await waitForHomePage(timeout);
+  if (!homeText) {
+    const tree = await dumpAccessibilityTree();
+    console.log(`${logPrefix} Home page not ready after onboarding. Tree:\n`, tree.slice(0, 4000));
+    throw new Error('Onboarding dismissed but Home page did not become ready');
+  }
+
+  console.log(`${logPrefix} Post-onboarding Home page confirmed: found "${homeText}"`);
+}
+
 /**
  * Walk through onboarding by advancing the `data-testid="onboarding-next-button"`
  * until it unmounts. The button is rendered on every step (see
@@ -595,7 +659,7 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
 
     if (status === 'gone') {
       console.log(`${logPrefix} Onboarding dismissed after ${step} step(s)`);
-      await dismissWalkthroughIfVisible(8_000);
+      await waitForPostOnboardingHome(logPrefix);
       return;
     }
     if (status === 'gone-but-onboarding-hash') {
