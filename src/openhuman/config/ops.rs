@@ -501,16 +501,30 @@ pub async fn apply_model_settings(
             .filter(|e| is_slug_reserved(e.slug.trim()))
             .cloned()
             .collect();
+        log::debug!(
+            "[config] apply_model_settings: preserving {} reserved cloud provider(s) before overwrite",
+            preserved.len()
+        );
         config.cloud_providers = providers;
+        let before_reinject = config.cloud_providers.len();
         for entry in preserved {
             // Defensive: don't double-add if the payload (somehow) already
             // contained an entry with this reserved slug — the schema-handler
             // filter is the canonical guard, but apply_model_settings is also
             // reachable from tests and CLI paths that bypass that filter.
-            if !config.cloud_providers.iter().any(|e| e.slug == entry.slug) {
+            let preserved_slug = entry.slug.trim();
+            if !config
+                .cloud_providers
+                .iter()
+                .any(|e| e.slug.trim() == preserved_slug)
+            {
                 config.cloud_providers.push(entry);
             }
         }
+        log::debug!(
+            "[config] apply_model_settings: reinjected {} reserved cloud provider(s)",
+            config.cloud_providers.len() - before_reinject
+        );
     }
     if let Some(primary) = update.primary_cloud {
         let trimmed = primary.trim();
