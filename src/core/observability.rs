@@ -545,7 +545,7 @@ fn is_local_ai_capability_unavailable_message(lower: &str) -> bool {
 /// Detect prompts rejected by the in-process prompt-injection guard.
 ///
 /// Both enforcement actions that produce a user-visible error — `Blocked`
-/// (score ≥ 0.70) and `ReviewBlocked` (score ≥ 0.45) — share a unique
+/// (score ≥ 0.70) and `ReviewBlocked` (score ≥ 0.55) — share a unique
 /// prefix that cannot appear in any other error path. Anchored to the exact
 /// strings emitted by `prompt_guard_user_message` in
 /// `src/openhuman/inference/local/ops.rs`.
@@ -773,12 +773,6 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
             );
         }
         ExpectedErrorKind::PromptInjectionBlocked => {
-            // User-input condition: the prompt-injection guard rejected the
-            // user's message before it reached the model (score ≥ 0.55 →
-            // ReviewBlocked, or score ≥ 0.70 → Blocked). The UI already
-            // shows an actionable "please rephrase" message — Sentry has no
-            // remediation path. OPENHUMAN-TAURI-140: ~1 480 events in 2 days,
-            // ~56/hour, all from `openhuman.agent_chat`.
             tracing::info!(
                 domain = domain,
                 operation = operation,
