@@ -838,6 +838,22 @@ async fn run_typed_mode(
         filtered_specs.push(tool.spec());
         allowed_names.insert(tool.name().to_string());
     }
+    // Dedup by name: first occurrence wins. Dynamic Composio action tools
+    // can share a name with an inherited parent-registry spec when the
+    // agent's AllowedAll scope includes a same-named skill tool. Some
+    // providers (Anthropic, OpenHuman cloud after the uniqueness-enforcement
+    // rollout) 400 on duplicate tool names — see TAURI-RUST-4.
+    let before_dedup = filtered_specs.len();
+    let filtered_specs = crate::openhuman::agent::harness::session::dedup_visible_tool_specs(
+        filtered_specs,
+    );
+    if filtered_specs.len() != before_dedup {
+        tracing::warn!(
+            agent_id = %definition.id,
+            dropped = before_dedup - filtered_specs.len(),
+            "[subagent_runner:typed] dropped duplicate tool spec(s) before provider call"
+        );
+    }
 
     tracing::debug!(
         agent_id = %definition.id,
