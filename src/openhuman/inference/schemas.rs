@@ -556,6 +556,19 @@ fn handle_inference_update_model_settings(params: Map<String, Value>) -> Control
                         generate_provider_id, is_slug_reserved, migrate_legacy_fields, AuthStyle,
                         CloudProviderCreds,
                     };
+                    let reserved_count = entries
+                        .iter()
+                        .filter(|e| {
+                            let t = e.slug.trim();
+                            !t.is_empty() && is_slug_reserved(t)
+                        })
+                        .count();
+                    if reserved_count > 0 {
+                        log::debug!(
+                            "[inference] update_model_settings: dropping {} reserved cloud provider slug(s)",
+                            reserved_count
+                        );
+                    }
                     entries
                         .into_iter()
                         // Silently drop entries whose (non-empty) slug is reserved —
