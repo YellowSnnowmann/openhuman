@@ -406,12 +406,8 @@ async fn streaming_chat_config_rejection_propagates_error_without_sentry_report(
     ));
     let _sentry_guard = sentry::HubSwitchGuard::new(sentry_hub);
 
-    let provider = OpenAiCompatibleProvider::new(
-        "custom_openai",
-        &mock_server.uri(),
-        None,
-        AuthStyle::None,
-    );
+    let provider =
+        OpenAiCompatibleProvider::new("custom_openai", &mock_server.uri(), None, AuthStyle::None);
     let request = NativeChatRequest {
         model: "kimi-k2".to_string(),
         messages: vec![NativeMessage {
