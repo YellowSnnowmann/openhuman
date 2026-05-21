@@ -844,9 +844,8 @@ async fn run_typed_mode(
     // providers (Anthropic, OpenHuman cloud after the uniqueness-enforcement
     // rollout) 400 on duplicate tool names — see TAURI-RUST-4.
     let before_dedup = filtered_specs.len();
-    let filtered_specs = crate::openhuman::agent::harness::session::dedup_visible_tool_specs(
-        filtered_specs,
-    );
+    let filtered_specs =
+        crate::openhuman::agent::harness::session::dedup_visible_tool_specs(filtered_specs);
     if filtered_specs.len() != before_dedup {
         tracing::warn!(
             agent_id = %definition.id,

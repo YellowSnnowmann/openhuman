@@ -145,9 +145,8 @@ pub(crate) async fn run_tool_call_loop(
         .filter(|tool| is_visible(tool.name()))
         .map(|tool| tool.spec())
         .collect();
-    let tool_specs = crate::openhuman::agent::harness::session::dedup_visible_tool_specs(
-        filtered_specs,
-    );
+    let tool_specs =
+        crate::openhuman::agent::harness::session::dedup_visible_tool_specs(filtered_specs);
     let use_native_tools = provider.supports_native_tools() && !tool_specs.is_empty();
 
     log::debug!(
