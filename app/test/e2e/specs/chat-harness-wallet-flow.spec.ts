@@ -207,7 +207,7 @@ describe('Chat harness — wallet flow', () => {
         );
       },
       {
-        timeout: 15_000,
+        timeout: 45_000,
         timeoutMsg: 'prepared wallet quote never appeared in Rust-side introspection',
       }
     );

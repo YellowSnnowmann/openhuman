@@ -153,7 +153,7 @@ _mini_summary() {
   local pass=0 fail=0 skip=0
   for i in "${!_spec_names[@]}"; do
     if [[ "${_spec_suite[$i]}" != "$suite" ]]; then continue; fi
-    case "${_spec_results[$i]}" in
+    case "${_spec_results[$i]:-2}" in
       0) (( pass++ )) || true ;;
       1) (( fail++ )) || true ;;
       2) (( skip++ )) || true ;;
@@ -196,7 +196,7 @@ finish() {
       prev_suite="$cur_suite"
     fi
     local dur="${_spec_duration[$i]:-0}"
-    case "${_spec_results[$i]}" in
+    case "${_spec_results[$i]:-2}" in
       0)
         printf "    ✓  %-45s  %3ds\n" "${_spec_names[$i]}" "$dur"
         (( pass++ )) || true
@@ -245,7 +245,7 @@ finish() {
       printf "### Failed specs\n\n"
       for i in "${!_spec_names[@]}"; do
         if [[ "${_spec_results[$i]}" -eq 1 ]]; then
-          printf "- \`%s\`\n" "${_spec_names[$i]}"
+          printf -- "- \`%s\`\n" "${_spec_names[$i]}"
         fi
       done
       printf "\n"
@@ -383,7 +383,8 @@ if should_run_suite "providers"; then
   run "test/e2e/specs/accounts-provider-modal.spec.ts"        "accounts-providers"        "providers"
   run "test/e2e/specs/slack-flow.spec.ts"                     "slack"                     "providers"
   run "test/e2e/specs/whatsapp-flow.spec.ts"                  "whatsapp"                  "providers"
-  run "test/e2e/specs/notion-flow.spec.ts"                    "notion"                    "providers"
+  # notion-flow.spec.ts was removed; skip to avoid "spec not found" failure.
+  # run "test/e2e/specs/notion-flow.spec.ts"                  "notion"                    "providers"
   run "test/e2e/specs/conversations-web-channel-flow.spec.ts" "conversations"             "providers"
   run "test/e2e/specs/composio-triggers-flow.spec.ts"         "composio-triggers"         "providers"
   _mini_summary "providers"

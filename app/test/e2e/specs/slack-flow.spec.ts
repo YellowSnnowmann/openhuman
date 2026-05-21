@@ -1,10 +1,8 @@
-import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
-import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
-import { waitForWebView, waitForWindowVisible } from '../helpers/element-helpers';
+import { waitForApp } from '../helpers/app-helpers';
 import { supportsExecuteScript } from '../helpers/platform';
+import { resetApp } from '../helpers/reset-app';
 import {
   clickAddAccountProvider,
-  completeOnboardingIfVisible,
   navigateViaHash,
   openAddAccountModal,
   waitForAccountsPage,
@@ -42,16 +40,9 @@ describe('Slack account integration smoke', () => {
       this.skip();
     }
 
-    stepLog('starting mock server');
     await startMockServer();
-    stepLog('waiting for app');
     await waitForApp();
-    stepLog('triggering auth bypass deep link');
-    await triggerAuthDeepLinkBypass('e2e-slack-flow');
-    await waitForWindowVisible(25_000);
-    await waitForWebView(15_000);
-    await waitForAppReady(15_000);
-    await completeOnboardingIfVisible('[SlackFlowE2E]');
+    await resetApp('e2e-slack-flow');
   });
 
   after(async () => {

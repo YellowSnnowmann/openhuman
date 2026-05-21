@@ -1,13 +1,7 @@
-import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
-import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
-import {
-  textExists,
-  waitForText,
-  waitForWebView,
-  waitForWindowVisible,
-} from '../helpers/element-helpers';
+import { waitForApp } from '../helpers/app-helpers';
+import { textExists, waitForText } from '../helpers/element-helpers';
 import { supportsExecuteScript } from '../helpers/platform';
-import { completeOnboardingIfVisible } from '../helpers/shared-flows';
+import { resetApp } from '../helpers/reset-app';
 import {
   resetMockBehavior,
   setMockBehavior,
@@ -113,12 +107,8 @@ describe('Rewards progression & persistence', () => {
     await startMockServer();
     stepLog('waiting for app');
     await waitForApp();
-    stepLog('triggering auth bypass deep link');
-    await triggerAuthDeepLinkBypass('e2e-rewards-progression');
-    await waitForWindowVisible(25_000);
-    await waitForWebView(15_000);
-    await waitForAppReady(15_000);
-    await completeOnboardingIfVisible('[RewardsProgressionE2E]');
+    stepLog('resetting app with e2e-rewards-progression identity');
+    await resetApp('e2e-rewards-progression');
   });
 
   after(async () => {

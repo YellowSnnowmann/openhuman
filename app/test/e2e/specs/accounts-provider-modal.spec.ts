@@ -1,11 +1,9 @@
 // @ts-nocheck
-import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
-import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
-import { waitForWebView, waitForWindowVisible } from '../helpers/element-helpers';
+import { waitForApp } from '../helpers/app-helpers';
 import { supportsExecuteScript } from '../helpers/platform';
+import { resetApp } from '../helpers/reset-app';
 import {
   clickAddAccountProvider,
-  completeOnboardingIfVisible,
   navigateViaHash,
   openAddAccountModal,
   waitForAccountsPage,
@@ -71,16 +69,9 @@ describe('Accounts provider picker contract', () => {
       this.skip();
     }
 
-    stepLog('starting mock server');
     await startMockServer();
-    stepLog('waiting for app');
     await waitForApp();
-    stepLog('triggering auth bypass deep link');
-    await triggerAuthDeepLinkBypass('e2e-accounts-provider-modal');
-    await waitForWindowVisible(25_000);
-    await waitForWebView(15_000);
-    await waitForAppReady(15_000);
-    await completeOnboardingIfVisible('[AccountsProviderModalE2E]');
+    await resetApp('e2e-accounts-provider-modal');
   });
 
   after(async () => {

@@ -1,18 +1,8 @@
 // @ts-nocheck
-import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
-import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
-import {
-  dumpAccessibilityTree,
-  textExists,
-  waitForText,
-  waitForWebView,
-  waitForWindowVisible,
-} from '../helpers/element-helpers';
-import {
-  completeOnboardingIfVisible,
-  navigateToConversations,
-  navigateViaHash,
-} from '../helpers/shared-flows';
+import { waitForApp } from '../helpers/app-helpers';
+import { dumpAccessibilityTree, textExists, waitForText } from '../helpers/element-helpers';
+import { resetApp } from '../helpers/reset-app';
+import { navigateToConversations, navigateViaHash } from '../helpers/shared-flows';
 import { clearRequestLog, getRequestLog, startMockServer, stopMockServer } from '../mock-server';
 
 function stepLog(message: string, context?: unknown) {
@@ -46,6 +36,8 @@ suiteRunner('Conversations web channel flow', () => {
     await startMockServer();
     stepLog('waiting for app');
     await waitForApp();
+    stepLog('resetting app');
+    await resetApp('e2e-conversations-token');
     stepLog('clearing request log');
     clearRequestLog();
   });
@@ -57,26 +49,6 @@ suiteRunner('Conversations web channel flow', () => {
 
   it('sends UI message through agent loop and renders response', async function () {
     this.timeout(180_000);
-    stepLog('trigger deep link');
-    await triggerAuthDeepLinkBypass('e2e-conversations-token');
-    stepLog('wait for window');
-    await waitForWindowVisible(25_000);
-    stepLog('wait for webview');
-    await waitForWebView(15_000);
-    stepLog('wait for app ready');
-    await waitForAppReady(15_000);
-
-    // triggerAuthDeepLinkBypass uses key=auth which sets the token directly
-    // (no /telegram/login-tokens/ consume call). Wait for user profile instead.
-    stepLog('wait for user profile request');
-    const profileCall = await waitForRequest('GET', '/auth/me', 15_000);
-    if (!profileCall) {
-      stepLog('user profile call not found — bypass token may have been set without API call');
-    }
-
-    stepLog('complete onboarding');
-    await completeOnboardingIfVisible('[ConversationsE2E]');
-
     stepLog('open conversations');
     // Navigate via hash to /chat (the unified agent + web channel page).
     // 'Message OpenHuman' button was removed from Home in a redesign — navigate directly.
@@ -133,16 +105,22 @@ suiteRunner('Conversations web channel flow', () => {
     });
     await browser.pause(500);
 
-    // Submit by pressing Enter via JS (simulates form submission)
-    await browser.execute(() => {
-      const textarea = document.querySelector(
-        'textarea[placeholder*="Type a message"]'
-      ) as HTMLTextAreaElement;
-      if (!textarea) return;
-      textarea.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true })
-      );
-    });
+    // Submit by pressing Enter via WebDriver key action (real keyboard event).
+    // Synthetic KeyboardEvent doesn't propagate through React's event system.
+    try {
+      await browser.keys('Enter');
+    } catch {
+      // Fallback: synthetic DOM event if WebDriver key dispatch fails.
+      await browser.execute(() => {
+        const textarea = document.querySelector(
+          'textarea[placeholder*="Type a message"]'
+        ) as HTMLTextAreaElement;
+        if (!textarea) return;
+        textarea.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true })
+        );
+      });
+    }
     await browser.pause(1_000);
 
     await waitForText('hello from e2e web channel', 20_000);
@@ -159,7 +137,8 @@ suiteRunner('Conversations web channel flow', () => {
     expect(await textExists('chat_send is not available')).toBe(false);
   });
 
-  it('continues in-flight chat when switching tabs', async () => {
+  it('continues in-flight chat when switching tabs', async function () {
+    this.timeout(90_000);
     clearRequestLog();
     await navigateToConversations();
 

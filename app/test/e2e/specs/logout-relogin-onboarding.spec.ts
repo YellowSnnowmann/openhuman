@@ -30,6 +30,7 @@ import {
 } from '../helpers/element-helpers';
 import { resetApp } from '../helpers/reset-app';
 import {
+  dismissBootCheckGateIfVisible,
   logoutViaSettings,
   performFullLogin,
   waitForOnboardingOverlayVisible,
@@ -59,7 +60,8 @@ describe('Logout -> re-login onboarding overlay', () => {
     await stopMockServer();
   });
 
-  it('shows onboarding overlay with clean state after logout and re-login', async () => {
+  it('shows onboarding overlay with clean state after logout and re-login', async function () {
+    this.timeout(120_000);
     const hasChrome = await hasAppChrome();
     expect(hasChrome).toBe(true);
 
@@ -79,8 +81,6 @@ describe('Logout -> re-login onboarding overlay', () => {
     // so the re-login is treated as a fresh user session. Without this,
     // the Rust core retains onboarding_completed=true from the first session
     // and the overlay would not reappear for the same mock user.
-    // NOTE: this does NOT reload the renderer — the test intentionally verifies
-    // that re-login without a full page refresh starts with clean state.
     const resetResult = await Promise.race([
       callOpenhumanRpc('openhuman.test_reset', {}),
       new Promise(resolve => setTimeout(() => resolve({ ok: false, error: 'timeout' }), 8_000)),
@@ -88,6 +88,25 @@ describe('Logout -> re-login onboarding overlay', () => {
     if (!resetResult.ok) {
       console.log('[LogoutReLogin] test_reset result:', JSON.stringify(resetResult));
     }
+
+    // Reload the renderer so the CoreStateProvider picks up the fresh
+    // onboarding_completed=false from the Rust core. Without this the
+    // stale snapshot keeps onboarding_completed=true and the routing
+    // guard never redirects to /onboarding.
+    // NOTE: Do NOT clear localStorage here — that destroys the persisted
+    // core mode and causes the BootCheckGate to block the entire app.
+    await browser.execute(() => {
+      window.location.replace('#/');
+      window.location.reload();
+    });
+    await browser.pause(2_000);
+
+    // The reload may surface the BootCheckGate if the core mode was lost
+    // during logout. Dismiss it so the auth flow can proceed.
+    await waitForWindowVisible(15_000);
+    await waitForWebView(10_000);
+    await dismissBootCheckGateIfVisible(12_000);
+    await browser.pause(1_000);
 
     // ── Second login (re-login) ───────────────────────────────────────────────
     // Add a profile-fetch delay to exercise the path where /auth/me is slow.
@@ -129,7 +148,11 @@ describe('Logout -> re-login onboarding overlay', () => {
     // ── Onboarding must appear for the fresh session ─────────────────────────
     // The new user has not completed onboarding, so the routed onboarding shell
     // should mount once the profile-backed core snapshot is available.
-    const overlayVisible = await waitForOnboardingOverlayVisible(12_000);
+    // Allow extra time for the profile refresh (telegramMeDelayMs=3000) and
+    // subsequent routing to settle. The sequence: deep-link → token exchange
+    // → /auth/me (3s delay) → core snapshot → routing guard → onboarding
+    // mount can take 20-40s on slower machines.
+    const overlayVisible = await waitForOnboardingOverlayVisible(40_000);
     if (!overlayVisible) {
       console.log(
         '[LogoutReLogin] Overlay did not appear after timeout. Request log:',

@@ -485,16 +485,29 @@ export async function dismissBootCheckGateIfVisible(timeoutMs = 12_000): Promise
   let everSeen = false;
   while (Date.now() < deadline) {
     const status = await browser.execute(() => {
-      const heading = Array.from(document.querySelectorAll('h2')).find(
-        h => (h.textContent ?? '').trim() === 'Choose core mode'
-      );
-      if (!heading) return 'gone';
-      const modal = heading.closest('.fixed') ?? heading.parentElement;
+      // The BootCheckGate renders the mode picker with "Select a Runtime"
+      // (i18n key bootCheck.chooseCoreMode). Earlier versions used
+      // "Choose core mode". Check for both to be safe.
+      const heading = Array.from(document.querySelectorAll('h2')).find(h => {
+        const text = (h.textContent ?? '').trim();
+        return text === 'Choose core mode' || text === 'Select a Runtime';
+      });
+      // Also check for the "Select a Runtime" button which may appear
+      // on the Welcome page instead of in a modal heading.
+      const selectRuntimeBtn = !heading
+        ? Array.from(document.querySelectorAll('button')).find(
+            b => (b.textContent ?? '').trim() === 'Select a Runtime'
+          )
+        : null;
+      const anchor = heading ?? selectRuntimeBtn;
+      if (!anchor) return 'gone';
+      const modal = anchor.closest('.fixed') ?? anchor.parentElement;
       if (!modal) return 'gone';
       const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button'));
       const primary =
         buttons.find(b => (b.textContent ?? '').trim() === 'Continue') ??
-        buttons.find(b => /bg-ocean-500/.test(b.className)) ??
+        buttons.find(b => (b.textContent ?? '').trim().includes('Local')) ??
+        buttons.find(b => /bg-ocean-500|bg-primary/.test(b.className)) ??
         buttons[buttons.length - 1];
       if (!primary) return 'visible-no-button';
       ['mousedown', 'mouseup', 'click'].forEach(type => {

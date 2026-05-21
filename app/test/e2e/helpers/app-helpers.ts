@@ -150,7 +150,7 @@ export async function waitForAppReady(
   while (Date.now() - start < timeout) {
     try {
       const elements = await browser.$$('//*');
-      lastCount = elements.length;
+      lastCount = await elements.length;
       if (lastCount >= minElements) return;
     } catch {
       // accessibility tree not yet available
@@ -173,7 +173,7 @@ export async function waitForAuthBootstrap(timeout: number = 20_000): Promise<vo
   while (Date.now() - started < timeout) {
     try {
       const requests = await browser.$$('//*');
-      if (requests.length > 0) {
+      if ((await requests.length) > 0) {
         return;
       }
     } catch {

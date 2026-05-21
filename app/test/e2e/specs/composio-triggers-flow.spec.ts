@@ -15,19 +15,12 @@
  * required part of the chain: route to Skills -> open the connected Gmail
  * modal -> verify the trigger toggles rendered.
  */
-import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
+import { waitForApp } from '../helpers/app-helpers';
 import { callOpenhumanRpc } from '../helpers/core-rpc';
-import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
-import {
-  textExists,
-  waitForText,
-  waitForWebView,
-  waitForWindowVisible,
-} from '../helpers/element-helpers';
-import { completeOnboardingIfVisible, navigateToSkills } from '../helpers/shared-flows';
+import { textExists, waitForText } from '../helpers/element-helpers';
+import { resetApp } from '../helpers/reset-app';
+import { navigateToSkills } from '../helpers/shared-flows';
 import { clearRequestLog, setMockBehavior, startMockServer, stopMockServer } from '../mock-server';
-
-const LOG = '[ComposioTriggersE2E]';
 
 describe('Composio trigger toggles (UI + core RPC)', () => {
   before(async () => {
@@ -45,19 +38,12 @@ describe('Composio trigger toggles (UI + core RPC)', () => {
     );
     setMockBehavior('composioActiveTriggers', JSON.stringify([]));
     await waitForApp();
+    await resetApp('e2e-composio-triggers-token');
     clearRequestLog();
   });
 
   after(async () => {
     await stopMockServer();
-  });
-
-  it('signs in deterministically', async () => {
-    await triggerAuthDeepLinkBypass('e2e-composio-triggers-token');
-    await waitForWindowVisible(25_000);
-    await waitForWebView(15_000);
-    await waitForAppReady(15_000);
-    await completeOnboardingIfVisible(LOG);
   });
 
   it('list_available_triggers returns the seeded Gmail catalog', async () => {
@@ -66,7 +52,7 @@ describe('Composio trigger toggles (UI + core RPC)', () => {
       connection_id: 'c1',
     });
     expect(out.ok).toBe(true);
-    const result = out.result?.result ?? out.result;
+    const result = (out.result as any)?.result ?? out.result;
     const triggers = result?.triggers ?? [];
     const slugs = triggers.map((t: any) => t.slug);
     expect(slugs).toContain('GMAIL_NEW_GMAIL_MESSAGE');
@@ -76,7 +62,7 @@ describe('Composio trigger toggles (UI + core RPC)', () => {
   it('list_triggers starts empty for the seeded user', async () => {
     const out = await callOpenhumanRpc('openhuman.composio_list_triggers', {});
     expect(out.ok).toBe(true);
-    const result = out.result?.result ?? out.result;
+    const result = (out.result as any)?.result ?? out.result;
     expect(result.triggers ?? []).toHaveLength(0);
   });
 
@@ -86,21 +72,21 @@ describe('Composio trigger toggles (UI + core RPC)', () => {
       slug: 'GMAIL_NEW_GMAIL_MESSAGE',
     });
     expect(enable.ok).toBe(true);
-    const created = enable.result?.result ?? enable.result;
+    const created = (enable.result as any)?.result ?? enable.result;
     expect(created.slug).toBe('GMAIL_NEW_GMAIL_MESSAGE');
     expect(created.connectionId).toBe('c1');
     expect(typeof created.triggerId).toBe('string');
     expect(created.triggerId.length).toBeGreaterThan(0);
 
     const list = await callOpenhumanRpc('openhuman.composio_list_triggers', { toolkit: 'gmail' });
-    const result = list.result?.result ?? list.result;
+    const result = (list.result as any)?.result ?? list.result;
     expect(result.triggers).toHaveLength(1);
     expect(result.triggers[0].slug).toBe('GMAIL_NEW_GMAIL_MESSAGE');
   });
 
   it('disable_trigger removes the active trigger', async () => {
     const list = await callOpenhumanRpc('openhuman.composio_list_triggers', {});
-    const beforeResult = list.result?.result ?? list.result;
+    const beforeResult = (list.result as any)?.result ?? list.result;
     const triggerId = beforeResult.triggers[0]?.id;
     expect(typeof triggerId).toBe('string');
 
@@ -108,11 +94,11 @@ describe('Composio trigger toggles (UI + core RPC)', () => {
       trigger_id: triggerId,
     });
     expect(disable.ok).toBe(true);
-    const out = disable.result?.result ?? disable.result;
+    const out = (disable.result as any)?.result ?? disable.result;
     expect(out.deleted).toBe(true);
 
     const after = await callOpenhumanRpc('openhuman.composio_list_triggers', {});
-    const afterResult = after.result?.result ?? after.result;
+    const afterResult = (after.result as any)?.result ?? after.result;
     expect(afterResult.triggers ?? []).toHaveLength(0);
   });
 
