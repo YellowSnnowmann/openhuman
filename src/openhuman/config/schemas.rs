@@ -912,18 +912,25 @@ fn handle_update_model_settings(params: Map<String, Value>) -> ControllerFuture 
                     };
                     entries
                         .into_iter()
+                        // Silently drop entries whose (non-empty) slug is reserved —
+                        // typically the migration-seeded "openhuman" / "cloud" /
+                        // "pid" built-ins that the frontend echoes back on every
+                        // save (see `migrations::unify_ai_provider_settings`).
+                        // Empty slugs still fall through so the explicit
+                        // validation error below fires for actual frontend
+                        // bugs. `apply_model_settings` re-injects the existing
+                        // reserved entries from the stored config so they
+                        // aren't dropped on save.
+                        .filter(|e| {
+                            let trimmed = e.slug.trim();
+                            trimmed.is_empty() || !is_slug_reserved(trimmed)
+                        })
                         .map(|e| {
                             let slug = e.slug.trim().to_string();
                             if slug.is_empty() {
                                 return Err(
                                     "cloud provider slug must not be empty".to_string()
                                 );
-                            }
-                            if is_slug_reserved(&slug) {
-                                return Err(format!(
-                                    "slug '{}' is reserved and cannot be used for a custom provider",
-                                    slug
-                                ));
                             }
                             let auth_style = match e
                                 .auth_style
