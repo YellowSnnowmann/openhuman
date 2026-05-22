@@ -454,8 +454,24 @@ async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, S
     // transcript to this request_id instead of colliding with the
     // chat-UI thread. Without this, two simultaneous orchestrators
     // (chat + meet) share one transcript file.
+    // Per-turn unique definition_name. The harness auto-resumes prior
+    // transcripts when a definition_name matches a file on disk; if
+    // an earlier turn was killed mid-tool-call, the file ends with a
+    // dangling `tool_calls` assistant message and the LLM rejects
+    // the next request with 400 "tool_calls must be followed by tool
+    // messages". Per-turn naming bypasses resume entirely. Memory
+    // across turns is a follow-up (Arc<Mutex<Agent>> cache); for
+    // now each turn is stateless from the harness's perspective but
+    // tools still query real systems.
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     agent.set_event_context(format!("meet_{request_id}"), "meet_agent");
-    agent.set_agent_definition_name(format!("orchestrator_meet_{}", short_id(request_id)));
+    agent.set_agent_definition_name(format!(
+        "orchestrator_meet_{}_{now_ms}",
+        short_id(request_id)
+    ));
 
     log::info!(
         "[meet-agent] agentic turn dispatch request_id={request_id} prompt_chars={}",
