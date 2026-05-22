@@ -113,6 +113,25 @@ pub async fn meet_call_open_window<R: Runtime>(
         return Ok(label);
     }
 
+    // Only one meet-call window can be live at a time — concurrent bot
+    // sessions race the CEF audio handler registration (`listen_capture`)
+    // and confuse the user with multiple "Meet — OpenHuman" windows in
+    // their Dock. Close any stragglers from a prior Join before opening
+    // a fresh one. The CloseRequested handler will tear down their
+    // scanner + audio session via the per-window event listeners below.
+    let stale_labels: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|l| l.starts_with("meet-call-"))
+        .cloned()
+        .collect();
+    for stale in stale_labels {
+        if let Some(window) = app.get_webview_window(&stale) {
+            log::info!("[meet-call] closing stale window label={stale} before new join");
+            let _ = window.close();
+        }
+    }
+
     let data_dir = data_directory_for(&app, &request_id)?;
     if let Err(err) = std::fs::create_dir_all(&data_dir) {
         log::warn!(
@@ -165,17 +184,22 @@ pub async fn meet_call_open_window<R: Runtime>(
     // macOS Cocoa clamps NSWindow frame origins to keep the window at
     // least partially on-screen, so the `(-30000, -30000)` requested in
     // the builder lands as `(0, 0)` and the bot's CEF window pops up
-    // visible (issue: user can see + interact with the bot's Meet UI).
-    // Re-apply the off-screen position post-build via Tauri's
+    // visible. Re-apply the off-screen position post-build via Tauri's
     // `set_position` API — that hits the runtime's CEF `set_position`
-    // path which bypasses the initial-bounds clamp. Belt-and-suspenders
-    // with a minimize so even on builds where the position still leaks
-    // through Cocoa, the window doesn't visibly cover the user.
+    // path which bypasses the initial-bounds clamp.
+    //
+    // Don't `minimize()` here: macOS restores a minimized window on
+    // any app focus event, and the restored Meet pre-join page shows
+    // up over the user's main openhuman surface — far worse UX than
+    // a window stuck off-screen.
     if let Err(err) = window.set_position(tauri::PhysicalPosition::new(-30000i32, -30000i32)) {
         log::warn!("[meet-call] post-build set_position failed: {err}");
     }
-    if let Err(err) = window.minimize() {
-        log::warn!("[meet-call] post-build minimize failed: {err}");
+    if let Ok(pos) = window.outer_position() {
+        log::info!(
+            "[meet-call] post-build outer_position={{x:{},y:{}}} (target=-30000,-30000)",
+            pos.x, pos.y
+        );
     }
 
     state
