@@ -147,15 +147,30 @@ impl MeetAgentSession {
         // and the transcript log; the user's punctuation isn't load-
         // bearing for note-taking.
         let normalized = normalize_for_wake(text);
-        let wake_idx = normalized
-            .find("hey openhuman")
-            .or_else(|| normalized.find("hey open human"));
-        if let Some(idx) = wake_idx {
-            let after = if normalized[idx..].starts_with("hey openhuman") {
-                idx + "hey openhuman".len()
-            } else {
-                idx + "hey open human".len()
-            };
+        // Accept any of the canonical wake phrases. Meet's STT mangles
+        // the brand ("Hi Openhuman", "Open Human", dropped prefix) so
+        // we match a small set rather than a single rigid prefix.
+        // Ordered longest-first so the tail offset is calculated against
+        // the actual matched phrase.
+        const WAKE_PHRASES: &[&str] = &[
+            "hey open human",
+            "hi open human",
+            "hello open human",
+            "hey openhuman",
+            "hi openhuman",
+            "hello openhuman",
+            "open human",
+            "openhuman",
+        ];
+        let mut wake_hit: Option<(usize, &'static str)> = None;
+        for phrase in WAKE_PHRASES {
+            if let Some(idx) = normalized.find(phrase) {
+                wake_hit = Some((idx, phrase));
+                break;
+            }
+        }
+        if let Some((idx, phrase)) = wake_hit {
+            let after = idx + phrase.len();
             let tail = normalized.get(after..).unwrap_or("").trim().to_string();
             self.pending_prompt = tail;
             self.wake_active = true;
