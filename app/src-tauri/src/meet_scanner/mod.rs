@@ -189,16 +189,15 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
         dump_aria_labels(&mut cdp, &session, "mic|microphone|audio").await;
     }
 
-    // Phase 3 — request to join.
-    wait_and_click_text(
-        &mut cdp,
-        &session,
-        &["Ask to join", "Join now"],
-        JOIN_BUTTON_BUDGET,
-    )
-    .await?;
-
-    // Phase 3.5 — force a fresh getUserMedia call by cycling mic off-on.
+    // Phase 2.6 — force a fresh getUserMedia call by cycling mic off-on
+    // BEFORE Ask-to-join.
+    //
+    // Why before, not after: if Ask-to-join times out (Meet UI variant
+    // drift or already-joined-elsewhere) the scanner returns Err and
+    // any later phases never run. Cycling here means the gUM intercept
+    // gets its chance regardless of what happens at the join button —
+    // and pre-join is also when Meet's React happily re-acquires media
+    // on toggle, so this is the more reliable site anyway.
     //
     // Meet caches the camera + mic MediaStreams from initial page load
     // (before meet_audio::inject reloaded with our bridges). Our gUM
@@ -244,6 +243,15 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
             log::info!("[meet-scanner] mic re-armed (gUM intercept should now fire)");
         }
     }
+
+    // Phase 3 — request to join.
+    wait_and_click_text(
+        &mut cdp,
+        &session,
+        &["Ask to join", "Join now"],
+        JOIN_BUTTON_BUDGET,
+    )
+    .await?;
 
     // Phase 4 — once the bot is admitted, force-enable captions.
     //
