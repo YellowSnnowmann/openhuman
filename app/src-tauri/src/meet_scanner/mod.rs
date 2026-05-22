@@ -325,17 +325,20 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
             &session,
             &[
                 "turn on captions",
+                "turn on live captions",
+                "turn on subtitles",
+                "turn on closed captions",
                 "captions on",
                 "captions (c)",
-                "turn on live captions",
                 "show captions",
+                "enable captions",
             ],
             Duration::from_secs(8),
         )
         .await
         {
             log::info!("[meet-scanner] captions toggle ON not clicked: {err}");
-            dump_aria_labels(&mut cdp, &session, "caption").await;
+            dump_aria_labels(&mut cdp, &session, "caption|subtitle").await;
         }
     }
 
