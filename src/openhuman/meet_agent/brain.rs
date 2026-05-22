@@ -404,7 +404,13 @@ read the note back.\n\
 /// spoken sentence with no markdown / no chain-of-thought / no
 /// preamble. Wrapped in a delimiter so the orchestrator can't confuse
 /// the directive with the user's actual utterance.
-const MEET_VOICE_DIRECTIVE: &str = "[meeting voice — your reply will be spoken aloud verbatim into a live Google Meet call. Answer in ONE short spoken sentence, max 25 words. Plain spoken English only. No markdown. No bullets. No code. No preamble. No phrases like \"I should…\", \"Let me…\", \"We need to…\". If the user is not directly addressing you, output an empty string and stay silent.]";
+const MEET_VOICE_DIRECTIVE: &str = "MEETING VOICE MODE: This conversation is happening live over voice in a Google Meet call. Every word of your reply will be passed VERBATIM to TTS and spoken aloud. Therefore: answer in ONE short spoken sentence, max 25 words, plain spoken English, no markdown, no bullets, no code, no preamble (do not say \"I should…\", \"Let me…\", \"We need to…\", \"The user said…\"). Tool-use is great — call tools when needed — but only the final spoken reply should appear in your output. If the user is not directly addressing you, output an empty string and stay silent.";
+
+/// First 12 chars of `request_id`, for log scoping. UUID prefixes are
+/// unique enough at one-meet-at-a-time to keep transcripts apart.
+fn short_id(id: &str) -> String {
+    id.chars().take(12).collect()
+}
 
 /// Route the meeting utterance through the FULL orchestrator agent —
 /// same path the chat UI and the webview meet handoff use. The
@@ -428,26 +434,35 @@ async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, S
 
     let config = crate::openhuman::config::ops::load_config_with_timeout().await?;
 
-    // Build a fresh orchestrator Agent. Synchronous constructor — no
-    // .await — but heavy (memory tree, provider, MCP). Keep an eye on
-    // turn latency; if it becomes a bottleneck, cache an Arc<Agent>
-    // keyed by request_id in a follow-up commit. For now the LLM
-    // call dominates and the build is a few hundred ms at most.
-    let mut agent = Agent::from_config_for_agent(&config, "orchestrator")
-        .map_err(|e| format!("[meet-agent] orchestrator build failed: {e}"))?;
+    // Use the with_profile builder — same canonical path the web
+    // channel (chat UI) uses at channels/providers/web.rs:1570. This
+    // is what wires the user's connected integrations + delegation
+    // tools onto the orchestrator. The plain `from_config_for_agent`
+    // builds with zero integrations attached. `profile_prompt_suffix`
+    // is the established hook for per-channel system-prompt
+    // augmentation — the web channel uses it for the locale-reply
+    // directive; we use it for the voice-frontend directive.
+    let mut agent = Agent::from_config_for_agent_with_profile(
+        &config,
+        "orchestrator",
+        None,
+        Some(MEET_VOICE_DIRECTIVE.to_string()),
+    )
+    .map_err(|e| format!("[meet-agent] orchestrator build failed: {e}"))?;
 
-    // Prepend the voice-frontend directive so the orchestrator knows
-    // this turn is spoken-aloud and constrains its output. The
-    // delimiter prevents the directive from being mistaken for the
-    // user's literal speech.
-    let meet_prompt = format!("{MEET_VOICE_DIRECTIVE}\n\n{prompt}");
+    // Per-meet event context so the harness scopes its session
+    // transcript to this request_id instead of colliding with the
+    // chat-UI thread. Without this, two simultaneous orchestrators
+    // (chat + meet) share one transcript file.
+    agent.set_event_context(format!("meet_{request_id}"), "meet_agent");
+    agent.set_agent_definition_name(format!("orchestrator_meet_{}", short_id(request_id)));
 
     log::info!(
         "[meet-agent] agentic turn dispatch request_id={request_id} prompt_chars={}",
         prompt.chars().count()
     );
 
-    let fut = agent.run_single(&meet_prompt);
+    let fut = agent.run_single(prompt);
     let reply = match tokio::time::timeout(
         Duration::from_secs(AGENTIC_TURN_TIMEOUT_SECS),
         fut,
