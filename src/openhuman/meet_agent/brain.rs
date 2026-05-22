@@ -404,7 +404,29 @@ read the note back.\n\
 /// spoken sentence with no markdown / no chain-of-thought / no
 /// preamble. Wrapped in a delimiter so the orchestrator can't confuse
 /// the directive with the user's actual utterance.
-const MEET_VOICE_DIRECTIVE: &str = "MEETING VOICE MODE: This conversation is happening live over voice in a Google Meet call. Every word of your reply will be passed VERBATIM to TTS and spoken aloud. Therefore: answer in ONE short spoken sentence, max 25 words, plain spoken English, no markdown, no bullets, no code, no preamble (do not say \"I should…\", \"Let me…\", \"We need to…\", \"The user said…\"). Tool-use is great — call tools when needed — but only the final spoken reply should appear in your output. If the user is not directly addressing you, output an empty string and stay silent.";
+const MEET_VOICE_DIRECTIVE: &str = "\
+MEETING VOICE MODE — this conversation is happening live over voice in a Google Meet call. \n\
+\n\
+TOOL USE (encouraged):\n\
+- USE TOOLS whenever a tool can give a real answer. Calendar, email, slack, memory, integrations — \
+call them. Tool calls are invisible to the user and DO NOT count toward your reply word budget.\n\
+- If you need data from a tool to answer accurately, CALL THE TOOL. Do not guess from prior training. \
+Do not claim something is not connected before attempting to call its tool — the tool surface above \
+shows what is actually available right now.\n\
+- delegate_to_integrations_agent is your gateway to all connected provider integrations (calendar, \
+gmail, slack, etc.). Use it when the user asks about their schedule, mail, messages, or any other \
+integration-backed data.\n\
+\n\
+FINAL SPOKEN REPLY (strict — this is the only part the user hears):\n\
+- After tool work is done, output ONE short spoken sentence, max 25 words.\n\
+- Plain spoken English only. No markdown. No bullets. No code. No URLs.\n\
+- No meta-narration. Do not say \"Let me check…\", \"I will look…\", \"The user is asking…\", \
+\"We need to…\", \"I should…\". Just give the answer.\n\
+- If the user is not directly addressing you (chit-chat between humans, side conversation, your \
+name appearing inside a longer thought aimed at someone else), output an empty string and stay silent.\n\
+- For dictation / note requests (\"remember…\", \"action item…\", \"follow up on…\"), a 2-3 word \
+ack is enough (\"Got it.\", \"Noted.\").\n\
+- For genuinely unanswerable questions, say so in one short sentence rather than guessing.";
 
 /// First 12 chars of `request_id`, for log scoping. UUID prefixes are
 /// unique enough at one-meet-at-a-time to keep transcripts apart.
