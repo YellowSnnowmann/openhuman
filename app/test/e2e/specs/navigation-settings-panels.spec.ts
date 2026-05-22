@@ -56,8 +56,8 @@ const PANELS: PanelCheck[] = [
     markers: ['Memory', 'Data', 'Storage', 'Export', 'Import', 'Settings'],
   },
   {
-    // N2.4 — intelligence / AI settings
-    hash: '/settings/intelligence',
+    // N2.4 — intelligence / AI settings (top-level route, not nested under /settings)
+    hash: '/intelligence',
     markers: ['Intelligence', 'AI', 'Model', 'Skills', 'Settings'],
   },
   {
@@ -150,7 +150,7 @@ describe('Navigation — settings sub-panels', () => {
     await verifyPanelLoaded(panel);
   });
 
-  it('N2.4 — /settings/intelligence loads', async () => {
+  it('N2.4 — /intelligence loads', async () => {
     const panel = PANELS[3];
     console.log(`${LOG_PREFIX} N2.4: navigating to ${panel.hash}`);
     await navigateViaHash(panel.hash);

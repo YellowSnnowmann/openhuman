@@ -125,7 +125,7 @@ const HASH_TO_SIDEBAR_LABEL = {
   '/chat': 'Chat',
   '/notifications': 'Alerts',
   '/settings': 'Settings',
-  '/settings/intelligence': 'Intelligence',
+  '/intelligence': 'Intelligence',
 };
 
 function normalizeHash(value) {
@@ -143,7 +143,7 @@ function routeReadySelector(hash) {
     '/settings/migration': '[data-testid="migration-form"]',
     '/settings/voice': '[data-testid="voice-providers-section"]',
     '/settings/memory-data': '[data-testid="memory-workspace"]',
-    '/settings/intelligence': '[data-testid="memory-workspace"]',
+    '/intelligence': '[data-testid="memory-workspace"]',
   };
   return selectors[path] || null;
 }
@@ -430,7 +430,7 @@ export async function navigateToSkills() {
 }
 
 export async function navigateToIntelligence() {
-  await navigateViaHash('/settings/intelligence');
+  await navigateViaHash('/intelligence');
 }
 
 export async function navigateToConversations() {
