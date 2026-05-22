@@ -154,9 +154,8 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     // visible text) so wait_and_click_text isn't enough; use a
     // dedicated aria-label matcher.
     //
-    // Best-effort: if Meet's aria copy has drifted (region / A-B test)
-    // we log and continue. The bot will still join, just without one or
-    // both of camera + mic.
+    // Best-effort: if no match is found in the budget, dump the page's
+    // current aria-labels so we can extend the matcher next iteration.
     if let Err(err) = click_by_aria_label(
         &mut cdp,
         &session,
@@ -164,12 +163,16 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
             "turn on camera",
             "camera is off",
             "turn camera on",
+            "turn camera off",
+            "camera (cmd+e)",
+            "camera off",
         ],
-        Duration::from_secs(4),
+        Duration::from_secs(12),
     )
     .await
     {
-        log::info!("[meet-scanner] camera toggle ON not clicked: {err}");
+        log::warn!("[meet-scanner] camera toggle ON not clicked: {err}");
+        dump_aria_labels(&mut cdp, &session, "camera|video").await;
     }
     if let Err(err) = click_by_aria_label(
         &mut cdp,
@@ -180,12 +183,18 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
             "microphone is off",
             "mic is off",
             "turn microphone on",
+            "turn off microphone",
+            "turn off mic",
+            "microphone (cmd+d)",
+            "mic (cmd+d)",
+            "microphone off",
         ],
-        Duration::from_secs(4),
+        Duration::from_secs(12),
     )
     .await
     {
-        log::info!("[meet-scanner] mic toggle ON not clicked: {err}");
+        log::warn!("[meet-scanner] mic toggle ON not clicked: {err}");
+        dump_aria_labels(&mut cdp, &session, "mic|microphone|audio").await;
     }
 
     // Phase 3 — request to join.
@@ -198,6 +207,56 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     .await?;
 
     Ok(())
+}
+
+/// Dump the page's aria-labels that match a JS regex pattern so we can
+/// inspect what Meet actually exposes after a failed
+/// [`click_by_aria_label`]. Best-effort, swallows all CDP errors.
+async fn dump_aria_labels(cdp: &mut CdpConn, session: &str, pattern: &str) {
+    let pattern_js =
+        serde_json::to_string(pattern).unwrap_or_else(|_| "\"camera\"".to_string());
+    let expression = format!(
+        r#"
+        (() => {{
+          const re = new RegExp({pattern_js}, "i");
+          const nodes = document.querySelectorAll('[aria-label]');
+          const hits = [];
+          for (const el of nodes) {{
+            const aria = el.getAttribute('aria-label') || '';
+            if (!re.test(aria)) continue;
+            const tag = el.tagName.toLowerCase();
+            const role = el.getAttribute('role') || '';
+            const dataTip = el.getAttribute('data-tooltip') || '';
+            const rect = el.getBoundingClientRect();
+            const visible = rect.width > 0 && rect.height > 0;
+            hits.push({{ aria, tag, role, dataTip, visible }});
+            if (hits.length >= 24) break;
+          }}
+          return hits;
+        }})()
+        "#
+    );
+    let res = match cdp
+        .call(
+            "Runtime.evaluate",
+            json!({ "expression": expression, "returnByValue": true }),
+            Some(session),
+        )
+        .await
+    {
+        Ok(v) => v,
+        Err(err) => {
+            log::info!("[meet-scanner] aria-label dump failed: {err}");
+            return;
+        }
+    };
+    if let Some(arr) = res.get("result").and_then(|r| r.get("value")) {
+        log::warn!(
+            "[meet-scanner] aria-label dump pattern={} hits={}",
+            pattern,
+            arr
+        );
+    }
 }
 
 /// Click a button whose `aria-label` matches one of `labels`
