@@ -162,6 +162,22 @@ pub async fn meet_call_open_window<R: Runtime>(
         .build()
         .map_err(|e| format!("[meet-call] WebviewWindowBuilder.build failed: {e}"))?;
 
+    // macOS Cocoa clamps NSWindow frame origins to keep the window at
+    // least partially on-screen, so the `(-30000, -30000)` requested in
+    // the builder lands as `(0, 0)` and the bot's CEF window pops up
+    // visible (issue: user can see + interact with the bot's Meet UI).
+    // Re-apply the off-screen position post-build via Tauri's
+    // `set_position` API — that hits the runtime's CEF `set_position`
+    // path which bypasses the initial-bounds clamp. Belt-and-suspenders
+    // with a minimize so even on builds where the position still leaks
+    // through Cocoa, the window doesn't visibly cover the user.
+    if let Err(err) = window.set_position(tauri::PhysicalPosition::new(-30000i32, -30000i32)) {
+        log::warn!("[meet-call] post-build set_position failed: {err}");
+    }
+    if let Err(err) = window.minimize() {
+        log::warn!("[meet-call] post-build minimize failed: {err}");
+    }
+
     state
         .inner
         .lock()
