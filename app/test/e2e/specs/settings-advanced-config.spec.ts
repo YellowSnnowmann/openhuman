@@ -146,13 +146,12 @@ describe('Settings - Advanced Config', () => {
         (sel: string, val: string) => {
           const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel);
           if (!el) return;
-          const setter =
-            Object.getOwnPropertyDescriptor(
-              el instanceof HTMLTextAreaElement
-                ? window.HTMLTextAreaElement.prototype
-                : window.HTMLInputElement.prototype,
-              'value'
-            )?.set;
+          const setter = Object.getOwnPropertyDescriptor(
+            el instanceof HTMLTextAreaElement
+              ? window.HTMLTextAreaElement.prototype
+              : window.HTMLInputElement.prototype,
+            'value'
+          )?.set;
           if (setter) setter.call(el, val);
           else el.value = val;
           el.dispatchEvent(new Event('input', { bubbles: true }));
