@@ -87,7 +87,10 @@ describe('Chat harness — send + stream', () => {
     expect(typeof threadId).toBe('string');
   });
 
-  it('sends a message, observes streaming deltas, and lands the full reply', async () => {
+  it('sends a message, observes streaming deltas, and lands the full reply', async function () {
+    // WDIO config caps Mocha `it` at 30s, but this test legitimately needs
+    // ~30s socket + 15s send + 10s canary + 8s poll + 30s final reply.
+    this.timeout(120_000);
     // Wait for Socket.IO to connect to the in-process Rust core before sending.
     // composerSendDecision blocks the send with 'socket_disconnected' when the
     // socket is not yet up — without this the user sees the "Realtime socket is

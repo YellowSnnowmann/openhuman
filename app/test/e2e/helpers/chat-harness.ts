@@ -151,12 +151,17 @@ export async function waitForSocketConnected(timeoutMs = 30_000): Promise<boolea
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const connected = await browser.execute(() => {
-      const winAny = window as unknown as { __OPENHUMAN_STORE__?: { getState: () => unknown } };
+      const winAny = window as unknown as {
+        __OPENHUMAN_STORE__?: { getState: () => unknown };
+        __OPENHUMAN_CORE_STATE__?: () => { snapshot?: { auth?: { userId?: string | null } } };
+      };
+      const activeUserId = winAny.__OPENHUMAN_CORE_STATE__?.()?.snapshot?.auth?.userId;
+      if (!activeUserId) return false;
       const state = winAny.__OPENHUMAN_STORE__?.getState() as
         | { socket?: { byUser?: Record<string, { status?: string }> } }
         | undefined;
       const byUser = state?.socket?.byUser ?? {};
-      return Object.values(byUser).some(u => u?.status === 'connected');
+      return byUser[activeUserId]?.status === 'connected';
     });
     if (connected) return true;
     await browser.pause(400);
