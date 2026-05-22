@@ -143,6 +143,51 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     // Phase 2 — type the display name.
     type_into_named_input(&mut cdp, &session, "Your name", display_name).await?;
 
+    // Phase 2.5 — flip the camera + mic toggles ON.
+    //
+    // Meet defaults camera + mic OFF for new participants. If we click
+    // "Ask to join" without flipping them, the bot joins muted with no
+    // camera — Meet never calls getUserMedia, the audio + camera bridges
+    // have nothing to intercept, the mascot tile shows initials instead
+    // of the mascot canvas, and the speak_pump can't push synthesized
+    // PCM into a live mic track. Both toggles use `aria-label` (no
+    // visible text) so wait_and_click_text isn't enough; use a
+    // dedicated aria-label matcher.
+    //
+    // Best-effort: if Meet's aria copy has drifted (region / A-B test)
+    // we log and continue. The bot will still join, just without one or
+    // both of camera + mic.
+    if let Err(err) = click_by_aria_label(
+        &mut cdp,
+        &session,
+        &[
+            "turn on camera",
+            "camera is off",
+            "turn camera on",
+        ],
+        Duration::from_secs(4),
+    )
+    .await
+    {
+        log::info!("[meet-scanner] camera toggle ON not clicked: {err}");
+    }
+    if let Err(err) = click_by_aria_label(
+        &mut cdp,
+        &session,
+        &[
+            "turn on microphone",
+            "turn on mic",
+            "microphone is off",
+            "mic is off",
+            "turn microphone on",
+        ],
+        Duration::from_secs(4),
+    )
+    .await
+    {
+        log::info!("[meet-scanner] mic toggle ON not clicked: {err}");
+    }
+
     // Phase 3 — request to join.
     wait_and_click_text(
         &mut cdp,
@@ -153,6 +198,76 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     .await?;
 
     Ok(())
+}
+
+/// Click a button whose `aria-label` matches one of `labels`
+/// (case-insensitive substring). Meet's camera + mic toggles have no
+/// visible text — they're icon buttons with `aria-label="Turn on
+/// camera"` etc. The existing `wait_and_click_text` matches innerText
+/// only, so we need a sibling matcher anchored on aria-label.
+async fn click_by_aria_label(
+    cdp: &mut CdpConn,
+    session: &str,
+    labels: &[&str],
+    budget: Duration,
+) -> Result<(), String> {
+    let labels_js = serde_json::to_string(labels).map_err(|e| format!("labels json: {e}"))?;
+    let expression = format!(
+        r#"
+        (() => {{
+          const labels = {labels_js};
+          const want = labels.map(l => l.toLowerCase());
+          const candidates = document.querySelectorAll(
+            'button, [role="button"], [aria-label]'
+          );
+          for (const el of candidates) {{
+            if (el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+            const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+            if (!aria) continue;
+            if (!want.some(w => aria.includes(w))) continue;
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            el.scrollIntoView({{ block: 'center', inline: 'center' }});
+            el.click();
+            return aria;
+          }}
+          return null;
+        }})()
+        "#
+    );
+
+    let deadline = tokio::time::Instant::now() + budget;
+    let mut last_value = Value::Null;
+    while tokio::time::Instant::now() < deadline {
+        let res = cdp
+            .call(
+                "Runtime.evaluate",
+                json!({
+                    "expression": expression,
+                    "returnByValue": true,
+                    "awaitPromise": false,
+                }),
+                Some(session),
+            )
+            .await?;
+        let value = res
+            .get("result")
+            .and_then(|r| r.get("value"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        if value.is_string() {
+            log::info!(
+                "[meet-scanner] clicked aria-label matching {labels:?} aria={}",
+                value.as_str().unwrap_or("")
+            );
+            return Ok(());
+        }
+        last_value = value;
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
+    Err(format!(
+        "timeout waiting for aria-label matching {labels:?} (last={last_value})"
+    ))
 }
 
 /// Poll CEF's target list until a page whose URL starts with `meet_url`
