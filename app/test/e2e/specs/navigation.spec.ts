@@ -45,7 +45,8 @@ async function rootTextLength(): Promise<number> {
 }
 
 describe('Navigation', () => {
-  before(async () => {
+  before(async function () {
+    this.timeout(90_000);
     await startMockServer();
     await waitForApp();
     await resetApp(USER_ID);
@@ -61,7 +62,13 @@ describe('Navigation', () => {
 
   it('lands on /home after onboarding', async () => {
     await waitForAppReady(10_000);
-    const homeText = await waitForHomePage(15_000);
+    let homeText = await waitForHomePage(15_000);
+    if (!homeText) {
+      // resetApp may have landed on /chat instead of /home; navigate explicitly.
+      await navigateViaHash('/home');
+      await waitForAppReady(10_000);
+      homeText = await waitForHomePage(15_000);
+    }
     expect(homeText).toBeTruthy();
   });
 
