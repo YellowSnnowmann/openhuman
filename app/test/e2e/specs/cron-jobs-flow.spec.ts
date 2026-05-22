@@ -131,14 +131,16 @@ describe('Cron jobs settings panel (real UI flow)', () => {
     // The morning_briefing cron is auto-seeded after onboarding completes.
     // If the async seed hasn't fired yet, seed it explicitly via RPC.
     const preCheck = await callOpenhumanRpc('openhuman.cron_list', {});
+    expect(preCheck.ok).toBe(true);
     const preJobs = Array.isArray(preCheck.result?.result) ? preCheck.result.result : [];
     if (!preJobs.some((j: { name?: string }) => j?.name === MORNING_BRIEFING)) {
       stepLog('morning_briefing not auto-seeded — seeding via cron_create');
-      await callOpenhumanRpc('openhuman.cron_create', {
+      const seed = await callOpenhumanRpc('openhuman.cron_create', {
         name: MORNING_BRIEFING,
         schedule: '0 8 * * *',
         enabled: true,
       });
+      expect(seed.ok).toBe(true);
       await browser.pause(1_000);
     }
 

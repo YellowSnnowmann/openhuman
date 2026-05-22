@@ -162,7 +162,7 @@ jobs:
 
       - name: Upload E2E failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: e2e-failure-logs-${{ runner.os }}-${{ github.run_id }}
           path: |

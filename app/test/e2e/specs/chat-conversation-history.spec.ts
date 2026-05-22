@@ -214,9 +214,9 @@ describe('Chat conversation history', () => {
       expect(hasSecretWord).toBe(true);
       console.log(`${LOG_PREFIX} H1.2: secret word found in context messages`);
     } else {
-      // Body may not be captured by the mock in all configurations — the turn
-      // completion (canary visible) is the authoritative proof messages were sent.
-      console.log(`${LOG_PREFIX} H1.2: message body not captured — relying on canary visibility`);
+      // If no messages were returned, the history assertion is hollow. Fail so
+      // the issue is visible rather than silently passing.
+      expect(messages.length).toBeGreaterThan(0);
     }
 
     console.log(`${LOG_PREFIX} H1.2: passed`);
