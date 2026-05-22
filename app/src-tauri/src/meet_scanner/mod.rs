@@ -198,7 +198,88 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     )
     .await?;
 
+    // Phase 4 — once the bot is admitted, force-enable captions.
+    //
+    // captions_bridge.js already polls every 2 s for a button whose
+    // aria-label STARTS with "turn on captions" (`indexOf(...) === 0`).
+    // That's brittle: Meet ships "Turn on captions (c)" in some regions
+    // (the parenthesised shortcut breaks the `=== 0` prefix-match), and
+    // the polling cap (30 attempts * 2 s = 60 s) can expire before a
+    // slow host admits the bot. Belt-and-suspenders: from the scanner
+    // side, wait for admission (the "Leave call" affordance) then click
+    // the captions toggle ourselves via the looser substring matcher.
+    //
+    // Best-effort: if any step times out, log + continue. The brain
+    // will simply not see captions for this session, which is no worse
+    // than the pre-fix state.
+    if let Err(err) = wait_for_admission(&mut cdp, &session).await {
+        log::info!("[meet-scanner] admission wait skipped: {err}");
+    } else {
+        log::info!("[meet-scanner] bot admitted into meeting");
+        if let Err(err) = click_by_aria_label(
+            &mut cdp,
+            &session,
+            &[
+                "turn on captions",
+                "captions on",
+                "captions (c)",
+                "turn on live captions",
+                "show captions",
+            ],
+            Duration::from_secs(8),
+        )
+        .await
+        {
+            log::info!("[meet-scanner] captions toggle ON not clicked: {err}");
+            dump_aria_labels(&mut cdp, &session, "caption").await;
+        }
+    }
+
     Ok(())
+}
+
+/// Wait until the meeting page renders the in-call control bar — the
+/// signal that the host has admitted the bot from the waiting room.
+/// The "Leave call" / "End call" button is the simplest stable anchor;
+/// the captions and "more options" buttons exist in pre-join too.
+async fn wait_for_admission(cdp: &mut CdpConn, session: &str) -> Result<(), String> {
+    const ADMISSION_BUDGET: Duration = Duration::from_secs(120);
+    let expression = r#"
+        (() => {
+          const all = document.querySelectorAll('button[aria-label]');
+          for (const el of all) {
+            const a = (el.getAttribute('aria-label') || '').toLowerCase();
+            if (a.includes('leave call') || a.includes('end call')) {
+              const rect = el.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) return true;
+            }
+          }
+          return false;
+        })()
+    "#;
+    let deadline = tokio::time::Instant::now() + ADMISSION_BUDGET;
+    while tokio::time::Instant::now() < deadline {
+        let res = cdp
+            .call(
+                "Runtime.evaluate",
+                json!({ "expression": expression, "returnByValue": true }),
+                Some(session),
+            )
+            .await?;
+        let admitted = res
+            .get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if admitted {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    Err(format!(
+        "timeout ({}s) waiting for Leave-call affordance",
+        ADMISSION_BUDGET.as_secs()
+    ))
 }
 
 /// Dump the page's aria-labels that match a JS regex pattern so we can
