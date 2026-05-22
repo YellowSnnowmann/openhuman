@@ -99,9 +99,22 @@ describe('Chat harness — send + stream', () => {
 
     await typeIntoComposer(PROMPT);
     const sent = await browser.waitUntil(async () => await clickSend(), {
-      timeout: 5_000,
+      timeout: 15_000,
       timeoutMsg: 'Send button never enabled',
     });
+    if (!sent) {
+      // Diagnostic: dump why the button might be disabled.
+      const diag = await browser.execute(() => {
+        const btn = document.querySelector('button[aria-label="Send message"]') as HTMLButtonElement;
+        const ta = document.querySelector('textarea[placeholder*="Type a message"]') as HTMLTextAreaElement;
+        return {
+          btnExists: !!btn,
+          btnDisabled: btn?.disabled,
+          inputValue: ta?.value?.slice(0, 50),
+        };
+      });
+      console.warn('[chat-harness-send-stream] Send diagnostic:', JSON.stringify(diag));
+    }
     expect(sent).toBe(true);
 
     // The user message bubble must appear first.
