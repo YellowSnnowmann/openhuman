@@ -67,10 +67,11 @@ impl Tool for WalletPrepareTransferTool {
         };
 
         log::debug!(
-            "[wallet_prepare_transfer] chain={:?} to={} amount={}",
+            "[wallet_prepare_transfer] chain={:?} to={}…{} amount_len={}",
             params.chain,
-            params.to_address,
-            params.amount_raw
+            &params.to_address[..params.to_address.len().min(6)],
+            &params.to_address[params.to_address.len().saturating_sub(4)..],
+            params.amount_raw.len()
         );
 
         match wallet::prepare_transfer(params).await {
