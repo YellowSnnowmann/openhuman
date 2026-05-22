@@ -60,15 +60,29 @@ impl Tool for WalletPrepareTransferTool {
     ) -> anyhow::Result<ToolResult> {
         let params: PrepareTransferParams = match serde_json::from_value(args) {
             Ok(p) => p,
-            Err(e) => return Ok(ToolResult::error(format!("invalid arguments: {e}"))),
+            Err(e) => {
+                log::debug!("[wallet_prepare_transfer] invalid arguments: {e}");
+                return Ok(ToolResult::error(format!("invalid arguments: {e}")));
+            }
         };
+
+        log::debug!(
+            "[wallet_prepare_transfer] chain={:?} to={} amount={}",
+            params.chain,
+            params.to_address,
+            params.amount_raw
+        );
 
         match wallet::prepare_transfer(params).await {
             Ok(outcome) => {
                 let json_str = serde_json::to_string_pretty(&outcome.value)?;
+                log::debug!("[wallet_prepare_transfer] success");
                 Ok(ToolResult::success(json_str))
             }
-            Err(e) => Ok(ToolResult::error(e)),
+            Err(e) => {
+                log::warn!("[wallet_prepare_transfer] failed: {e}");
+                Ok(ToolResult::error(e))
+            }
         }
     }
 }
