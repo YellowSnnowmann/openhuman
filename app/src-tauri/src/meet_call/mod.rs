@@ -181,34 +181,25 @@ pub async fn meet_call_open_window<R: Runtime>(
         .build()
         .map_err(|e| format!("[meet-call] WebviewWindowBuilder.build failed: {e}"))?;
 
-    // Hide the window after build so the user never sees it.
+    // Push the window off-screen post-build. macOS Cocoa clamps NSWindow
+    // frame origins to the union of all attached monitors' bounds, so
+    // (-30000, -30000) lands at (0, 0) on a single-display setup or on
+    // a secondary monitor's edge on multi-display setups. Not perfect,
+    // but the post-join hide() in `meet_scanner::run` is the primary
+    // hiding mechanism — this just keeps the brief pre-join window
+    // out of the user's main display where possible.
     //
-    // We previously relied on positioning the window off-screen at
-    // (-30000, -30000), but macOS Cocoa clamps NSWindow frame origins
-    // to keep them within the union of all attached monitors' bounds.
-    // On a single-display setup the clamp lands at (0, 0); on a
-    // multi-display setup it lands somewhere on the secondary display
-    // (e.g. (-1692, 66) on a left-extended layout). Either way the
-    // user sees the bot's Meet pre-join surface — which defeats the
-    // "invisible bot" premise.
-    //
-    // `window.hide()` calls macOS `[NSWindow orderOut:]`, which removes
-    // the window from screen + Dock without releasing its backing
-    // surface. Critically, the renderer keeps painting and CDP keeps
-    // working — so `meet_audio::inject`, `meet_video::camera_bridge`,
-    // and `meet_scanner::Input.dispatchMouseEvent` all continue to
-    // function. This is different from `.visible(false)` at builder
-    // time (which never gives the renderer a backing surface in the
-    // first place and silently breaks layout + clicks).
-    if let Err(err) = window.hide() {
-        log::warn!("[meet-call] post-build hide failed: {err}");
+    // We can't hide() here: a window built hidden never gives its
+    // renderer a backing surface, and `meet_scanner` drives the join
+    // via CDP `Input.dispatchMouseEvent` which requires laid-out DOM.
+    // Hide post-join instead.
+    if let Err(err) = window.set_position(tauri::PhysicalPosition::new(-30000i32, -30000i32)) {
+        log::warn!("[meet-call] post-build set_position failed: {err}");
     }
     if let Ok(pos) = window.outer_position() {
         log::info!(
-            "[meet-call] post-build outer_position={{x:{},y:{}}} visible={}",
-            pos.x,
-            pos.y,
-            window.is_visible().unwrap_or(true)
+            "[meet-call] post-build outer_position={{x:{},y:{}}} (target=-30000,-30000)",
+            pos.x, pos.y
         );
     }
 
@@ -414,7 +405,7 @@ pub async fn meet_call_close_window<R: Runtime>(
     Ok(false)
 }
 
-fn window_label_for(request_id: &str) -> String {
+pub fn window_label_for(request_id: &str) -> String {
     format!("meet-call-{request_id}")
 }
 

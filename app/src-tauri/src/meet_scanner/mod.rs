@@ -35,7 +35,7 @@
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::cdp::{self, CdpConn};
 
@@ -70,7 +70,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// the scanner uses it as a target-URL prefix so two concurrent calls
 /// each attach to their own CEF target instead of cross-controlling.
 pub fn spawn<R: Runtime>(
-    _app: AppHandle<R>,
+    app: AppHandle<R>,
     request_id: String,
     meet_url: String,
     display_name: String,
@@ -79,7 +79,28 @@ pub fn spawn<R: Runtime>(
     // JoinHandle whose abort_handle() we can return to the caller.
     let handle = tokio::spawn(async move {
         match run(&request_id, &meet_url, &display_name).await {
-            Ok(()) => log::info!("[meet-scanner] join sequence completed request_id={request_id}"),
+            Ok(()) => {
+                log::info!("[meet-scanner] join sequence completed request_id={request_id}");
+                // Now that the scanner has clicked "Ask to join" and CEF
+                // has the meeting page laid out, hide the window so the
+                // user never sees the bot's Meet UI. The renderer keeps
+                // its backing surface (orderOut: rather than release),
+                // so the audio + camera bridges and the meet-agent
+                // CDP session continue to function while the bot is
+                // off-screen.
+                let label = crate::meet_call::window_label_for(&request_id);
+                if let Some(window) = app.get_webview_window(&label) {
+                    if let Err(err) = window.hide() {
+                        log::warn!(
+                            "[meet-scanner] post-join hide failed request_id={request_id} err={err}"
+                        );
+                    } else {
+                        log::info!(
+                            "[meet-scanner] post-join hide ok request_id={request_id}"
+                        );
+                    }
+                }
+            }
             Err(err) => {
                 log::warn!("[meet-scanner] join sequence aborted request_id={request_id} err={err}")
             }
