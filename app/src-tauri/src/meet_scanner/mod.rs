@@ -81,25 +81,18 @@ pub fn spawn<R: Runtime>(
         match run(&request_id, &meet_url, &display_name).await {
             Ok(()) => {
                 log::info!("[meet-scanner] join sequence completed request_id={request_id}");
-                // Now that the scanner has clicked "Ask to join" and CEF
-                // has the meeting page laid out, hide the window so the
-                // user never sees the bot's Meet UI. The renderer keeps
-                // its backing surface (orderOut: rather than release),
-                // so the audio + camera bridges and the meet-agent
-                // CDP session continue to function while the bot is
-                // off-screen.
-                let label = crate::meet_call::window_label_for(&request_id);
-                if let Some(window) = app.get_webview_window(&label) {
-                    if let Err(err) = window.hide() {
-                        log::warn!(
-                            "[meet-scanner] post-join hide failed request_id={request_id} err={err}"
-                        );
-                    } else {
-                        log::info!(
-                            "[meet-scanner] post-join hide ok request_id={request_id}"
-                        );
-                    }
-                }
+                // Diagnostic build: keep the window VISIBLE post-join so
+                // we can verify whether the previous `window.hide()` was
+                // suspending the renderer enough to break the audio +
+                // caption bridges. Smoke shows audio_context_state stuck
+                // at "not-created" and no push_caption RPCs ever fire
+                // after hide() — both consistent with the renderer
+                // pausing its event loop when orderOut: lands. If the
+                // pipeline works with the window visible we'll restore
+                // hide() via a different mechanism (e.g. drag off-screen
+                // via Tauri set_position rather than orderOut:).
+                let _ = app;
+                let _ = request_id;
             }
             Err(err) => {
                 log::warn!("[meet-scanner] join sequence aborted request_id={request_id} err={err}")
