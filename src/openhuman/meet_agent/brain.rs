@@ -38,15 +38,12 @@ use super::session::registry;
 use super::types::{SessionEvent, SessionEventKind};
 use super::wav;
 
-/// Wall-clock ceiling on one agentic turn. Single tool dispatch
-/// (delegate_to_integrations_agent → calendar / gmail / slack) runs
-/// 15-30s on its own; iteration 2 (synthesis using the tool result)
-/// adds 3-5s. 60s gives enough headroom for one tool + synthesis,
-/// while still short enough that a hung tool doesn't leave the
-/// meeting participant in indefinite silence. The turn_in_progress
-/// gate blocks new wakes during the wait so the user can't fire 20
-/// parallel calendar queries by talking more.
-const AGENTIC_TURN_TIMEOUT_SECS: u64 = 60;
+/// Wall-clock ceiling on one agentic turn. Slack / Gmail fetches via
+/// Composio + per-message filtering + iteration-2 synthesis can hit
+/// 60-80s in the slow path. 90s gives the long integrations a chance
+/// to land. The turn_in_progress gate blocks new wakes during the
+/// wait, so the user cannot spawn parallel queries by re-asking.
+const AGENTIC_TURN_TIMEOUT_SECS: u64 = 90;
 
 /// How many of the most recent `Heard` / `Spoke` events we feed back
 /// into the LLM as rolling conversation context. 12 ≈ a few minutes of
@@ -148,26 +145,24 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     let reply_text = match llm_meeting_agentic(&prompt, request_id).await {
         Ok(text) => text,
         Err(agentic_err) => {
+            // Do NOT fall back to basic LLM. The basic path has no
+            // tool access, so on a calendar/slack/gmail question it
+            // confidently hallucinates "I don't have access" — which
+            // is the WRONG answer and worse than silence. Speak a
+            // short canned "let me get back to you" ack so the user
+            // knows the question was heard but the bot couldn't
+            // resolve it in time, then drop the prompt. The user
+            // can re-ask (turn_in_progress gate clears as we exit).
             log::warn!(
-                "[meet-agent] agentic turn failed, falling back to basic LLM request_id={request_id} err={agentic_err}"
+                "[meet-agent] agentic turn failed — speaking polite ack instead of toolless fallback request_id={request_id} err={agentic_err}"
             );
-            match llm_meeting_basic(&prompt, &history).await {
-                Ok(text) => text,
-                Err(basic_err) => {
-                    log::warn!(
-                        "[meet-agent] basic LLM also failed request_id={request_id} err={basic_err}"
-                    );
-                    let _ = registry().with_session(request_id, |s| {
-                        s.record_event(
-                            SessionEventKind::Note,
-                            format!(
-                                "both LLM paths failed (agentic: {agentic_err}; basic: {basic_err})"
-                            ),
-                        );
-                    });
-                    pick_ack_phrase(&prompt).to_string()
-                }
-            }
+            let _ = registry().with_session(request_id, |s| {
+                s.record_event(
+                    SessionEventKind::Note,
+                    format!("agentic path failed; speaking ack: {agentic_err}"),
+                );
+            });
+            "Let me get back to you on that.".to_string()
         }
     };
 
@@ -244,11 +239,7 @@ fn pick_ack_phrase(prompt: &str) -> &'static str {
 /// turn actually ran, `Ok(false)` when the inbound buffer was below the
 /// floor.
 pub async fn run_turn(request_id: &str) -> Result<bool, String> {
-    let (drained, history) = registry().with_session(request_id, |s| {
-        let drained = s.drain_inbound();
-        let history = recent_dialog_history(s.events(), CONTEXT_EVENT_WINDOW);
-        (drained, history)
-    })?;
+    let drained = registry().with_session(request_id, |s| s.drain_inbound())?;
     if drained.len() < MIN_TURN_SAMPLES {
         log::debug!(
             "[meet-agent] skipping turn request_id={request_id} samples={}",
@@ -287,30 +278,20 @@ pub async fn run_turn(request_id: &str) -> Result<bool, String> {
         heard.chars().count()
     );
 
-    // ─── LLM (agentic-first, basic-fallback) ───────────────────────
+    // ─── LLM (agentic only; no basic-LLM fallback to avoid toolless hallucinations) ─
     let reply_text = match llm_meeting_agentic(&heard, request_id).await {
         Ok(text) => text,
         Err(agentic_err) => {
             log::warn!(
-                "[meet-agent] STT-path agentic failed, falling back request_id={request_id} err={agentic_err}"
+                "[meet-agent] STT-path agentic failed — speaking polite ack request_id={request_id} err={agentic_err}"
             );
-            match llm_meeting_basic(&heard, &history).await {
-                Ok(text) => text,
-                Err(basic_err) => {
-                    log::warn!(
-                        "[meet-agent] STT-path basic LLM also failed request_id={request_id} err={basic_err}"
-                    );
-                    let _ = registry().with_session(request_id, |s| {
-                        s.record_event(
-                            SessionEventKind::Note,
-                            format!(
-                                "both LLM paths failed (agentic: {agentic_err}; basic: {basic_err})"
-                            ),
-                        );
-                    });
-                    stub_llm(&heard).await
-                }
-            }
+            let _ = registry().with_session(request_id, |s| {
+                s.record_event(
+                    SessionEventKind::Note,
+                    format!("agentic path failed; speaking ack: {agentic_err}"),
+                );
+            });
+            "Let me get back to you on that.".to_string()
         }
     };
 
