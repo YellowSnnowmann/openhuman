@@ -108,6 +108,18 @@ impl MeetAgentSession {
         if text.trim().is_empty() {
             return false;
         }
+        // Drop noise captions from Meet's local-user / UI affordances.
+        // `speaker=="You"` is Meet's label for the local participant
+        // (the bot itself when its outbound is the user-facing tile),
+        // plus a catch-all for placeholder / demo / accessibility
+        // strings that some Meet variants surface inside the caption
+        // region. Without this filter the bot's own TTS would loop
+        // back as a "user spoke" prompt and re-fire the wake word,
+        // eating the prompt budget and producing endless speech.
+        let speaker_lower = speaker.trim().to_lowercase();
+        if speaker_lower == "you" || speaker_lower.is_empty() {
+            return false;
+        }
         self.last_caption_ts_ms = ts_ms;
         // Already collecting after a previous wake word: just append
         // the new caption. No second fire — the brain is already
@@ -255,6 +267,20 @@ impl MeetAgentSession {
         if done {
             self.outbound_done = true;
         }
+    }
+
+    /// Drop everything queued for playback. The brain calls this at
+    /// the start of a new caption turn so the bot stops mid-sentence
+    /// instead of letting the previous reply play to completion while
+    /// the user is already speaking again. Marks the outbound channel
+    /// as 'done' so the speak_pump signals end-of-utterance on its
+    /// next poll and the page bridge can reset its audio-bridge state
+    /// cleanly.
+    pub fn cancel_outbound(&mut self) {
+        if !self.outbound.is_empty() {
+            self.outbound.clear();
+        }
+        self.outbound_done = true;
     }
 
     /// Drain everything currently queued for the shell. Returns

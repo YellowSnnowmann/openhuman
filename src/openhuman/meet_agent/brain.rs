@@ -84,7 +84,14 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     // as a "say hi back" greeting cue: synthesize a short ack so the
     // user gets audible proof that the caption→wake→speak loop is
     // wired up end-to-end.
+    //
+    // Also: drop any queued outbound PCM from the previous turn.
+    // Reasoning-model replies can run 60+ seconds; if the user re-fires
+    // the wake mid-reply we need to stop the old speech rather than
+    // play the entire backlog before the new reply starts. This makes
+    // the bot interruptible from the user's side.
     let (prompt, history, was_bare_wake) = match registry().with_session(request_id, |s| {
+        s.cancel_outbound();
         let prompt = s.take_pending_prompt();
         let history = recent_dialog_history(s.events(), CONTEXT_EVENT_WINDOW);
         (prompt, history)
@@ -395,6 +402,40 @@ async fn llm_meeting(prompt: &str, history: &[ConversationTurn]) -> Result<Strin
 /// code, leading bullets). Keep punctuation that affects prosody
 /// (commas, periods, question marks) intact.
 fn strip_for_speech(text: &str) -> String {
+    // Strip reasoning-model <think>...</think> blocks before we strip
+    // markdown. DeepSeek / GMI / qwen-style reasoning models emit
+    // their internal chain-of-thought wrapped in <think>...</think>
+    // tags ahead of the user-facing reply. Without this, TTS reads
+    // the entire monologue aloud — which on a 60s+ reasoning trace
+    // produces a minute of bot speech the user never asked for.
+    // Multiple non-overlapping blocks are stripped in sequence; an
+    // unclosed <think> at the end (truncated output) drops everything
+    // from the tag onwards.
+    let mut cleaned = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        match rest.find("<think>") {
+            Some(open) => {
+                cleaned.push_str(&rest[..open]);
+                let after = &rest[open + "<think>".len()..];
+                match after.find("</think>") {
+                    Some(close) => {
+                        rest = &after[close + "</think>".len()..];
+                    }
+                    None => {
+                        // Unclosed tag → drop the rest as reasoning.
+                        break;
+                    }
+                }
+            }
+            None => {
+                cleaned.push_str(rest);
+                break;
+            }
+        }
+    }
+    let text = cleaned.trim();
+
     let mut out = String::with_capacity(text.len());
     let mut in_code = false;
     for line in text.lines() {
