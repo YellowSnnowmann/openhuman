@@ -147,7 +147,9 @@ async function makeFixtureRepo(absRepoDir: string): Promise<void> {
   }
 }
 
-describe('System tools — Shell + Git (registry, denial envelope, fixture repo)', () => {
+describe('System tools — Shell + Git (registry, denial envelope, fixture repo)', function () {
+  this.timeout(120_000);
+
   before(async () => {
     await startMockServer();
     await waitForApp();

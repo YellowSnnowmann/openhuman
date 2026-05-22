@@ -87,7 +87,7 @@ suiteRunner('Conversations web channel flow', () => {
       timeout: 15_000,
       timeoutMsg: 'Conversations did not mount (Threads heading missing)',
     });
-    await clickByTitle('New thread', 8_000);
+    expect(await clickByTitle('New thread', 8_000)).toBe(true);
     await browser.pause(1_000);
 
     stepLog('send message');

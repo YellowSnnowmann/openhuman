@@ -123,14 +123,21 @@ const handleAuthDeepLink = async (parsed: URL) => {
     // by patchCoreStateSnapshot (which only patches sessionToken), so its
     // presence proves commitState ran with the full refreshed snapshot.
     const commitDeadline = Date.now() + 15_000;
+    let commitObserved = false;
     while (Date.now() < commitDeadline) {
       const state = getCoreStateSnapshot();
       if (state.snapshot?.currentUser && state.snapshot?.sessionToken) {
         // Give React one more tick to re-render after commitState.
         await new Promise(r => setTimeout(r, 150));
+        commitObserved = true;
         break;
       }
       await new Promise(r => setTimeout(r, 200));
+    }
+    if (!commitObserved) {
+      console.warn(
+        '[DeepLink][auth] CoreStateProvider did not commit currentUser within 15 s — navigating anyway'
+      );
     }
 
     window.location.hash = '/home';

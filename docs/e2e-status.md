@@ -141,7 +141,7 @@ L = Linux-only spec
 | settings-advanced-config.spec.ts | Advanced config | moderate | |
 | settings-feature-preferences.spec.ts | Feature toggles | moderate | |
 
-### System (4 specs + 1 Linux-only)
+### System (6 specs + 1 Linux-only)
 
 | Spec | Feature covered | Coverage depth | Known issues |
 |------|----------------|----------------|--------------|
