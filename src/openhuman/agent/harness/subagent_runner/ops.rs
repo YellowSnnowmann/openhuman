@@ -853,16 +853,8 @@ async fn run_typed_mode(
     // rollout) 400 on duplicate tool names — see TAURI-RUST-4. Because
     // `filtered_specs` is in execution order (dynamic first), the kept
     // schema matches what the runtime will actually dispatch.
-    let before_dedup = filtered_specs.len();
     let filtered_specs =
         crate::openhuman::agent::harness::session::dedup_visible_tool_specs(filtered_specs);
-    if filtered_specs.len() != before_dedup {
-        tracing::warn!(
-            agent_id = %definition.id,
-            dropped = before_dedup - filtered_specs.len(),
-            "[subagent_runner:typed] dropped duplicate tool spec(s) before provider call"
-        );
-    }
 
     tracing::debug!(
         agent_id = %definition.id,
