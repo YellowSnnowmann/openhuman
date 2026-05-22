@@ -259,13 +259,25 @@ mod tests {
         }
         assert_eq!(last, json!(true), "expected a turn_started=true reply");
 
-        // Give the spawned turn a moment to enqueue audio.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        let mut poll = Map::new();
-        poll.insert("request_id".into(), json!("rpc-push"));
-        let out = handle_poll_speech(poll).await.unwrap();
-        let pcm = out.get("pcm_base64").and_then(|v| v.as_str()).unwrap_or("");
+        // Wait up to 30s for the spawned brain turn to enqueue audio.
+        // The agentic path builds an orchestrator Agent on first wake
+        // (memory tree load + MCP init), which can take several seconds
+        // even in a minimal test environment. Failing the agentic path
+        // (no backend token) still falls through to a canned-ack TTS
+        // stub, so the queue eventually fills regardless. Poll every
+        // 100ms so the test exits the moment audio lands.
+        let mut pcm = String::new();
+        for _ in 0..300 {
+            let mut poll = Map::new();
+            poll.insert("request_id".into(), json!("rpc-push"));
+            let out = handle_poll_speech(poll).await.unwrap();
+            let chunk = out.get("pcm_base64").and_then(|v| v.as_str()).unwrap_or("");
+            if !chunk.is_empty() {
+                pcm = chunk.to_string();
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
         assert!(!pcm.is_empty(), "expected synthesized audio after turn");
 
         let mut stop = Map::new();
