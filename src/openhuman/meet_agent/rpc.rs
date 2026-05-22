@@ -128,14 +128,19 @@ pub async fn handle_poll_speech(params: Map<String, Value>) -> Result<Value, Str
     let req: PollSpeechRequest = serde_json::from_value(Value::Object(params))
         .map_err(|e| format!("{LOG_PREFIX} invalid poll_speech params: {e}"))?;
 
-    let (pcm_base64, utterance_done) =
-        registry().with_session(&req.request_id, |s| s.poll_outbound())?;
+    let (pcm_base64, utterance_done, flush_pending) =
+        registry().with_session(&req.request_id, |s| {
+            let (b64, done) = s.poll_outbound();
+            let flush = s.take_flush_pending();
+            (b64, done, flush)
+        })?;
 
     RpcOutcome::new(
         json!({
             "ok": true,
             "pcm_base64": pcm_base64,
             "utterance_done": utterance_done,
+            "flush_pending": flush_pending,
         }),
         vec![],
     )

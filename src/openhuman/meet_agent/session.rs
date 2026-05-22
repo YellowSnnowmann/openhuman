@@ -90,6 +90,13 @@ pub struct MeetAgentSession {
     /// the user can interrupt only by deliberately re-saying the wake
     /// word, which they shouldn't have to.
     pub turn_in_progress: bool,
+    /// Set true by `cancel_outbound`; cleared by the next
+    /// `poll_outbound`. Tells the shell side that the previous reply
+    /// was interrupted and the JS audio bridge should flush any
+    /// in-flight playback BEFORE feeding the next chunk. Without this
+    /// distinct signal, a normal end-of-utterance would also flush,
+    /// cutting the final 100ms of the last legitimate reply.
+    flush_pending: bool,
 }
 
 impl MeetAgentSession {
@@ -112,6 +119,7 @@ impl MeetAgentSession {
             wake_cooldown_until_ts_ms: 0,
             last_caption_by_speaker: std::collections::HashMap::new(),
             turn_in_progress: false,
+            flush_pending: false,
         }
     }
 
@@ -166,24 +174,18 @@ impl MeetAgentSession {
         }
         self.last_caption_by_speaker
             .insert(key, trimmed_text.clone());
-        // Gate: while a brain turn is in flight (LLM + tools running)
-        // or the bot is mid-playback, refuse to fire a fresh wake.
-        // Without this gate the user's continuing speech, or Meet's
-        // own caption observer re-emitting growing captions, fires
-        // new turns every ~9-10s while the prior turn's tool dispatch
-        // (16-29s for delegate_to_integrations_agent) is still running.
-        // Result: 20 parallel calendar API calls for one question, none
-        // of which complete in time. The is_speaking() side covers TTS
-        // playback after the agent returns; turn_in_progress covers the
-        // LLM + tool-execution phase.
-        if self.turn_in_progress || self.is_speaking() {
+        // Gate: while a brain turn is in flight (LLM + tools running),
+        // refuse to fire a fresh wake. The prior gate also blocked on
+        // is_speaking() (outbound queued), but that prevented barge-in
+        // — the user couldn't interrupt a wrong-direction reply by
+        // re-asking. is_speaking() removed; barge-in now works via
+        // cancel_outbound → flush_pending → JS bridge flush. The LLM
+        // phase still blocks because spawning a parallel agentic turn
+        // would waste tool calls on the same question.
+        if self.turn_in_progress {
             self.record_event(
                 SessionEventKind::Heard,
-                format!(
-                    "{speaker}: {text} (suppressed: turn_in_progress={} speaking={})",
-                    self.turn_in_progress,
-                    self.is_speaking()
-                ),
+                format!("{speaker}: {text} (suppressed: turn_in_progress)"),
             );
             return false;
         }
@@ -344,10 +346,23 @@ impl MeetAgentSession {
     /// next poll and the page bridge can reset its audio-bridge state
     /// cleanly.
     pub fn cancel_outbound(&mut self) {
+        // Mark flush BEFORE the early-empty check — even if the Rust
+        // queue happens to be empty right now, the JS bridge may have
+        // already pulled the prior reply's tail and be playing it
+        // standalone. The flush signal must still fire.
+        self.flush_pending = true;
         if !self.outbound.is_empty() {
             self.outbound.clear();
         }
         self.outbound_done = true;
+    }
+
+    /// Take + clear the pending-flush flag. Called by the shell on
+    /// every poll_outbound; when true, the shell will issue a JS
+    /// bridge flush BEFORE feeding the next PCM chunk so the prior
+    /// reply's in-flight playback stops cleanly.
+    pub fn take_flush_pending(&mut self) -> bool {
+        std::mem::take(&mut self.flush_pending)
     }
 
     /// Drain everything currently queued for the shell. Returns

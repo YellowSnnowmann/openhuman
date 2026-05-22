@@ -119,6 +119,27 @@ async fn poll_and_feed(
         .get("utterance_done")
         .and_then(|x| x.as_bool())
         .unwrap_or(false);
+    let flush_pending = v
+        .get("flush_pending")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false);
+
+    // Barge-in: brain set flush_pending when it cancelled the previous
+    // outbound. Stop in-flight playback inside the JS bridge BEFORE we
+    // feed the next chunk so the user hears the new reply instead of
+    // the tail of the old one. Best-effort — if the page is gone the
+    // flush errors and we drop through to the feed, which will fail
+    // the same way and trigger the same recovery path.
+    if flush_pending {
+        match inject::flush_audio_bridge(cdp, session_id).await {
+            Ok(stopped) => log::info!(
+                "[meet-audio] barge-in flush request_id={request_id} sources_stopped={stopped}"
+            ),
+            Err(e) => log::warn!(
+                "[meet-audio] barge-in flush failed request_id={request_id} err={e}"
+            ),
+        }
+    }
 
     if !pcm_b64.is_empty() {
         // Validate decode locally before pushing — saves a round-trip
