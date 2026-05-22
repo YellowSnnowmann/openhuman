@@ -51,6 +51,14 @@ const REPLY_MAX_TOKENS: u32 = 220;
 /// (`eleven_monolingual_v1`) sounds noticeably flatter.
 const TTS_MODEL_ID: &str = "eleven_turbo_v2_5";
 
+/// Hard ceiling on reply characters fed to TTS. The LLM is asked to be
+/// concise but reasoning models still emit 800+ char paragraphs. Cap
+/// drops everything past the first sentence boundary at-or-before
+/// this index, falling back to a raw char cut when no boundary fits.
+/// ~25s of speech at average prosody — keeps the bot interruptible
+/// and prevents the "60s monologue / can't talk over it" loop.
+const MAX_TTS_CHARS: usize = 400;
+
 /// Minimum samples below which we skip the brain turn entirely.
 /// 250 ms @ 16 kHz — under this, VAD almost certainly fired on a
 /// transient (cough, click) rather than real speech.
@@ -461,7 +469,27 @@ fn strip_for_speech(text: &str) -> String {
         }
         out.push_str(&cleaned);
     }
-    out.trim().to_string()
+    let trimmed = out.trim().to_string();
+    cap_for_speech(&trimmed, MAX_TTS_CHARS)
+}
+
+/// Truncate `text` to at most `max_chars` characters, preferring to
+/// cut at the last sentence terminator (`.`, `!`, `?`) inside the
+/// budget so the TTS doesn't trail off mid-clause. Falls back to a
+/// hard char cut + ellipsis when no terminator fits.
+fn cap_for_speech(text: &str, max_chars: usize) -> String {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
+    }
+    let prefix: String = text.chars().take(max_chars).collect();
+    if let Some(idx) = prefix.rfind(['.', '!', '?']) {
+        let end = idx + prefix[idx..].chars().next().map(char::len_utf8).unwrap_or(1);
+        return prefix[..end].trim_end().to_string();
+    }
+    let mut out = prefix.trim_end().to_string();
+    out.push('…');
+    out
 }
 
 /// One rolling-history entry handed to the LLM.

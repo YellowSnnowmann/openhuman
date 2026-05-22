@@ -72,6 +72,14 @@ pub struct MeetAgentSession {
     /// text — a single character growth re-queues the line). Without
     /// this gate the brain spam-fires on every caption growth.
     wake_cooldown_until_ts_ms: u64,
+    /// Last `(speaker, text)` pair forwarded to the wake-word matcher.
+    /// Drops verbatim repeats produced by Meet's caption observer
+    /// re-emitting the same line every poll tick — the page-side
+    /// `lastBySpeaker` dedupe is per-key, and Meet sometimes flips
+    /// the key (speaker name appears / disappears for the same row)
+    /// so identical text still reaches us. Server-side defence keeps
+    /// the log clean and stops spurious wake retries.
+    last_caption_signature: Option<String>,
 }
 
 impl MeetAgentSession {
@@ -92,7 +100,18 @@ impl MeetAgentSession {
             wake_active: false,
             last_caption_ts_ms: 0,
             wake_cooldown_until_ts_ms: 0,
+            last_caption_signature: None,
         }
+    }
+
+    /// True when the brain has TTS audio queued for playback. The
+    /// note_caption gate uses this to refuse wake matches while the
+    /// bot is actively speaking — otherwise Meet captions the bot's
+    /// own voice (or the user keeps talking through the reply) and
+    /// fires a fresh turn before the current one finishes, producing
+    /// an unbreakable speak-listen-speak loop.
+    pub fn is_speaking(&self) -> bool {
+        !self.outbound.is_empty()
     }
 
     /// Caption-driven listen path. Returns `true` when this caption
@@ -118,6 +137,30 @@ impl MeetAgentSession {
         // eating the prompt budget and producing endless speech.
         let speaker_lower = speaker.trim().to_lowercase();
         if speaker_lower == "you" || speaker_lower.is_empty() {
+            return false;
+        }
+        // Server-side dedup. Meet's CC region re-renders the same line
+        // every 250 ms poll tick for the duration of an utterance, and
+        // the page-side `lastBySpeaker` dedup keys on a speaker guess
+        // that flips for the same row. Without this, the wake-word
+        // matcher (and the RPC log) sees N copies of every caption.
+        let signature = format!("{speaker_lower}\u{1F}{}", text.trim());
+        if self.last_caption_signature.as_deref() == Some(signature.as_str()) {
+            return false;
+        }
+        self.last_caption_signature = Some(signature);
+        // Gate: if the bot is currently speaking (queued TTS audio),
+        // refuse to fire a new wake. The user's voice + the bot's
+        // voice can both show up as captions, and a reply that runs
+        // 30–60 s will collide with continued user speech every time.
+        // Without this, the bot speaks-listens-speaks in a loop until
+        // someone closes the call. New captions still record to the
+        // transcript log for context but cannot trigger another turn.
+        if self.is_speaking() {
+            self.record_event(
+                SessionEventKind::Heard,
+                format!("{speaker}: {text} (suppressed: bot speaking)"),
+            );
             return false;
         }
         self.last_caption_ts_ms = ts_ms;
