@@ -273,9 +273,10 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     })?;
 
     log::info!(
-        "[meet-agent] caption turn done request_id={request_id} reply_chars={} synth_samples={}",
+        "[meet-agent] caption turn done request_id={request_id} reply_chars={} synth_samples={} reply_preview={:?}",
         reply_text.chars().count(),
-        synthesized.len()
+        synthesized.len(),
+        reply_text.chars().take(120).collect::<String>(),
     );
     Ok(true)
 }
@@ -466,7 +467,9 @@ read the note back.\n\
 /// preamble. Wrapped in a delimiter so the orchestrator can't confuse
 /// the directive with the user's actual utterance.
 const MEET_VOICE_DIRECTIVE: &str = "\
-MEETING VOICE MODE — this conversation is happening live over voice in a Google Meet call. \n\
+MEETING VOICE MODE — this conversation is happening live over voice in a Google Meet call.\n\
+\n\
+LANGUAGE: Respond in ENGLISH ONLY. Do not switch languages even if a user's name, prior memory, or transcript hint suggests another locale. The TTS engine is English-only; non-English output produces garbled audio.\n\
 \n\
 TOOL USE (encouraged):\n\
 - USE TOOLS whenever a tool can give a real answer. Calendar, email, slack, memory, integrations — \
