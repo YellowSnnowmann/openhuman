@@ -570,11 +570,8 @@ async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, S
     );
 
     let fut = agent.run_single(&user_message);
-    let reply = match tokio::time::timeout(
-        Duration::from_secs(AGENTIC_TURN_TIMEOUT_SECS),
-        fut,
-    )
-    .await
+    let reply = match tokio::time::timeout(Duration::from_secs(AGENTIC_TURN_TIMEOUT_SECS), fut)
+        .await
     {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => {
@@ -597,9 +594,7 @@ async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, S
 /// Get the cached orchestrator for this meet, or build it on first
 /// call. Returns an `Arc<TokioMutex<Agent>>` so the caller can lock
 /// across the run_single().await.
-async fn get_or_build_agent_for_meet(
-    request_id: &str,
-) -> Result<Arc<TokioMutex<Agent>>, String> {
+async fn get_or_build_agent_for_meet(request_id: &str) -> Result<Arc<TokioMutex<Agent>>, String> {
     {
         let cache = agent_cache().lock().await;
         if let Some(existing) = cache.get(request_id) {
@@ -625,9 +620,7 @@ async fn get_or_build_agent_for_meet(
     agent.set_event_context(format!("meet_{request_id}"), "meet_agent");
     agent.set_agent_definition_name(format!("orchestrator_meet_{}", short_id(request_id)));
 
-    log::info!(
-        "[meet-agent] orchestrator built + cached for request_id={request_id}"
-    );
+    log::info!("[meet-agent] orchestrator built + cached for request_id={request_id}");
 
     let arc = Arc::new(TokioMutex::new(agent));
     agent_cache()
@@ -815,7 +808,9 @@ fn strip_untagged_reasoning(text: &str) -> String {
         .iter()
         .filter(|s| {
             let lc = s.to_lowercase();
-            !REASONING_OPENERS.iter().any(|opener| lc.starts_with(opener))
+            !REASONING_OPENERS
+                .iter()
+                .any(|opener| lc.starts_with(opener))
         })
         .copied()
         .collect();
@@ -838,7 +833,12 @@ fn cap_for_speech(text: &str, max_chars: usize) -> String {
     }
     let prefix: String = text.chars().take(max_chars).collect();
     if let Some(idx) = prefix.rfind(['.', '!', '?']) {
-        let end = idx + prefix[idx..].chars().next().map(char::len_utf8).unwrap_or(1);
+        let end = idx
+            + prefix[idx..]
+                .chars()
+                .next()
+                .map(char::len_utf8)
+                .unwrap_or(1);
         return prefix[..end].trim_end().to_string();
     }
     let mut out = prefix.trim_end().to_string();

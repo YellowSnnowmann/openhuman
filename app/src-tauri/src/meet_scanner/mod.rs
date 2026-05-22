@@ -130,9 +130,7 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     // Best-effort: if Network domain isn't enabled or CDP returns an
     // error, we log and continue — the bot may still land on the
     // verify screen but won't get worse than the pre-clear state.
-    let _ = cdp
-        .call("Network.enable", json!({}), Some(&session))
-        .await;
+    let _ = cdp.call("Network.enable", json!({}), Some(&session)).await;
     if let Err(err) = cdp
         .call("Network.clearBrowserCookies", json!({}), Some(&session))
         .await
@@ -203,11 +201,7 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     if let Err(err) = click_by_aria_label(
         &mut cdp,
         &session,
-        &[
-            "turn on camera",
-            "turn camera on",
-            "camera is off",
-        ],
+        &["turn on camera", "turn camera on", "camera is off"],
         Duration::from_secs(8),
     )
     .await
@@ -232,9 +226,7 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     )
     .await
     {
-        log::info!(
-            "[meet-scanner] mic toggle ON not clicked (already on or label drift): {err}"
-        );
+        log::info!("[meet-scanner] mic toggle ON not clicked (already on or label drift): {err}");
         dump_aria_labels(&mut cdp, &session, "mic|microphone|audio").await;
     }
 
@@ -393,8 +385,7 @@ async fn wait_for_admission(cdp: &mut CdpConn, session: &str) -> Result<(), Stri
 /// inspect what Meet actually exposes after a failed
 /// [`click_by_aria_label`]. Best-effort, swallows all CDP errors.
 async fn dump_aria_labels(cdp: &mut CdpConn, session: &str, pattern: &str) {
-    let pattern_js =
-        serde_json::to_string(pattern).unwrap_or_else(|_| "\"camera\"".to_string());
+    let pattern_js = serde_json::to_string(pattern).unwrap_or_else(|_| "\"camera\"".to_string());
     let expression = format!(
         r#"
         (() => {{

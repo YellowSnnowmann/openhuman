@@ -199,7 +199,8 @@ pub async fn meet_call_open_window<R: Runtime>(
     if let Ok(pos) = window.outer_position() {
         log::info!(
             "[meet-call] post-build outer_position={{x:{},y:{}}} (target=-30000,-30000)",
-            pos.x, pos.y
+            pos.x,
+            pos.y
         );
     }
 

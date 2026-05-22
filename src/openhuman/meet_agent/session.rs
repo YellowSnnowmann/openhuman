@@ -198,8 +198,7 @@ impl MeetAgentSession {
                 return false;
             }
         }
-        self.last_caption_by_speaker
-            .insert(key, normalised);
+        self.last_caption_by_speaker.insert(key, normalised);
         // Gate: while a brain turn is in flight (LLM + tools running),
         // refuse to fire a fresh wake. The prior gate also blocked on
         // is_speaking() (outbound queued), but that prevented barge-in

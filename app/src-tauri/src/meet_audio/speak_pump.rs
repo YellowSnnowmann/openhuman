@@ -135,9 +135,9 @@ async fn poll_and_feed(
             Ok(stopped) => log::info!(
                 "[meet-audio] barge-in flush request_id={request_id} sources_stopped={stopped}"
             ),
-            Err(e) => log::warn!(
-                "[meet-audio] barge-in flush failed request_id={request_id} err={e}"
-            ),
+            Err(e) => {
+                log::warn!("[meet-audio] barge-in flush failed request_id={request_id} err={e}")
+            }
         }
     }
 
