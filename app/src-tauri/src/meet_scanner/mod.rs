@@ -143,35 +143,36 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     // Phase 2 — type the display name.
     type_into_named_input(&mut cdp, &session, "Your name", display_name).await?;
 
-    // Phase 2.5 — flip the camera + mic toggles ON.
+    // Phase 2.5 — ensure camera + mic are ON before Ask-to-join.
     //
-    // Meet defaults camera + mic OFF for new participants. If we click
-    // "Ask to join" without flipping them, the bot joins muted with no
-    // camera — Meet never calls getUserMedia, the audio + camera bridges
-    // have nothing to intercept, the mascot tile shows initials instead
-    // of the mascot canvas, and the speak_pump can't push synthesized
-    // PCM into a live mic track. Both toggles use `aria-label` (no
-    // visible text) so wait_and_click_text isn't enough; use a
-    // dedicated aria-label matcher.
+    // Meet pre-join shows the toggle button with aria-label that
+    // describes the *action it performs*: "Turn on camera" when the
+    // camera is currently OFF, "Turn off camera" when currently ON.
+    // We want both ON, so we MUST only match the "Turn on …" variants.
+    // Matching "Turn off …" would booby-trap us: it would click an
+    // already-on toggle, turning it OFF — which is the bug we just
+    // tripped on (mic ended up muted because "Turn off microphone"
+    // matched and the click flipped it off).
     //
-    // Best-effort: if no match is found in the budget, dump the page's
-    // current aria-labels so we can extend the matcher next iteration.
+    // If no "Turn on …" match is found, the device is already on (or
+    // the page hasn't rendered the toggle yet) — log + skip silently.
+    // On miss, dump the current aria-labels so we can verify state and
+    // extend the matcher with newly observed Meet variants.
     if let Err(err) = click_by_aria_label(
         &mut cdp,
         &session,
         &[
             "turn on camera",
-            "camera is off",
             "turn camera on",
-            "turn camera off",
-            "camera (cmd+e)",
-            "camera off",
+            "camera is off",
         ],
-        Duration::from_secs(12),
+        Duration::from_secs(8),
     )
     .await
     {
-        log::warn!("[meet-scanner] camera toggle ON not clicked: {err}");
+        log::info!(
+            "[meet-scanner] camera toggle ON not clicked (already on or label drift): {err}"
+        );
         dump_aria_labels(&mut cdp, &session, "camera|video").await;
     }
     if let Err(err) = click_by_aria_label(
@@ -179,21 +180,19 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
         &session,
         &[
             "turn on microphone",
+            "turn microphone on",
             "turn on mic",
+            "turn mic on",
             "microphone is off",
             "mic is off",
-            "turn microphone on",
-            "turn off microphone",
-            "turn off mic",
-            "microphone (cmd+d)",
-            "mic (cmd+d)",
-            "microphone off",
         ],
-        Duration::from_secs(12),
+        Duration::from_secs(8),
     )
     .await
     {
-        log::warn!("[meet-scanner] mic toggle ON not clicked: {err}");
+        log::info!(
+            "[meet-scanner] mic toggle ON not clicked (already on or label drift): {err}"
+        );
         dump_aria_labels(&mut cdp, &session, "mic|microphone|audio").await;
     }
 
