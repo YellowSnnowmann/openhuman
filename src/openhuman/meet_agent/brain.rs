@@ -32,10 +32,17 @@
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde_json::{json, Value};
+use std::time::Duration;
 
 use super::session::registry;
 use super::types::{SessionEvent, SessionEventKind};
 use super::wav;
+
+/// Wall-clock ceiling on one agentic turn. Tool iterations + LLM call
+/// can run 10s+; 20s is comfortable for calendar / memory lookups but
+/// short enough that we fall back to a polite "let me get back to
+/// you" instead of leaving the meet participant in silence.
+const AGENTIC_TURN_TIMEOUT_SECS: u64 = 20;
 
 /// How many of the most recent `Heard` / `Spoke` events we feed back
 /// into the LLM as rolling conversation context. 12 ≈ a few minutes of
@@ -121,22 +128,36 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
         was_bare_wake,
     );
 
-    // Real LLM call. The model gets the rolling caption history plus
-    // the user's direct address and decides whether to respond, what
-    // to say, and how concise to be. It can also return an empty
-    // string when it concludes the message wasn't actually directed
-    // at it (false-positive wake word, side conversation).
-    let reply_text = match llm_meeting(&prompt, &history).await {
+    // Route the turn through the FULL orchestrator agent first — it
+    // owns the user's connected integrations, memory tree, MCP
+    // clients and skills, so it can actually answer "is my Friday
+    // free", "what did Alice say about the deploy", etc. Falls back
+    // to the bare chat-completions path on orchestrator build /
+    // timeout / RPC error so a config-degraded environment still
+    // produces audible output instead of dead air.
+    let reply_text = match llm_meeting_agentic(&prompt, request_id).await {
         Ok(text) => text,
-        Err(err) => {
-            log::warn!("[meet-agent] caption-turn LLM failed request_id={request_id} err={err}");
-            let _ = registry().with_session(request_id, |s| {
-                s.record_event(
-                    SessionEventKind::Note,
-                    format!("LLM failure (using ack): {err}"),
-                );
-            });
-            pick_ack_phrase(&prompt).to_string()
+        Err(agentic_err) => {
+            log::warn!(
+                "[meet-agent] agentic turn failed, falling back to basic LLM request_id={request_id} err={agentic_err}"
+            );
+            match llm_meeting_basic(&prompt, &history).await {
+                Ok(text) => text,
+                Err(basic_err) => {
+                    log::warn!(
+                        "[meet-agent] basic LLM also failed request_id={request_id} err={basic_err}"
+                    );
+                    let _ = registry().with_session(request_id, |s| {
+                        s.record_event(
+                            SessionEventKind::Note,
+                            format!(
+                                "both LLM paths failed (agentic: {agentic_err}; basic: {basic_err})"
+                            ),
+                        );
+                    });
+                    pick_ack_phrase(&prompt).to_string()
+                }
+            }
         }
     };
 
@@ -251,18 +272,30 @@ pub async fn run_turn(request_id: &str) -> Result<bool, String> {
         heard.chars().count()
     );
 
-    // ─── LLM ────────────────────────────────────────────────────────
-    let reply_text = match llm_meeting(&heard, &history).await {
+    // ─── LLM (agentic-first, basic-fallback) ───────────────────────
+    let reply_text = match llm_meeting_agentic(&heard, request_id).await {
         Ok(text) => text,
-        Err(err) => {
-            log::warn!("[meet-agent] LLM failed request_id={request_id} err={err}");
-            let _ = registry().with_session(request_id, |s| {
-                s.record_event(
-                    SessionEventKind::Note,
-                    format!("LLM failure (using stub): {err}"),
-                );
-            });
-            stub_llm(&heard).await
+        Err(agentic_err) => {
+            log::warn!(
+                "[meet-agent] STT-path agentic failed, falling back request_id={request_id} err={agentic_err}"
+            );
+            match llm_meeting_basic(&heard, &history).await {
+                Ok(text) => text,
+                Err(basic_err) => {
+                    log::warn!(
+                        "[meet-agent] STT-path basic LLM also failed request_id={request_id} err={basic_err}"
+                    );
+                    let _ = registry().with_session(request_id, |s| {
+                        s.record_event(
+                            SessionEventKind::Note,
+                            format!(
+                                "both LLM paths failed (agentic: {agentic_err}; basic: {basic_err})"
+                            ),
+                        );
+                    });
+                    stub_llm(&heard).await
+                }
+            }
         }
     };
 
@@ -363,10 +396,93 @@ For dictation / note requests: a 2-3 word ack (\"Got it.\", \"Noted.\"). Don't \
 read the note back.\n\
 ";
 
+/// Voice-frontend system-prompt directive prepended to the user
+/// utterance before it reaches the orchestrator. The orchestrator
+/// already has its own persona, tool catalogue, memory loader and
+/// connected integrations; this addendum just tells it the answer is
+/// going to be spoken aloud verbatim so it should reply in one short
+/// spoken sentence with no markdown / no chain-of-thought / no
+/// preamble. Wrapped in a delimiter so the orchestrator can't confuse
+/// the directive with the user's actual utterance.
+const MEET_VOICE_DIRECTIVE: &str = "[meeting voice — your reply will be spoken aloud verbatim into a live Google Meet call. Answer in ONE short spoken sentence, max 25 words. Plain spoken English only. No markdown. No bullets. No code. No preamble. No phrases like \"I should…\", \"Let me…\", \"We need to…\". If the user is not directly addressing you, output an empty string and stay silent.]";
+
+/// Route the meeting utterance through the FULL orchestrator agent —
+/// same path the chat UI and the webview meet handoff use. The
+/// orchestrator inherits the user's connected integrations, memory
+/// tree, MCP clients, skills, and the project-wide tool registry, so
+/// "is my Friday evening free", "did anyone in #eng ping me about
+/// the deploy", "remind me to mail Alice tomorrow" all answer with
+/// real data — not a guess from the model's training prior.
+///
+/// We rebuild the Agent per turn (cheap relative to the LLM call
+/// itself, since the registry is initialised once at startup) and
+/// wrap `run_single` in a 20s timeout so a slow tool iteration
+/// doesn't leave the meeting participant in silence indefinitely.
+///
+/// Errors propagate to the caller, which falls back to the bare
+/// chat-completions path (`llm_meeting_basic`) so a config /
+/// registry / token issue degrades to a polite reply instead of
+/// dead air.
+async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, String> {
+    use crate::openhuman::agent::harness::session::Agent;
+
+    let config = crate::openhuman::config::ops::load_config_with_timeout().await?;
+
+    // Build a fresh orchestrator Agent. Synchronous constructor — no
+    // .await — but heavy (memory tree, provider, MCP). Keep an eye on
+    // turn latency; if it becomes a bottleneck, cache an Arc<Agent>
+    // keyed by request_id in a follow-up commit. For now the LLM
+    // call dominates and the build is a few hundred ms at most.
+    let mut agent = Agent::from_config_for_agent(&config, "orchestrator")
+        .map_err(|e| format!("[meet-agent] orchestrator build failed: {e}"))?;
+
+    // Prepend the voice-frontend directive so the orchestrator knows
+    // this turn is spoken-aloud and constrains its output. The
+    // delimiter prevents the directive from being mistaken for the
+    // user's literal speech.
+    let meet_prompt = format!("{MEET_VOICE_DIRECTIVE}\n\n{prompt}");
+
+    log::info!(
+        "[meet-agent] agentic turn dispatch request_id={request_id} prompt_chars={}",
+        prompt.chars().count()
+    );
+
+    let fut = agent.run_single(&meet_prompt);
+    let reply = match tokio::time::timeout(
+        Duration::from_secs(AGENTIC_TURN_TIMEOUT_SECS),
+        fut,
+    )
+    .await
+    {
+        Ok(Ok(text)) => text,
+        Ok(Err(e)) => {
+            return Err(format!("[meet-agent] orchestrator run_single failed: {e}"));
+        }
+        Err(_elapsed) => {
+            log::warn!(
+                "[meet-agent] agentic turn timed out request_id={request_id} after {}s — falling back",
+                AGENTIC_TURN_TIMEOUT_SECS
+            );
+            return Err(format!(
+                "agentic timeout after {AGENTIC_TURN_TIMEOUT_SECS}s"
+            ));
+        }
+    };
+
+    Ok(strip_for_speech(&reply))
+}
+
 /// Build a chat-completions request from rolling meeting history plus
 /// the current user prompt, post it through the backend, and return
 /// the assistant's reply (trimmed, possibly empty).
-async fn llm_meeting(prompt: &str, history: &[ConversationTurn]) -> Result<String, String> {
+///
+/// Used as a fallback when the orchestrator path
+/// (`llm_meeting_agentic`) cannot be built — missing config,
+/// registry not initialised, no session token. The orchestrator path
+/// gives memory/tool/integration access; this bare path only gets
+/// the rolling caption history. Acceptable degradation so the bot
+/// doesn't go silent in a config-degraded environment.
+async fn llm_meeting_basic(prompt: &str, history: &[ConversationTurn]) -> Result<String, String> {
     use crate::api::config::effective_backend_api_url;
     use crate::api::jwt::get_session_token;
     use crate::api::BackendOAuthClient;
