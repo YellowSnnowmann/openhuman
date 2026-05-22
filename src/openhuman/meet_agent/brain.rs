@@ -42,10 +42,12 @@ use super::wav;
 /// captioned dialogue — enough for the model to follow a thread without
 /// blowing the prompt budget.
 const CONTEXT_EVENT_WINDOW: usize = 12;
-/// Spoken-reply ceiling. Each token is roughly ¾ of a word, so 220
-/// tokens ≈ 30 seconds of speech — long enough for a real answer, short
-/// enough that the model can't hijack the meeting.
-const REPLY_MAX_TOKENS: u32 = 220;
+/// Spoken-reply ceiling. Each token is roughly ¾ of a word, so 80
+/// tokens ≈ ~60 spoken words ≈ ~12 seconds. The system prompt asks for
+/// one short sentence, but reasoning-style backends ignore soft length
+/// hints and emit 800+ char monologues. Hard token cap keeps the bot
+/// interruptible regardless of model behaviour.
+const REPLY_MAX_TOKENS: u32 = 80;
 /// ElevenLabs model. `eleven_turbo_v2_5` strikes the best
 /// quality/latency balance; the older default the backend would pick
 /// (`eleven_monolingual_v1`) sounds noticeably flatter.
@@ -330,32 +332,27 @@ async fn stt(samples: &[i16]) -> Result<String, String> {
 /// at it (intent classification — emit empty string when not), and
 /// (b) responding conversationally and concisely when it is.
 const MEETING_SYSTEM_PROMPT: &str = "\
-You are OpenHuman, an AI assistant joining a live Google Meet call as a participant. \
-The meeting transcript is provided as prior turns where `user` lines are captions \
-spoken by humans on the call (sometimes prefixed with their name) and `assistant` \
-lines are things you previously said out loud. The latest `user` message is the \
-utterance you are deciding how to respond to.\n\
+You are OpenHuman, joining a live Google Meet call by voice. Every word you \
+produce will be spoken aloud over the call. The transcript shows `user` lines \
+(humans on the call, sometimes prefixed with a name) and `assistant` lines \
+(things you previously said out loud).\n\
 \n\
-Decide first: was this latest utterance actually directed at you? Strong signals: \
-the speaker addresses you by name (\"OpenHuman\", \"hey openhuman\"), asks a direct \
-question, or asks you to do something (note this, summarise, look up, remember, \
-remind, draft). Weak signals (do NOT respond): chit-chat between humans, \
-side conversation, your name appearing inside a longer thought aimed at someone \
-else, ambient transcription noise.\n\
+STRICT OUTPUT RULES — these are non-negotiable:\n\
+1. Output ONE sentence. Maximum 25 spoken words.\n\
+2. Plain spoken English. No markdown. No bullets. No code. No emoji.\n\
+3. No chain-of-thought. No reasoning out loud. No <think> blocks. Answer only.\n\
+4. Never repeat what the user said. Never narrate what you are about to do.\n\
+5. If the latest user line is not directly addressed to you, output the empty \
+string. Do not respond to side conversations or ambient speech.\n\
 \n\
-If it is NOT directed at you, output exactly the empty string. Stay silent. \
+Address-detection: respond when the user names you (\"OpenHuman\", \"hey \
+openhuman\"), asks a direct question of you, or gives a direct command \
+(remember, summarise, look up). Otherwise stay silent.\n\
 \n\
-If it IS directed at you:\n\
-  • Reply in 1–2 spoken sentences. Conversational, warm, direct. No filler.\n\
-  • Pronounce naturally — write the way a person speaks, not the way they type. \
-No markdown, no bullet lists, no code blocks, no emoji.\n\
-  • For dictation / note requests (\"remember…\", \"action item…\", \"follow up on…\"), \
-the note is already captured in the transcript log, so just acknowledge briefly \
-(\"Got it.\", \"Adding that.\") — don't read the note back.\n\
-  • For questions, answer directly with what you know; if you don't know, say so \
-in one sentence rather than guessing.\n\
-  • Never repeat verbatim what was said. Never describe what you're about to do — \
-just do it.\n\
+For unanswerable questions: say so in one sentence (\"I don't know that off \
+the top of my head\") instead of guessing or stalling.\n\
+For dictation / note requests: a 2-3 word ack (\"Got it.\", \"Noted.\"). Don't \
+read the note back.\n\
 ";
 
 /// Build a chat-completions request from rolling meeting history plus
