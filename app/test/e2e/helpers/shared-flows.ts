@@ -193,12 +193,54 @@ async function waitForHashRouteReady(hash, options = {}) {
 
 export async function navigateViaHash(hash) {
   const normalized = String(hash).replace(/\/$/, '') || hash;
+  const expectedHash = `#${normalized}`;
+  const hashMatches = currentHash =>
+    currentHash === expectedHash || String(currentHash).startsWith(`${expectedHash}/`);
+  const waitForHash = async (timeout = 8_000) =>
+    browser.waitUntil(
+      async () => {
+        const currentHash = await browser.execute(() => window.location.hash);
+        if (!hashMatches(currentHash)) return false;
+        await browser.pause(300);
+        const stableHash = await browser.execute(() => window.location.hash);
+        return hashMatches(stableHash);
+      },
+      { timeout, interval: 250, timeoutMsg: `hash did not settle on ${hash}` }
+    );
 
   if (supportsExecuteScript()) {
-    const beforeHash = normalizeHash(await browser.execute(() => window.location.hash));
-    const beforeSignature = await routeSignature();
-    const targetHash = normalizeHash(hash);
+    // Try sidebar button click first — more reliable than direct hash set.
+    const label = HASH_TO_SIDEBAR_LABEL[normalized];
+    if (label) {
+      try {
+        const clicked = await browser.execute((targetLabel: string) => {
+          const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+          const button = buttons.find(btn => {
+            const aria = btn.getAttribute('aria-label')?.trim();
+            const title = btn.getAttribute('title')?.trim();
+            const text = btn.textContent?.trim();
+            return aria === targetLabel || title === targetLabel || text === targetLabel;
+          });
+          if (!button) return false;
+          button.click();
+          return true;
+        }, label);
+        if (clicked) {
+          await waitForHash();
+          const currentHash = await browser.execute(() => window.location.hash);
+          console.log(`[E2E] Navigated to ${hash} via "${label}" (current: ${currentHash})`);
+          return;
+        }
+      } catch (buttonErr) {
+        console.log(`[E2E] Button navigation to ${hash} failed:`, buttonErr);
+      }
+    }
+
+    // Fallback: direct hash set + wait for route readiness.
     try {
+      const beforeSignature = await routeSignature();
+      const beforeHash = normalizeHash(await browser.execute(() => window.location.hash));
+      const targetHash = normalizeHash(hash);
       await browser.execute(h => {
         window.location.hash = h;
       }, hash);
@@ -211,11 +253,36 @@ export async function navigateViaHash(hash) {
       return;
     } catch (err) {
       console.log(`[E2E] Hash navigation to ${hash} failed:`, err);
-      const detail = err instanceof Error ? err.message : String(err);
-      const wrapped = new Error(`[E2E] Hash navigation to ${hash} failed: ${detail}`);
-      wrapped.cause = err;
-      throw wrapped;
     }
+
+    // Last resort: retry button click.
+    if (label) {
+      try {
+        const clicked = await browser.execute((targetLabel: string) => {
+          const buttons = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+          const button = buttons.find(btn => {
+            const aria = btn.getAttribute('aria-label')?.trim();
+            const title = btn.getAttribute('title')?.trim();
+            const text = btn.textContent?.trim();
+            return aria === targetLabel || title === targetLabel || text === targetLabel;
+          });
+          if (!button) return false;
+          button.click();
+          return true;
+        }, label);
+        if (!clicked) {
+          throw new Error(`could not find nav button "${label}"`);
+        }
+        await waitForHash();
+        const currentHash = await browser.execute(() => window.location.hash);
+        console.log(`[E2E] Navigated to ${hash} via "${label}" (current: ${currentHash})`);
+        return;
+      } catch (fallbackErr) {
+        console.log(`[E2E] Button navigation to ${hash} failed:`, fallbackErr);
+      }
+    }
+
+    throw new Error(`[E2E] Failed to navigate to ${hash}`);
   }
 
   // Appium Mac2 — Settings → Billing (nested route)
@@ -484,23 +551,18 @@ export async function dismissBootCheckGateIfVisible(timeoutMs = 12_000): Promise
   let everSeen = false;
   while (Date.now() < deadline) {
     const status = await browser.execute(() => {
-      // The BootCheckGate renders the mode picker with "Select a Runtime"
-      // (i18n key bootCheck.chooseCoreMode). Earlier versions used
-      // "Choose core mode". Check for both to be safe.
-      const heading = Array.from(document.querySelectorAll('h2')).find(h => {
+      // The BootCheckGate renders a full-screen `.fixed` overlay with a
+      // heading. Check for both "Choose core mode" (legacy) and
+      // "Select a Runtime" (current i18n key bootCheck.chooseCoreMode).
+      // Important: only match headings inside a `.fixed` overlay — the
+      // Welcome page also has a "Select a Runtime" button, but that is
+      // NOT the BootCheckGate and clicking it would reset the core mode.
+      const heading = Array.from(document.querySelectorAll('.fixed h2')).find(h => {
         const text = (h.textContent ?? '').trim();
         return text === 'Choose core mode' || text === 'Select a Runtime';
       });
-      // Also check for the "Select a Runtime" button which may appear
-      // on the Welcome page instead of in a modal heading.
-      const selectRuntimeBtn = !heading
-        ? Array.from(document.querySelectorAll('button')).find(
-            b => (b.textContent ?? '').trim() === 'Select a Runtime'
-          )
-        : null;
-      const anchor = heading ?? selectRuntimeBtn;
-      if (!anchor) return 'gone';
-      const modal = anchor.closest('.fixed') ?? anchor.parentElement;
+      if (!heading) return 'gone';
+      const modal = heading.closest('.fixed') ?? heading.parentElement;
       if (!modal) return 'gone';
       const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button'));
       const primary =
@@ -525,19 +587,35 @@ export async function dismissBootCheckGateIfVisible(timeoutMs = 12_000): Promise
 
 async function waitForPostOnboardingHome(logPrefix, timeout = 20_000) {
   if (supportsExecuteScript()) {
+    // After onboarding the app routes to either #/home or #/chat depending on
+    // the DefaultRedirect guard and the user's onboarding state. Accept both.
     await browser.waitUntil(
       async () =>
-        Boolean(await browser.execute(() => window.location.hash.replace(/\/$/, '') === '#/home')),
+        Boolean(
+          await browser.execute(() => {
+            const h = window.location.hash.replace(/\/$/, '');
+            return h === '#/home' || h === '#/chat';
+          })
+        ),
       {
         timeout: Math.min(timeout, 10_000),
         interval: 300,
-        timeoutMsg: 'onboarding completed but hash did not settle on #/home',
+        timeoutMsg: 'onboarding completed but hash did not settle on #/home or #/chat',
       }
     );
   }
 
-  const homeText = await waitForHomePage(timeout);
+  // Check for Home page markers, but don't fail if we're on /chat instead.
+  const homeText = await waitForHomePage(Math.min(timeout, 8_000));
   if (!homeText) {
+    // The app may have routed to /chat. Check for chat markers.
+    const onChat =
+      supportsExecuteScript() &&
+      (await browser.execute(() => window.location.hash.startsWith('#/chat')));
+    if (onChat) {
+      console.log(`${logPrefix} Post-onboarding landed on /chat (accepted)`);
+      return;
+    }
     const tree = await dumpAccessibilityTree();
     console.log(`${logPrefix} Home page not ready after onboarding. Tree:\n`, tree.slice(0, 4000));
     throw new Error('Onboarding dismissed but Home page did not become ready');
