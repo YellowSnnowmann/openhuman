@@ -77,18 +77,31 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     // a chance to assemble before we drain the prompt.
     tokio::time::sleep(std::time::Duration::from_millis(CAPTION_TURN_DELAY_MS)).await;
 
-    let (prompt, history) = match registry().with_session(request_id, |s| {
+    // When wake fires from a bare "hey openhuman" with no tail, the
+    // session returns None from take_pending_prompt — there's nothing
+    // to feed the LLM. Previously we silently bailed (`return Ok(false)`)
+    // which made the bot look broken to the user. Treat empty-tail wake
+    // as a "say hi back" greeting cue: synthesize a short ack so the
+    // user gets audible proof that the caption→wake→speak loop is
+    // wired up end-to-end.
+    let (prompt, history, was_bare_wake) = match registry().with_session(request_id, |s| {
         let prompt = s.take_pending_prompt();
         let history = recent_dialog_history(s.events(), CONTEXT_EVENT_WINDOW);
         (prompt, history)
     })? {
-        (Some(p), h) => (p, h),
-        (None, _) => return Ok(false),
+        (Some(p), h) => (p, h, false),
+        (None, h) => {
+            log::info!(
+                "[meet-agent] caption turn bare-wake (no tail) request_id={request_id} — replying with greeting ack"
+            );
+            ("hello".to_string(), h, true)
+        }
     };
     log::info!(
-        "[meet-agent] caption turn start request_id={request_id} prompt_chars={} history_msgs={}",
+        "[meet-agent] caption turn start request_id={request_id} prompt_chars={} history_msgs={} bare_wake={}",
         prompt.chars().count(),
         history.len(),
+        was_bare_wake,
     );
 
     // Real LLM call. The model gets the rolling caption history plus
