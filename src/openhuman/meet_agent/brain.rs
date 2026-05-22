@@ -337,13 +337,21 @@ produce will be spoken aloud over the call. The transcript shows `user` lines \
 (humans on the call, sometimes prefixed with a name) and `assistant` lines \
 (things you previously said out loud).\n\
 \n\
-STRICT OUTPUT RULES — these are non-negotiable:\n\
+STRICT OUTPUT RULES — these are non-negotiable. The output is fed DIRECTLY \
+into TTS and spoken aloud verbatim. Any meta-text becomes audible bot \
+gibberish on a live call.\n\
 1. Output ONE sentence. Maximum 25 spoken words.\n\
 2. Plain spoken English. No markdown. No bullets. No code. No emoji.\n\
-3. No chain-of-thought. No reasoning out loud. No <think> blocks. Answer only.\n\
+3. NO chain-of-thought. NO reasoning. NO planning. NO <think> blocks. NO \
+preamble. NEVER write phrases like \"We need to…\", \"I should…\", \"Let me…\", \
+\"The user said…\", \"This is a greeting…\", \"So I should respond with…\", \
+\"My response is…\". Output ONLY the final answer that the user should hear.\n\
 4. Never repeat what the user said. Never narrate what you are about to do.\n\
 5. If the latest user line is not directly addressed to you, output the empty \
 string. Do not respond to side conversations or ambient speech.\n\
+6. Examples — good vs bad:\n\
+   User: \"hello\" → GOOD: \"Hey there.\"  BAD: \"The user said hello, so I should respond with a greeting.\"\n\
+   User: \"what's the time\" → GOOD: \"I don't have a clock right now.\"  BAD: \"We need to generate a single sentence. The user is asking the time.\"\n\
 \n\
 Address-detection: respond when the user names you (\"OpenHuman\", \"hey \
 openhuman\"), asks a direct question of you, or gives a direct command \
@@ -381,7 +389,13 @@ async fn llm_meeting(prompt: &str, history: &[ConversationTurn]) -> Result<Strin
     messages.push(json!({ "role": "user", "content": prompt }));
 
     let body = json!({
-        "model": "agentic-v1",
+        // chat-v1 = conversational non-reasoning model. agentic-v1 /
+        // reasoning-v1 leak their chain-of-thought as plain text
+        // ("We need to generate a single sentence…") into the response
+        // body when streamed without the structured thinking_delta
+        // channel — which TTS then reads aloud. chat-v1 produces a
+        // direct user-facing answer, which is what we want over voice.
+        "model": "chat-v1",
         "temperature": 0.5,
         "max_tokens": REPLY_MAX_TOKENS,
         "messages": messages,
@@ -467,7 +481,69 @@ fn strip_for_speech(text: &str) -> String {
         out.push_str(&cleaned);
     }
     let trimmed = out.trim().to_string();
-    cap_for_speech(&trimmed, MAX_TTS_CHARS)
+    let de_reasoned = strip_untagged_reasoning(&trimmed);
+    cap_for_speech(&de_reasoned, MAX_TTS_CHARS)
+}
+
+/// Strip reasoning-style preamble that reasoning models leak as plain
+/// text (no `<think>` tags) — phrases like "We need to generate…",
+/// "I should respond with…", "The user said…", "Let me think…".
+/// Heuristic: drop sentences whose lowercased trim matches a known
+/// reasoning opener; if everything is reasoning, return only the last
+/// sentence (final conclusion). If no signal, return input untouched.
+fn strip_untagged_reasoning(text: &str) -> String {
+    if text.is_empty() {
+        return text.to_string();
+    }
+    const REASONING_OPENERS: &[&str] = &[
+        "we need to",
+        "we should",
+        "i need to",
+        "i should",
+        "i will",
+        "let me ",
+        "first,",
+        "the user said",
+        "the user is",
+        "the user asked",
+        "the user wants",
+        "this is a",
+        "this seems",
+        "so i should",
+        "so the response",
+        "so my response",
+        "okay, so",
+        "alright,",
+        "given that",
+        "since the user",
+        "the assistant",
+        "the response should",
+        "my response",
+        "to respond",
+        "responding with",
+    ];
+    let sentences: Vec<&str> = text
+        .split_inclusive(|c: char| matches!(c, '.' | '!' | '?'))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if sentences.is_empty() {
+        return text.to_string();
+    }
+    let kept: Vec<&str> = sentences
+        .iter()
+        .filter(|s| {
+            let lc = s.to_lowercase();
+            !REASONING_OPENERS.iter().any(|opener| lc.starts_with(opener))
+        })
+        .copied()
+        .collect();
+    if kept.is_empty() {
+        // Everything was reasoning — return the last sentence as the
+        // probable conclusion, lower-cased openers stripped.
+        return sentences.last().map(|s| s.to_string()).unwrap_or_default();
+    }
+    kept.join(" ")
 }
 
 /// Truncate `text` to at most `max_chars` characters, preferring to
