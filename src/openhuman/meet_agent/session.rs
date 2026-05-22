@@ -233,7 +233,7 @@ impl MeetAgentSession {
         // Without this the bot replied to the same user question 4-5
         // times when Meet's caption observer kept re-emitting the line
         // with subtle text variation that slipped past the dedup.
-        const MIN_TURN_GAP_MS: u64 = 15_000;
+        const MIN_TURN_GAP_MS: u64 = 60_000;
         let now_wall_ms = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -346,7 +346,7 @@ impl MeetAgentSession {
         // fresh wake. Under-prompted users especially repeat the wake
         // phrase 2-3 times before realising the bot already heard them
         // — without this, each repeat fires another tool call.
-        const COOLDOWN_MS: u64 = 30_000;
+        const COOLDOWN_MS: u64 = 60_000;
         self.wake_cooldown_until_ts_ms = self.last_caption_ts_ms.saturating_add(COOLDOWN_MS);
         let prompt = std::mem::take(&mut self.pending_prompt);
         let trimmed = prompt.trim().to_string();
