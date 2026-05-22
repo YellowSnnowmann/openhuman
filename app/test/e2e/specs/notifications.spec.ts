@@ -3,10 +3,7 @@ import { browser, expect } from '@wdio/globals';
 
 import { waitForApp } from '../helpers/app-helpers';
 import { callOpenhumanRpc } from '../helpers/core-rpc';
-import {
-  dumpAccessibilityTree,
-  waitForText,
-} from '../helpers/element-helpers';
+import { dumpAccessibilityTree, waitForText } from '../helpers/element-helpers';
 import { supportsExecuteScript } from '../helpers/platform';
 import { resetApp } from '../helpers/reset-app';
 import { navigateViaHash } from '../helpers/shared-flows';

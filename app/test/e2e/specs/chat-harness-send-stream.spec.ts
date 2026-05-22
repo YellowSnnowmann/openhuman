@@ -105,8 +105,12 @@ describe('Chat harness — send + stream', () => {
     if (!sent) {
       // Diagnostic: dump why the button might be disabled.
       const diag = await browser.execute(() => {
-        const btn = document.querySelector('button[aria-label="Send message"]') as HTMLButtonElement;
-        const ta = document.querySelector('textarea[placeholder*="Type a message"]') as HTMLTextAreaElement;
+        const btn = document.querySelector(
+          'button[aria-label="Send message"]'
+        ) as HTMLButtonElement;
+        const ta = document.querySelector(
+          'textarea[placeholder*="Type a message"]'
+        ) as HTMLTextAreaElement;
         return {
           btnExists: !!btn,
           btnDisabled: btn?.disabled,

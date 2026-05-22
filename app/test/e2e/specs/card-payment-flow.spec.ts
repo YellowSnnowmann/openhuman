@@ -12,11 +12,7 @@
 import { waitForApp } from '../helpers/app-helpers';
 import { textExists, waitForText } from '../helpers/element-helpers';
 import { resetApp } from '../helpers/reset-app';
-import {
-  navigateToBilling,
-  navigateToHome,
-  navigateToSettings,
-} from '../helpers/shared-flows';
+import { navigateToBilling, navigateToHome, navigateToSettings } from '../helpers/shared-flows';
 import { clearRequestLog, startMockServer, stopMockServer } from '../mock-server';
 
 const LOG_PREFIX = '[PaymentFlow]';
