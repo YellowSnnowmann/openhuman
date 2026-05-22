@@ -63,22 +63,6 @@ async function waitForAnyText(candidates: string[], timeoutMs = 10_000): Promise
   return null;
 }
 
-function cronActionTestId(jobId: string, action: string): string | null {
-  switch (action) {
-    case 'Pause':
-    case 'Resume':
-      return `cron-job-toggle-${jobId}`;
-    case 'Run Now':
-      return `cron-job-run-${jobId}`;
-    case 'View Runs':
-      return `cron-job-view-runs-${jobId}`;
-    case 'Remove':
-      return `cron-job-remove-${jobId}`;
-    default:
-      return null;
-  }
-}
-
 async function waitForCronPanel(timeoutMs = 5_000): Promise<void> {
   try {
     await waitForTestId('cron-jobs-panel', timeoutMs);
@@ -104,55 +88,6 @@ async function clickCronRefresh(): Promise<void> {
     stepLog('cron refresh test id unavailable, falling back to button text', error);
     await clickNativeButton('Refresh Cron Jobs');
   }
-}
-
-/** Click the action button (Pause | Resume | Remove | …) inside a cron row. */
-async function clickActionForJob(jobId: string, action: string): Promise<boolean> {
-  const testId = cronActionTestId(jobId, action);
-  if (!testId) return false;
-  try {
-    await clickTestId(testId, 5_000);
-    return true;
-  } catch (error) {
-    stepLog(`test-id click failed for ${action} on ${jobId}, falling back to button text`, error);
-  }
-  try {
-    await clickNativeButton(action, 5_000);
-    return true;
-  } catch (error) {
-    stepLog(`failed to click ${action} for ${jobId}`, error);
-    return false;
-  }
-}
-
-/** Poll for the in-row action button label to settle (e.g. "Pause" → "Resume"). */
-async function waitForRowActionLabel(
-  jobId: string,
-  expected: string,
-  timeoutMs = 10_000
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  const testId = `cron-job-toggle-${jobId}`;
-  try {
-    await waitForTestId(testId, Math.min(timeoutMs, 5_000));
-  } catch (error) {
-    stepLog(`toggle test id not found for ${jobId}, falling back to visible label`, error);
-    try {
-      await waitForText(expected, Math.min(timeoutMs, 5_000));
-    } catch {
-      return false;
-    }
-  }
-  while (Date.now() < deadline) {
-    const current = await browser.execute((id: string) => {
-      const button = document.querySelector(`[data-testid="${id}"]`);
-      return button?.textContent?.trim() ?? null;
-    }, testId);
-    if (current === expected) return true;
-    if (await textExists(expected)) return true;
-    await browser.pause(400);
-  }
-  return false;
 }
 
 /** Open the Cron Jobs settings panel via the same Settings entry-point a user clicks. */
