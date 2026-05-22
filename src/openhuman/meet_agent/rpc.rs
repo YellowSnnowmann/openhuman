@@ -83,9 +83,22 @@ pub async fn handle_push_caption(params: Map<String, Value>) -> Result<Value, St
     let req: PushCaptionRequest = serde_json::from_value(Value::Object(params))
         .map_err(|e| format!("{LOG_PREFIX} invalid push_caption params: {e}"))?;
 
+    // Diagnostic: log the caption text + match outcome so we can tell
+    // from the dev:app stdout exactly what the wake-word matcher saw.
+    // Truncate to 120 chars to avoid blowing up the log line. This is
+    // safe to leave on for now — captions are already broadcast to all
+    // participants in the meeting; nothing here that isn't on the wire.
+    let preview: String = req.text.chars().take(120).collect();
     let wake_fired = registry().with_session(&req.request_id, |s| {
         s.note_caption(&req.speaker, &req.text, req.ts_ms)
     })?;
+    log::info!(
+        "{LOG_PREFIX} push_caption request_id={} speaker={} text=\"{}\" wake_fired={}",
+        req.request_id,
+        req.speaker,
+        preview,
+        wake_fired,
+    );
 
     if wake_fired {
         log::info!(
