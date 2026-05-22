@@ -1,19 +1,17 @@
 // Meeting bots entry point on the Skills "Integrations" section.
 //
-// Surfaces as a compact, fun banner: clicking opens a modal that wraps
-// the backend mascot bot (PR tinyhumansai/backend#773). Joining a
-// Google Meet kicks off the Camoufox-driven mascot in the backend,
-// which streams the mascot's WebRTC video into the call as an
-// anonymous guest. Zoom and Teams are shown as "coming soon" — the
-// backend already routes them but returns 400 "not yet supported".
+// Surfaces as a compact, fun banner: clicking opens a modal that opens
+// a dedicated CEF webview pointed at the Meet URL. The bot's outbound
+// camera is the mascot canvas (`meet_video::camera_bridge`) and its
+// outbound audio is the synthesized speech pump (`meet_audio`). Zoom
+// and Teams are shown as "coming soon" — only Google Meet has the CEF
+// bridge pipeline today.
 
 import { useEffect, useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import {
-  joinMeetingViaMascotBot,
-  SERVER_OVERLOADED_MESSAGE,
-  type MascotJoinMeetingError,
+  joinMeetCall,
   type MascotMeetPlatform,
 } from '../../services/meetCallService';
 
@@ -40,10 +38,6 @@ const PLATFORMS: PlatformDef[] = [
     comingSoon: true,
   },
 ];
-
-function isMascotJoinMeetingError(err: unknown): err is MascotJoinMeetingError {
-  return !!err && typeof err === 'object' && 'isCapacityGated' in err && 'message' in err;
-}
 
 export default function MeetingBotsCard({ onToast }: Props) {
   const [open, setOpen] = useState(false);
@@ -115,13 +109,12 @@ interface ModalProps {
   onToast?: (toast: Toast) => void;
 }
 
-function MeetingBotsModal({ onClose, onToast }: ModalProps) {
+export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const { t } = useT();
   const [platform, setPlatform] = useState<MascotMeetPlatform>('gmeet');
   const [meetUrl, setMeetUrl] = useState('');
   const [displayName, setDisplayName] = useState('OpenHuman');
   const [submitting, setSubmitting] = useState(false);
-  const [capacityGated, setCapacityGated] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selected = PLATFORMS.find(p => p.platform === platform) ?? PLATFORMS[0];
@@ -139,14 +132,18 @@ function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    setCapacityGated(false);
     if (isComingSoon) {
       setError(`${selected.label} support is coming soon.`);
       return;
     }
     setSubmitting(true);
     try {
-      await joinMeetingViaMascotBot({ platform, meetUrl, displayName });
+      // Flow A: local CEF webview with mascot canvas + synthesized audio.
+      // joinMeetCall opens an off-screen CEF window per request_id,
+      // installs the audio/video bridges via CDP, then meet_scanner
+      // drives the join automatically. Returns once the window has
+      // been created — meet_audio + meet_scanner take it from there.
+      await joinMeetCall({ meetUrl, displayName });
       onToast?.({
         type: 'success',
         title: t('skills.meetingBots.joiningTitle'),
@@ -155,20 +152,9 @@ function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       setMeetUrl('');
       onClose();
     } catch (err) {
-      if (isMascotJoinMeetingError(err)) {
-        setCapacityGated(err.isCapacityGated);
-        const message = err.isCapacityGated ? SERVER_OVERLOADED_MESSAGE : err.message;
-        setError(message);
-        onToast?.({
-          type: 'error',
-          title: err.isCapacityGated ? t('skills.meetingBots.busyTitle') : t('skills.meetingBots.couldNotStartTitle'),
-          message,
-        });
-      } else {
-        const message = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
-        setError(message);
-        onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
-      }
+      const message = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
+      setError(message);
+      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
     } finally {
       setSubmitting(false);
     }
@@ -261,11 +247,7 @@ function MeetingBotsModal({ onClose, onToast }: ModalProps) {
             {error && (
               <div
                 role="alert"
-                className={`rounded-xl border px-3 py-2 text-xs ${
-                  capacityGated
-                    ? 'border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300'
-                    : 'border-coral-200 dark:border-coral-500/30 bg-coral-50 dark:bg-coral-500/10 text-coral-700 dark:text-coral-300'
-                }`}>
+                className="rounded-xl border border-coral-200 dark:border-coral-500/30 bg-coral-50 dark:bg-coral-500/10 px-3 py-2 text-xs text-coral-700 dark:text-coral-300">
                 {error}
               </div>
             )}
