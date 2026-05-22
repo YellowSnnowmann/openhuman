@@ -57,6 +57,9 @@ async function clickTestId(testId: string, timeout = 10_000): Promise<boolean> {
       const el = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
       if (!el) return 'missing';
       if ((el as HTMLButtonElement).disabled) return 'disabled';
+      // Ensure the element is visible and has layout before clicking.
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return 'no-layout';
       ['mousedown', 'mouseup', 'click'].forEach(type => {
         el.dispatchEvent(
           new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 })
@@ -232,8 +235,19 @@ describe('Onboarding modes — Simple (Cloud) vs Advanced (Custom)', () => {
 
     // Step 1 — Runtime choice → Custom.
     expect(await testIdExists('onboarding-runtime-choice-step', 10_000)).toBe(true);
+    await pause(800);
     expect(await clickTestId('onboarding-runtime-choice-custom')).toBe(true);
-    await pause(500);
+    // Verify the Custom card registered the click; retry if swallowed.
+    const customB = await browser.execute(() => {
+      const el = document.querySelector('[data-testid="onboarding-runtime-choice-custom"]');
+      return el?.getAttribute('aria-pressed') === 'true';
+    });
+    if (!customB) {
+      stepLog('Phase B: Custom card click did not register — retrying');
+      await pause(500);
+      await clickTestId('onboarding-runtime-choice-custom');
+      await pause(300);
+    }
     await clickOnboardingNext();
 
     // Step 2 — Custom Inference (Default).
@@ -281,8 +295,21 @@ describe('Onboarding modes — Simple (Cloud) vs Advanced (Custom)', () => {
     // Welcome → Runtime choice (Custom) → Inference (Default).
     await clickOnboardingNext();
     expect(await testIdExists('onboarding-runtime-choice-step', 10_000)).toBe(true);
+    // Wait for the runtime choice cards to fully render before clicking.
+    await pause(800);
     expect(await clickTestId('onboarding-runtime-choice-custom')).toBe(true);
-    await pause(500);
+    // Verify the Custom card registered the click (aria-pressed="true").
+    // Retry if the first click was swallowed by a concurrent render.
+    const customSelected = await browser.execute(() => {
+      const el = document.querySelector('[data-testid="onboarding-runtime-choice-custom"]');
+      return el?.getAttribute('aria-pressed') === 'true';
+    });
+    if (!customSelected) {
+      stepLog('Custom card click did not register — retrying');
+      await pause(500);
+      await clickTestId('onboarding-runtime-choice-custom');
+      await pause(300);
+    }
     await clickOnboardingNext();
 
     expect(await testIdExists('onboarding-custom-inference-step', 10_000)).toBe(true);
