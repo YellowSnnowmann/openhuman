@@ -32,7 +32,10 @@ set -uo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_DIR="$(cd "$APP_DIR/.." && pwd)"
-cd "$APP_DIR"
+cd "$APP_DIR" || {
+  echo "[e2e-run-all-flows] Failed to cd into $APP_DIR" >&2
+  exit 1
+}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -262,7 +265,7 @@ trap finish EXIT
 # Pre-flight check (unless --skip-preflight)
 # ---------------------------------------------------------------------------
 if [[ $SKIP_PREFLIGHT -eq 0 ]]; then
-  if [[ -x "$APP_DIR/scripts/e2e-preflight.sh" ]]; then
+  if [[ -f "$APP_DIR/scripts/e2e-preflight.sh" ]]; then
     echo "[e2e-run-all-flows] Running pre-flight checks..."
     if ! bash "$APP_DIR/scripts/e2e-preflight.sh"; then
       echo "[e2e-run-all-flows] Pre-flight failed. Aborting." >&2

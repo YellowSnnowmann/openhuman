@@ -136,6 +136,7 @@ describe('Notifications', () => {
       });
       notifId = (fresh.result as any)?.id as string | undefined;
     }
+    expect(notifId).toBeDefined();
 
     const result = await callOpenhumanRpc('openhuman.notification_mark_read', { id: notifId });
     stepLog('notification_mark_read result', { ok: result.ok, result: result.result });
@@ -186,10 +187,7 @@ describe('Notifications', () => {
 
     // If the route redirected (e.g. auth guard), skip the UI assertions
     // since the RPC tests above already prove the notification backend works.
-    if (!String(currentHash).includes('/notifications')) {
-      stepLog('Notifications route not reachable — skipping UI assertions (RPC tests passed)');
-      return;
-    }
+    expect(String(currentHash)).toContain('/notifications');
 
     await waitForNotificationsSections(10_000);
 
