@@ -113,6 +113,55 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     let _ = cdp.call("Page.enable", json!({}), Some(&session)).await;
     let _ = cdp.call("Runtime.enable", json!({}), Some(&session)).await;
 
+    // Phase 0 — strip any leaked Google session cookies/cache before
+    // we touch the page. The vendored tauri-cef runtime does not yet
+    // honour our per-request_id `data_directory` as a fresh CEF
+    // RequestContext — webviews end up sharing the parent process's
+    // cookie + cache store. Without this clear, Meet recognises the
+    // signed-in Google account on the user's main openhuman session
+    // ("nikhil@tinyhumans.ai" / "Verify it's you" screen) and the bot
+    // never reaches the anonymous "Your name" pre-join input we drive
+    // in Phase 2.
+    //
+    // `Network.clearBrowserCookies` + `Network.clearBrowserCache` are
+    // CDP-wide for the attached browser instance, so they wipe the
+    // session for THIS Meet target without touching the user's main
+    // openhuman webviews (those run in separate browser instances).
+    // Best-effort: if Network domain isn't enabled or CDP returns an
+    // error, we log and continue — the bot may still land on the
+    // verify screen but won't get worse than the pre-clear state.
+    let _ = cdp
+        .call("Network.enable", json!({}), Some(&session))
+        .await;
+    if let Err(err) = cdp
+        .call("Network.clearBrowserCookies", json!({}), Some(&session))
+        .await
+    {
+        log::warn!("[meet-scanner] clearBrowserCookies failed: {err}");
+    } else {
+        log::info!("[meet-scanner] cleared browser cookies for fresh anonymous session");
+    }
+    if let Err(err) = cdp
+        .call("Network.clearBrowserCache", json!({}), Some(&session))
+        .await
+    {
+        log::info!("[meet-scanner] clearBrowserCache skipped: {err}");
+    }
+    // Reload the page once so Meet re-fetches from scratch without the
+    // user's Google session cookies. Without the reload, Meet's React
+    // state still holds the post-auth view; we'd be clicking buttons
+    // on a stale page.
+    if let Err(err) = cdp
+        .call("Page.reload", json!({"ignoreCache": true}), Some(&session))
+        .await
+    {
+        log::warn!("[meet-scanner] post-cookie-clear reload failed: {err}");
+    }
+    // Give the reloaded page a moment to settle before scanner phases
+    // start poking the DOM. 1.5s is comfortably above Meet's typical
+    // first-paint on CEF + leaves headroom for slow CI runners.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+
     // Phase 1 — dismiss the device-check screen.
     //
     // Meet's exact copy varies by region/A-B test; we try the canonical
