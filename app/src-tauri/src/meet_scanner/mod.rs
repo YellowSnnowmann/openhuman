@@ -198,6 +198,53 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
     )
     .await?;
 
+    // Phase 3.5 — force a fresh getUserMedia call by cycling mic off-on.
+    //
+    // Meet caches the camera + mic MediaStreams from initial page load
+    // (before meet_audio::inject reloaded with our bridges). Our gUM
+    // intercept in audio_bridge.js only fires on NEW gUM calls, so the
+    // cached streams keep flowing — the bot's mic stays the real OS
+    // microphone, the bot's camera stays the static fake-camera Y4M
+    // frame, and our speak_pump pushes synthesized PCM into a
+    // MediaStreamDestination that's never attached to any outbound
+    // track. Host hears the user (echo loop) instead of the bot.
+    //
+    // Click "Turn off microphone" → ~700 ms pause for React to settle →
+    // click whatever aria-label appears in its place ("Turn on
+    // microphone" or a variant). The second click triggers Meet to
+    // re-request via getUserMedia, which our bridge then intercepts.
+    if let Err(err) = click_by_aria_label(
+        &mut cdp,
+        &session,
+        &["turn off microphone", "turn microphone off", "turn off mic"],
+        Duration::from_secs(4),
+    )
+    .await
+    {
+        log::info!("[meet-scanner] mic off-cycle skipped: {err}");
+    } else {
+        log::info!("[meet-scanner] mic cycled off; pausing 700ms before re-arm");
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        if let Err(err) = click_by_aria_label(
+            &mut cdp,
+            &session,
+            &[
+                "turn on microphone",
+                "turn microphone on",
+                "turn on mic",
+                "turn mic on",
+            ],
+            Duration::from_secs(6),
+        )
+        .await
+        {
+            log::warn!("[meet-scanner] mic on-cycle missed (left muted!): {err}");
+            dump_aria_labels(&mut cdp, &session, "mic|microphone").await;
+        } else {
+            log::info!("[meet-scanner] mic re-armed (gUM intercept should now fire)");
+        }
+    }
+
     // Phase 4 — once the bot is admitted, force-enable captions.
     //
     // captions_bridge.js already polls every 2 s for a button whose
