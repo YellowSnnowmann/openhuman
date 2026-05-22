@@ -128,12 +128,10 @@ describe('Logout -> re-login onboarding overlay', function () {
     if (!overlayVisible) {
       // Diagnostic: dump current hash, DOM text, and request log.
       const hash = await browser.execute(() => window.location.hash);
-      const rootText = await browser.execute(
-        () => (document.getElementById('root')?.innerText ?? '').slice(0, 500)
+      const rootText = await browser.execute(() =>
+        (document.getElementById('root')?.innerText ?? '').slice(0, 500)
       );
-      console.log(
-        '[LogoutReLogin] Overlay not visible. hash=' + hash + ' rootText=' + rootText
-      );
+      console.log('[LogoutReLogin] Overlay not visible. hash=' + hash + ' rootText=' + rootText);
     }
     expect(overlayVisible).toBe(true);
 
