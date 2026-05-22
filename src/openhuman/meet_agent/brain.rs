@@ -270,6 +270,10 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
         // section with the reply enqueue, even if the caller drops
         // the future after this point.
         s.turn_in_progress = false;
+        // Stamp turn-done time so note_caption's min-turn-gap
+        // backstop can suppress wakes that fire within 15s of this
+        // turn's completion (caption residue / repeat questions).
+        s.mark_turn_done();
     })?;
 
     log::info!(

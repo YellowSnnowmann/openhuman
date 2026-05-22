@@ -97,6 +97,14 @@ pub struct MeetAgentSession {
     /// distinct signal, a normal end-of-utterance would also flush,
     /// cutting the final 100ms of the last legitimate reply.
     flush_pending: bool,
+    /// Wall-clock ms at the moment the previous brain turn finished.
+    /// Used by note_caption to enforce a minimum gap between turns —
+    /// even if the page-side caption cooldown expires (or Meet emits
+    /// a fresh utterance just past it), the bot still refuses to
+    /// fire a new wake within MIN_TURN_GAP_MS. Backstop against the
+    /// "user asks once, bot answers 5 times" pattern when caption
+    /// residue keeps re-matching the wake phrase.
+    last_turn_done_at_ms: u64,
 }
 
 impl MeetAgentSession {
@@ -120,7 +128,19 @@ impl MeetAgentSession {
             last_caption_by_speaker: std::collections::HashMap::new(),
             turn_in_progress: false,
             flush_pending: false,
+            last_turn_done_at_ms: 0,
         }
+    }
+
+    /// Stamp the current wall-clock time as "turn just finished". The
+    /// brain calls this from the final with_session block of
+    /// run_caption_turn (alongside clearing turn_in_progress) so the
+    /// min-turn-gap backstop in note_caption can see it.
+    pub fn mark_turn_done(&mut self) {
+        self.last_turn_done_at_ms = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
     }
 
     /// True when the brain has TTS audio queued for playback. The
@@ -165,15 +185,21 @@ impl MeetAgentSession {
         // never dedup. Keyed by speaker_lower so the user's repeating
         // utterance is dropped after the first hit regardless of bot
         // captions interleaving.
+        //
+        // Normalised match (lowercase + drop non-alphanumeric + collapse
+        // whitespace) so Meet's punctuation/case jitter between emits
+        // ("Hey, openhuman" → "hey openhuman.") doesn't slip through
+        // the dedup. Without normalisation each capitalisation flip
+        // fires another wake.
         let key = speaker_lower.clone();
-        let trimmed_text = text.trim().to_string();
+        let normalised = normalise_for_dedup(text);
         if let Some(prev) = self.last_caption_by_speaker.get(&key) {
-            if prev == &trimmed_text {
+            if prev == &normalised {
                 return false;
             }
         }
         self.last_caption_by_speaker
-            .insert(key, trimmed_text.clone());
+            .insert(key, normalised);
         // Gate: while a brain turn is in flight (LLM + tools running),
         // refuse to fire a fresh wake. The prior gate also blocked on
         // is_speaking() (outbound queued), but that prevented barge-in
@@ -200,6 +226,29 @@ impl MeetAgentSession {
                 self.pending_prompt.push(' ');
             }
             self.pending_prompt.push_str(text.trim());
+            return false;
+        }
+        // Min-turn-gap backstop. Even if the page-side caption
+        // cooldown window expires, refuse to start a new turn
+        // within MIN_TURN_GAP_MS of the prior turn's completion.
+        // Without this the bot replied to the same user question 4-5
+        // times when Meet's caption observer kept re-emitting the line
+        // with subtle text variation that slipped past the dedup.
+        const MIN_TURN_GAP_MS: u64 = 15_000;
+        let now_wall_ms = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        if self.last_turn_done_at_ms != 0
+            && now_wall_ms.saturating_sub(self.last_turn_done_at_ms) < MIN_TURN_GAP_MS
+        {
+            self.record_event(
+                SessionEventKind::Heard,
+                format!(
+                    "{speaker}: {text} (suppressed: <{}ms since last turn)",
+                    MIN_TURN_GAP_MS
+                ),
+            );
             return false;
         }
         // In cooldown after a recent turn — Meet keeps the same
@@ -289,10 +338,16 @@ impl MeetAgentSession {
             return None;
         }
         self.wake_active = false;
-        // 8s grace beyond the most recent caption's page timestamp.
-        // `last_caption_ts_ms` is whatever Date.now() was page-side
-        // when the line landed — same clock as future caption pushes.
-        const COOLDOWN_MS: u64 = 8_000;
+        // 30s grace beyond the most recent caption's page timestamp.
+        // The previous 8s window was too short: Meet's caption region
+        // re-renders the just-finished utterance for 5-8s, the bot's
+        // reply takes another 5-15s to synthesize + speak, then any
+        // natural user follow-up ("wait, did you say X?") within the
+        // same 30s window is treated as continuation rather than a
+        // fresh wake. Under-prompted users especially repeat the wake
+        // phrase 2-3 times before realising the bot already heard them
+        // — without this, each repeat fires another tool call.
+        const COOLDOWN_MS: u64 = 30_000;
         self.wake_cooldown_until_ts_ms = self.last_caption_ts_ms.saturating_add(COOLDOWN_MS);
         let prompt = std::mem::take(&mut self.pending_prompt);
         let trimmed = prompt.trim().to_string();
@@ -408,6 +463,16 @@ impl MeetAgentSession {
     pub fn spoken_seconds(&self) -> f32 {
         self.total_outbound_samples as f32 / self.sample_rate_hz as f32
     }
+}
+
+/// Lowercase + drop non-alphanumeric + collapse whitespace. Used by
+/// the per-speaker dedup so Meet's punctuation/case jitter between
+/// caption emits doesn't bypass the dedup. Same shape as
+/// `normalize_for_wake` but exposed under a distinct name to keep
+/// the two intents (wake-word match vs. dedup key) separate at the
+/// call site.
+fn normalise_for_dedup(text: &str) -> String {
+    normalize_for_wake(text)
 }
 
 /// Lowercase + drop punctuation + collapse whitespace, so the wake
