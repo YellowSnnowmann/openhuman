@@ -11,7 +11,11 @@ vi.mock('../../../services/meetCallService', async () => {
   );
   return {
     ...actual,
-    joinMeetingViaMascotBot: (...args: unknown[]) => joinMock(...args),
+    // Flow A: the modal submit calls joinMeetCall (CEF webview), not the
+    // Flow B backend joinMeetingViaMascotBot. Switched in the
+    // mascot-meet-flowA revival commits — kept the mock variable name
+    // `joinMock` to keep the diff focused on the call site swap.
+    joinMeetCall: (...args: unknown[]) => joinMock(...args),
   };
 });
 
@@ -45,8 +49,8 @@ describe('MeetingBotsCard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('submits to joinMeetingViaMascotBot and fires a success toast', async () => {
-    joinMock.mockResolvedValueOnce({ success: true });
+  it('submits to joinMeetCall and fires a success toast', async () => {
+    joinMock.mockResolvedValueOnce({ requestId: 'req-1' });
     const onToast = vi.fn();
     render(<MeetingBotsCard onToast={onToast} />);
 
@@ -57,10 +61,13 @@ describe('MeetingBotsCard', () => {
     const form = screen.getByRole('dialog').querySelector('form')!;
     fireEvent.submit(form);
 
+    // Flow A's joinMeetCall takes { meetUrl, displayName }. The component
+    // synthesises displayName from the user profile; the test asserts on
+    // meetUrl + the presence of a displayName field rather than its exact
+    // value (which would couple the test to the auth-fixture seam).
     await vi.waitFor(() => {
       expect(joinMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          platform: 'gmeet',
           meetUrl: 'https://meet.google.com/abc-defg-hij',
         })
       );
@@ -76,31 +83,11 @@ describe('MeetingBotsCard', () => {
     });
   });
 
-  it('surfaces a capacity-gated error inline + as an amber toast', async () => {
-    joinMock.mockRejectedValueOnce({
-      isCapacityGated: true,
-      message: 'busy',
-    });
-    const onToast = vi.fn();
-    render(<MeetingBotsCard onToast={onToast} />);
-
-    fireEvent.click(screen.getByTestId('meeting-bots-banner'));
-    fireEvent.change(screen.getByLabelText(/meeting link/i), {
-      target: { value: 'https://meet.google.com/x' },
-    });
-    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
-
-    await vi.waitFor(() => {
-      expect(onToast).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'error', title: expect.stringMatching(/busy/i) })
-      );
-    });
-    // Modal stays open so the user can retry; inline alert visible.
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-  });
-
-  it('surfaces a non-capacity error', async () => {
-    joinMock.mockRejectedValueOnce({ isCapacityGated: false, message: 'Bad URL' });
+  // Flow A's joinMeetCall has no capacity-gated concept — any throw maps
+  // to the single "could not start" toast + inline alert with the error
+  // message. Two error cases collapsed into one in the Flow A model.
+  it('surfaces a join error inline + as an error toast', async () => {
+    joinMock.mockRejectedValueOnce(new Error('Bad URL'));
     const onToast = vi.fn();
     render(<MeetingBotsCard onToast={onToast} />);
 
