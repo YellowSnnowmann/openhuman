@@ -38,11 +38,15 @@ use super::session::registry;
 use super::types::{SessionEvent, SessionEventKind};
 use super::wav;
 
-/// Wall-clock ceiling on one agentic turn. Tool iterations + LLM call
-/// can run 10s+; 20s is comfortable for calendar / memory lookups but
-/// short enough that we fall back to a polite "let me get back to
-/// you" instead of leaving the meet participant in silence.
-const AGENTIC_TURN_TIMEOUT_SECS: u64 = 20;
+/// Wall-clock ceiling on one agentic turn. Single tool dispatch
+/// (delegate_to_integrations_agent → calendar / gmail / slack) runs
+/// 15-30s on its own; iteration 2 (synthesis using the tool result)
+/// adds 3-5s. 60s gives enough headroom for one tool + synthesis,
+/// while still short enough that a hung tool doesn't leave the
+/// meeting participant in indefinite silence. The turn_in_progress
+/// gate blocks new wakes during the wait so the user can't fire 20
+/// parallel calendar queries by talking more.
+const AGENTIC_TURN_TIMEOUT_SECS: u64 = 60;
 
 /// How many of the most recent `Heard` / `Spoke` events we feed back
 /// into the LLM as rolling conversation context. 12 ≈ a few minutes of
@@ -108,6 +112,12 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     // play the entire backlog before the new reply starts. This makes
     // the bot interruptible from the user's side.
     let (prompt, history, was_bare_wake) = match registry().with_session(request_id, |s| {
+        // Mark turn as in-flight so note_caption refuses to fire new
+        // wakes until run_caption_turn returns. Without this, the
+        // user's continuing speech (or growing-caption re-fires)
+        // spawns 20 parallel agentic turns for one question and none
+        // of them complete inside the timeout.
+        s.turn_in_progress = true;
         s.cancel_outbound();
         let prompt = s.take_pending_prompt();
         let history = recent_dialog_history(s.events(), CONTEXT_EVENT_WINDOW);
@@ -195,6 +205,11 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
             );
         }
         s.turn_count += 1;
+        // Clear the in-flight gate so the next wake can fire. Done
+        // inside the same with_session so it lands in one critical
+        // section with the reply enqueue, even if the caller drops
+        // the future after this point.
+        s.turn_in_progress = false;
     })?;
 
     log::info!(

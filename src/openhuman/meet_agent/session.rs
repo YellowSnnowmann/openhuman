@@ -72,14 +72,24 @@ pub struct MeetAgentSession {
     /// text — a single character growth re-queues the line). Without
     /// this gate the brain spam-fires on every caption growth.
     wake_cooldown_until_ts_ms: u64,
-    /// Last `(speaker, text)` pair forwarded to the wake-word matcher.
-    /// Drops verbatim repeats produced by Meet's caption observer
-    /// re-emitting the same line every poll tick — the page-side
-    /// `lastBySpeaker` dedupe is per-key, and Meet sometimes flips
-    /// the key (speaker name appears / disappears for the same row)
-    /// so identical text still reaches us. Server-side defence keeps
-    /// the log clean and stops spurious wake retries.
-    last_caption_signature: Option<String>,
+    /// Per-speaker last caption text. Drops verbatim repeats from the
+    /// page-side observer. A single-slot Option<String> was broken
+    /// because Meet's CC region renders two simultaneous rows (the
+    /// user's caption AND the bot's TTS being captioned as
+    /// speaker="You"). Polling walks both rows every 250ms; with a
+    /// single-slot signature the value flips A → B → A → B every
+    /// tick and dedup never matches. Per-speaker keying fixes it.
+    last_caption_by_speaker: std::collections::HashMap<String, String>,
+    /// True between brain-turn dispatch (run_caption_turn entry) and
+    /// final-reply enqueue. While set, note_caption refuses to fire a
+    /// fresh wake — without this gate, the model takes 5–15s to run
+    /// tools but Meet keeps emitting new captions every 250ms, each
+    /// firing a new turn that cancels the prior one. Tool calls never
+    /// resolve. The gate is wider than `is_speaking()` (which only
+    /// covers TTS playback) because the LLM + tool phase is the part
+    /// the user can interrupt only by deliberately re-saying the wake
+    /// word, which they shouldn't have to.
+    pub turn_in_progress: bool,
 }
 
 impl MeetAgentSession {
@@ -100,7 +110,8 @@ impl MeetAgentSession {
             wake_active: false,
             last_caption_ts_ms: 0,
             wake_cooldown_until_ts_ms: 0,
-            last_caption_signature: None,
+            last_caption_by_speaker: std::collections::HashMap::new(),
+            turn_in_progress: false,
         }
     }
 
@@ -139,27 +150,40 @@ impl MeetAgentSession {
         if speaker_lower == "you" || speaker_lower.is_empty() {
             return false;
         }
-        // Server-side dedup. Meet's CC region re-renders the same line
-        // every 250 ms poll tick for the duration of an utterance, and
-        // the page-side `lastBySpeaker` dedup keys on a speaker guess
-        // that flips for the same row. Without this, the wake-word
-        // matcher (and the RPC log) sees N copies of every caption.
-        let signature = format!("{speaker_lower}\u{1F}{}", text.trim());
-        if self.last_caption_signature.as_deref() == Some(signature.as_str()) {
-            return false;
+        // Per-speaker dedup. Meet's CC region re-renders the same line
+        // every 250 ms poll tick and emits BOTH speaker rows on each
+        // walk (the user AND the bot TTS as speaker="You"). A single-
+        // slot last-signature would flip A → B → A → B every tick and
+        // never dedup. Keyed by speaker_lower so the user's repeating
+        // utterance is dropped after the first hit regardless of bot
+        // captions interleaving.
+        let key = speaker_lower.clone();
+        let trimmed_text = text.trim().to_string();
+        if let Some(prev) = self.last_caption_by_speaker.get(&key) {
+            if prev == &trimmed_text {
+                return false;
+            }
         }
-        self.last_caption_signature = Some(signature);
-        // Gate: if the bot is currently speaking (queued TTS audio),
-        // refuse to fire a new wake. The user's voice + the bot's
-        // voice can both show up as captions, and a reply that runs
-        // 30–60 s will collide with continued user speech every time.
-        // Without this, the bot speaks-listens-speaks in a loop until
-        // someone closes the call. New captions still record to the
-        // transcript log for context but cannot trigger another turn.
-        if self.is_speaking() {
+        self.last_caption_by_speaker
+            .insert(key, trimmed_text.clone());
+        // Gate: while a brain turn is in flight (LLM + tools running)
+        // or the bot is mid-playback, refuse to fire a fresh wake.
+        // Without this gate the user's continuing speech, or Meet's
+        // own caption observer re-emitting growing captions, fires
+        // new turns every ~9-10s while the prior turn's tool dispatch
+        // (16-29s for delegate_to_integrations_agent) is still running.
+        // Result: 20 parallel calendar API calls for one question, none
+        // of which complete in time. The is_speaking() side covers TTS
+        // playback after the agent returns; turn_in_progress covers the
+        // LLM + tool-execution phase.
+        if self.turn_in_progress || self.is_speaking() {
             self.record_event(
                 SessionEventKind::Heard,
-                format!("{speaker}: {text} (suppressed: bot speaking)"),
+                format!(
+                    "{speaker}: {text} (suppressed: turn_in_progress={} speaking={})",
+                    self.turn_in_progress,
+                    self.is_speaking()
+                ),
             );
             return false;
         }
