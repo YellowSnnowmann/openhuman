@@ -460,11 +460,27 @@ async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, S
     // is the established hook for per-channel system-prompt
     // augmentation — the web channel uses it for the locale-reply
     // directive; we use it for the voice-frontend directive.
+    // Compose the system-prompt suffix with the static voice directive
+    // plus a tiny "right-now context" block so the model can answer
+    // "what time is it / what's today's date" without a tool dispatch
+    // (no clock tool exists; without this the bot says "I don't know").
+    let now_local = chrono::Local::now();
+    let now_block = format!(
+        "\n\nRIGHT-NOW CONTEXT (use directly for time / date questions):\n\
+         - Current local date/time: {}\n\
+         - Current weekday: {}\n\
+         - Timezone offset: {}\n\
+         Trust this block for time questions; do NOT call a tool to look up the clock.",
+        now_local.format("%Y-%m-%d %H:%M:%S"),
+        now_local.format("%A"),
+        now_local.format("%:z"),
+    );
+    let composed_suffix = format!("{MEET_VOICE_DIRECTIVE}{now_block}");
     let mut agent = Agent::from_config_for_agent_with_profile(
         &config,
         "orchestrator",
         None,
-        Some(MEET_VOICE_DIRECTIVE.to_string()),
+        Some(composed_suffix),
     )
     .map_err(|e| format!("[meet-agent] orchestrator build failed: {e}"))?;
 
