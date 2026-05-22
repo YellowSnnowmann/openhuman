@@ -45,6 +45,12 @@ use super::wav;
 /// wait, so the user cannot spawn parallel queries by re-asking.
 const AGENTIC_TURN_TIMEOUT_SECS: u64 = 90;
 
+/// Spoken filler played immediately after wake-word fires, before the
+/// (possibly slow) orchestrator+tool path runs. Bridges the 30-60s
+/// silence on slow integration paths. Kept short (~1s synth) so it
+/// doesn't intrude on fast greetings / time questions.
+const PREROLL_ACK_PHRASE: &str = "On it.";
+
 /// How many of the most recent `Heard` / `Spoke` events we feed back
 /// into the LLM as rolling conversation context. 12 ≈ a few minutes of
 /// captioned dialogue — enough for the model to follow a thread without
@@ -134,6 +140,32 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
         history.len(),
         was_bare_wake,
     );
+
+    // Pre-roll filler. The orchestrator + integration tools take
+    // 30–60s on slow paths (Slack / Gmail / Calendar). Without an
+    // immediate acoustic cue, the user assumes the bot is broken and
+    // re-asks (which the turn_in_progress gate now blocks but still
+    // burns the call atmosphere). Speak a 2-word ack right away and
+    // enqueue with done=false so the real reply appends cleanly when
+    // it lands. If the agent path returns < 1s (greeting, time
+    // question), the user hears "On it. <real reply>" — slightly
+    // redundant but not annoying. On slow paths the ack covers
+    // exactly the dead air it was designed for.
+    if !was_bare_wake {
+        if let Ok(ack_pcm) = tts(PREROLL_ACK_PHRASE).await {
+            let _ = registry().with_session(request_id, |s| {
+                s.enqueue_outbound_pcm(&ack_pcm, false);
+            });
+            log::info!(
+                "[meet-agent] pre-roll ack queued request_id={request_id} samples={}",
+                ack_pcm.len()
+            );
+        } else {
+            log::debug!(
+                "[meet-agent] pre-roll ack synth failed request_id={request_id} — skipping pre-roll"
+            );
+        }
+    }
 
     // Route the turn through the FULL orchestrator agent first — it
     // owns the user's connected integrations, memory tree, MCP
