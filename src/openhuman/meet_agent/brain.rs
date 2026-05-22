@@ -32,11 +32,44 @@
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use tokio::sync::Mutex as TokioMutex;
 
 use super::session::registry;
 use super::types::{SessionEvent, SessionEventKind};
 use super::wav;
+
+use crate::openhuman::agent::harness::session::Agent;
+
+/// Process-wide cache of orchestrator Agents keyed by `request_id`.
+/// Each meet session reuses the same Agent across all its turns so
+/// the harness's in-memory `Agent.history` accumulates and the
+/// orchestrator can recall prior dialogue ("did I tell you to
+/// remember Friday?", "what did Alice say earlier?"). Without the
+/// cache each turn builds a fresh Agent, loses the prior turn's
+/// memory, and pays the 5-10s build cost every time.
+///
+/// Locked with `tokio::sync::Mutex` because we hold the inner
+/// `Arc<TokioMutex<Agent>>` lock across `run_single().await` —
+/// std::sync::Mutex cannot be held across await without breaking
+/// Send + leaking the lock on cancel.
+static AGENT_CACHE: OnceLock<TokioMutex<HashMap<String, Arc<TokioMutex<Agent>>>>> = OnceLock::new();
+
+fn agent_cache() -> &'static TokioMutex<HashMap<String, Arc<TokioMutex<Agent>>>> {
+    AGENT_CACHE.get_or_init(|| TokioMutex::new(HashMap::new()))
+}
+
+/// Drop the cached orchestrator for a meet session. Called from
+/// `handle_stop_session` so a finished call doesn't leak the Agent
+/// (each one carries memory tree + tool registry handles).
+pub async fn forget_session_agent(request_id: &str) {
+    let mut guard = agent_cache().lock().await;
+    if guard.remove(request_id).is_some() {
+        log::info!("[meet-agent] dropped cached orchestrator for request_id={request_id}");
+    }
+}
 
 /// Wall-clock ceiling on one agentic turn. Slack / Gmail fetches via
 /// Composio + per-message filtering + iteration-2 synthesis can hit
@@ -480,71 +513,56 @@ fn short_id(id: &str) -> String {
 /// registry / token issue degrades to a polite reply instead of
 /// dead air.
 async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, String> {
-    use crate::openhuman::agent::harness::session::Agent;
+    // Get-or-build the per-meet cached Agent. First wake of a meet
+    // builds the orchestrator once (memory tree + MCP + tools — 5-10s
+    // cold); subsequent wakes reuse the same instance, so its
+    // in-memory history accumulates and the orchestrator can recall
+    // earlier dialogue without disk-resume corruption tripping the
+    // tool_calls / tool_message API constraint.
+    let agent_lock = get_or_build_agent_for_meet(request_id).await?;
 
-    let config = crate::openhuman::config::ops::load_config_with_timeout().await?;
+    // Lock for the duration of the turn. The lock is per-meet, so
+    // two distinct meet sessions can run agents in parallel; within
+    // one meet, turn_in_progress already prevents reentrancy. Held
+    // across run_single().await — that's why we use tokio::sync::Mutex.
+    let mut agent = agent_lock.lock().await;
 
-    // Use the with_profile builder — same canonical path the web
-    // channel (chat UI) uses at channels/providers/web.rs:1570. This
-    // is what wires the user's connected integrations + delegation
-    // tools onto the orchestrator. The plain `from_config_for_agent`
-    // builds with zero integrations attached. `profile_prompt_suffix`
-    // is the established hook for per-channel system-prompt
-    // augmentation — the web channel uses it for the locale-reply
-    // directive; we use it for the voice-frontend directive.
-    // Compose the system-prompt suffix with the static voice directive
-    // plus a tiny "right-now context" block so the model can answer
-    // "what time is it / what's today's date" without a tool dispatch
-    // (no clock tool exists; without this the bot says "I don't know").
+    // Per-turn refresh of the time-context block. The voice directive
+    // is baked into the system prompt at build time; the clock has
+    // to update each turn or the bot will tell the user it's still
+    // 2am ten minutes later. Prepend the time block to the user
+    // utterance instead of touching the system prompt suffix (which
+    // we can't change without rebuilding the Agent).
     let now_local = chrono::Local::now();
-    let now_block = format!(
-        "\n\nRIGHT-NOW CONTEXT (use directly for time / date questions):\n\
-         - Current local date/time: {}\n\
-         - Current weekday: {}\n\
-         - Timezone offset: {}\n\
-         Trust this block for time questions; do NOT call a tool to look up the clock.",
+    let time_block = format!(
+        "[RIGHT-NOW CONTEXT — current local time: {} ({}), tz {}. \
+         Use this directly for any time/date question; do not call a tool.]",
         now_local.format("%Y-%m-%d %H:%M:%S"),
         now_local.format("%A"),
         now_local.format("%:z"),
     );
-    let composed_suffix = format!("{MEET_VOICE_DIRECTIVE}{now_block}");
-    let mut agent = Agent::from_config_for_agent_with_profile(
-        &config,
-        "orchestrator",
-        None,
-        Some(composed_suffix),
-    )
-    .map_err(|e| format!("[meet-agent] orchestrator build failed: {e}"))?;
+    let user_message = format!("{time_block}\n\n{prompt}");
 
-    // Per-meet event context so the harness scopes its session
-    // transcript to this request_id instead of colliding with the
-    // chat-UI thread. Without this, two simultaneous orchestrators
-    // (chat + meet) share one transcript file.
-    // Per-turn unique definition_name. The harness auto-resumes prior
-    // transcripts when a definition_name matches a file on disk; if
-    // an earlier turn was killed mid-tool-call, the file ends with a
-    // dangling `tool_calls` assistant message and the LLM rejects
-    // the next request with 400 "tool_calls must be followed by tool
-    // messages". Per-turn naming bypasses resume entirely. Memory
-    // across turns is a follow-up (Arc<Mutex<Agent>> cache); for
-    // now each turn is stateless from the harness's perspective but
-    // tools still query real systems.
+    // Per-turn unique definition_name for the transcript file. The
+    // Agent's in-memory history persists across turns (cache); only
+    // the on-disk transcript filename rolls per turn so a kill
+    // mid-tool-call doesn't poison the next process's resume path.
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    agent.set_event_context(format!("meet_{request_id}"), "meet_agent");
     agent.set_agent_definition_name(format!(
         "orchestrator_meet_{}_{now_ms}",
         short_id(request_id)
     ));
 
     log::info!(
-        "[meet-agent] agentic turn dispatch request_id={request_id} prompt_chars={}",
-        prompt.chars().count()
+        "[meet-agent] agentic turn dispatch request_id={request_id} prompt_chars={} cached_history_msgs={}",
+        prompt.chars().count(),
+        agent.history().len(),
     );
 
-    let fut = agent.run_single(prompt);
+    let fut = agent.run_single(&user_message);
     let reply = match tokio::time::timeout(
         Duration::from_secs(AGENTIC_TURN_TIMEOUT_SECS),
         fut,
@@ -557,7 +575,7 @@ async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, S
         }
         Err(_elapsed) => {
             log::warn!(
-                "[meet-agent] agentic turn timed out request_id={request_id} after {}s — falling back",
+                "[meet-agent] agentic turn timed out request_id={request_id} after {}s — speaking polite ack",
                 AGENTIC_TURN_TIMEOUT_SECS
             );
             return Err(format!(
@@ -567,6 +585,49 @@ async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Result<String, S
     };
 
     Ok(strip_for_speech(&reply))
+}
+
+/// Get the cached orchestrator for this meet, or build it on first
+/// call. Returns an `Arc<TokioMutex<Agent>>` so the caller can lock
+/// across the run_single().await.
+async fn get_or_build_agent_for_meet(
+    request_id: &str,
+) -> Result<Arc<TokioMutex<Agent>>, String> {
+    {
+        let cache = agent_cache().lock().await;
+        if let Some(existing) = cache.get(request_id) {
+            return Ok(existing.clone());
+        }
+    }
+
+    // Cold build. Use the with_profile builder — same canonical path
+    // the web channel (chat UI) uses at channels/providers/web.rs:1570,
+    // which is what wires the user's connected integrations + delegation
+    // tools. profile_prompt_suffix carries the meet voice directive.
+    let config = crate::openhuman::config::ops::load_config_with_timeout().await?;
+    let mut agent = Agent::from_config_for_agent_with_profile(
+        &config,
+        "orchestrator",
+        None,
+        Some(MEET_VOICE_DIRECTIVE.to_string()),
+    )
+    .map_err(|e| format!("[meet-agent] orchestrator build failed: {e}"))?;
+
+    // Per-meet event context so the harness scopes its observability
+    // events to this request_id instead of colliding with the chat UI.
+    agent.set_event_context(format!("meet_{request_id}"), "meet_agent");
+    agent.set_agent_definition_name(format!("orchestrator_meet_{}", short_id(request_id)));
+
+    log::info!(
+        "[meet-agent] orchestrator built + cached for request_id={request_id}"
+    );
+
+    let arc = Arc::new(TokioMutex::new(agent));
+    agent_cache()
+        .lock()
+        .await
+        .insert(request_id.to_string(), arc.clone());
+    Ok(arc)
 }
 
 /// Build a chat-completions request from rolling meeting history plus

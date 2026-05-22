@@ -147,6 +147,11 @@ pub async fn handle_stop_session(params: Map<String, Value>) -> Result<Value, St
         .map_err(|e| format!("{LOG_PREFIX} invalid stop_session params: {e}"))?;
 
     let session = registry().stop(&req.request_id)?;
+    // Drop the cached orchestrator Agent for this meet so we don't
+    // leak its memory tree + tool registry handles after the call
+    // ends. The next start_session with the same request_id (rare
+    // but possible) will cold-build a fresh Agent.
+    super::brain::forget_session_agent(&req.request_id).await;
     log::info!(
         "{LOG_PREFIX} stop_session request_id={} listened={:.2}s spoken={:.2}s turns={}",
         session.request_id,
