@@ -1,10 +1,8 @@
-import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
-import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
-import { waitForWebView, waitForWindowVisible } from '../helpers/element-helpers';
+import { waitForApp } from '../helpers/app-helpers';
 import { supportsExecuteScript } from '../helpers/platform';
+import { resetApp } from '../helpers/reset-app';
 import {
   clickAddAccountProvider,
-  completeOnboardingIfVisible,
   navigateViaHash,
   openAddAccountModal,
   waitForAccountsPage,
@@ -42,6 +40,7 @@ function stepLog(message: string, context?: unknown): void {
 
 describe('WhatsApp account integration smoke', () => {
   before(async function beforeSuite() {
+    this.timeout(90_000);
     if (!supportsExecuteScript()) {
       stepLog('Skipping suite on Mac2 — Accounts rail not mapped for Appium');
       this.skip();
@@ -51,12 +50,8 @@ describe('WhatsApp account integration smoke', () => {
     await startMockServer();
     stepLog('waiting for app');
     await waitForApp();
-    stepLog('triggering auth bypass deep link');
-    await triggerAuthDeepLinkBypass('e2e-whatsapp-flow');
-    await waitForWindowVisible(25_000);
-    await waitForWebView(15_000);
-    await waitForAppReady(15_000);
-    await completeOnboardingIfVisible('[WhatsAppFlowE2E]');
+    stepLog('resetting app');
+    await resetApp('e2e-whatsapp-flow');
   });
 
   after(async () => {

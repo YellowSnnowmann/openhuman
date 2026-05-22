@@ -11,11 +11,11 @@
  */
 import { waitForApp } from '../helpers/app-helpers';
 import { textExists, waitForText } from '../helpers/element-helpers';
+import { resetApp } from '../helpers/reset-app';
 import {
   navigateToBilling,
   navigateToHome,
   navigateToSettings,
-  performFullLogin,
 } from '../helpers/shared-flows';
 import { clearRequestLog, startMockServer, stopMockServer } from '../mock-server';
 
@@ -25,15 +25,12 @@ describe('Card Payment Flow', () => {
   before(async () => {
     await startMockServer();
     await waitForApp();
+    await resetApp('e2e-card-payment-token');
     clearRequestLog();
   });
 
   after(async () => {
     await stopMockServer();
-  });
-
-  it('login and reach home', async () => {
-    await performFullLogin('e2e-card-payment-token');
   });
 
   it('5.1 — billing panel shows "moved to web" redirect page', async function () {
