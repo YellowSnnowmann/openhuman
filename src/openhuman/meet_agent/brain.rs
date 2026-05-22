@@ -180,11 +180,17 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     // re-asks (which the turn_in_progress gate now blocks but still
     // burns the call atmosphere). Speak a 2-word ack right away and
     // enqueue with done=false so the real reply appends cleanly when
-    // it lands. If the agent path returns < 1s (greeting, time
-    // question), the user hears "On it. <real reply>" — slightly
-    // redundant but not annoying. On slow paths the ack covers
-    // exactly the dead air it was designed for.
-    if !was_bare_wake {
+    // it lands.
+    //
+    // Skip pre-roll on short prompts: greetings ("hi"), checks ("can
+    // you hear me", "are you there"), time questions ("what's the
+    // time"), and other trivial asks the agent answers in 2-5s
+    // without tools — those don't need the ack, and "On it. Yes, I
+    // can hear you" sounds redundant. The 50-char threshold is a
+    // rough proxy; real second-brain questions ("am I free Friday
+    // afternoon for a 30 min slot") are almost always longer.
+    const PREROLL_SKIP_PROMPT_CHARS: usize = 50;
+    if !was_bare_wake && prompt.chars().count() > PREROLL_SKIP_PROMPT_CHARS {
         if let Ok(ack_pcm) = tts(PREROLL_ACK_PHRASE).await {
             let _ = registry().with_session(request_id, |s| {
                 s.enqueue_outbound_pcm(&ack_pcm, false);
