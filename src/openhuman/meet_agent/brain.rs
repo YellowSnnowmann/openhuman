@@ -185,13 +185,66 @@ fn classify_unauthorized_intent(caption_text: &str) -> UnauthorizedIntent {
 }
 
 /// Output of `classify_unauthorized_intent`. Drives whether the
-/// soft-deny turn speaks a friendly hi-back or a polite refusal.
+/// non-owner turn speaks a canned hi-back or routes the prompt
+/// through a toolless LLM (general-knowledge + safe deflection).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UnauthorizedIntent {
     /// Just a greeting — bot says hi back without offering tools.
     Greeting,
-    /// Real task ask — refuse + tell the owner how to grant.
+    /// Substantive question. Route to a toolless LLM with a strict
+    /// system prompt — answer general knowledge / casual chat,
+    /// refuse anything that would require the owner's personal
+    /// tools or data, and point the owner at the magic word
+    /// ("allow") if access is needed.
     TaskAsk,
+}
+
+/// System prompt for the non-owner branch. The LLM has no tool
+/// surface attached and is told to refuse any request that would
+/// need the owner's personal data. Kept short and explicit so the
+/// model doesn't ad-lib a different boundary.
+fn non_owner_system_prompt(owner: &str) -> String {
+    let owner_label = if owner.trim().is_empty() {
+        "the meeting host"
+    } else {
+        owner.trim()
+    };
+    format!("\
+You are openhuman, an AI participant in a live Google Meet call. The speaker is NOT the call \
+owner — the owner is {owner_label}.\n\
+\n\
+WHAT YOU MAY DO:\n\
+- Answer general knowledge questions (history, science, math, definitions, weather concepts).\n\
+- Casual conversation, jokes, small talk, greetings.\n\
+- Explain what you are and what you can do at a high level.\n\
+\n\
+WHAT YOU MUST REFUSE (no exceptions):\n\
+- Anything that would require {owner_label}'s personal data: their Slack, Gmail, Calendar, \
+contacts, memory notes, files, schedule, integrations, or chat history.\n\
+- Sending messages, scheduling, reminding, creating, modifying or deleting any data on their \
+behalf.\n\
+- Revealing what {owner_label} has previously told you or stored with you.\n\
+\n\
+WHEN REFUSING: respond with exactly one short sentence pointing at the magic word, e.g. \
+\"That needs {owner_label}'s permission — {owner_label}, say 'allow' if you'd like me to help.\"\n\
+\n\
+OUTPUT FORMAT (strict):\n\
+- ONE short spoken sentence, max 25 words.\n\
+- Plain English. No markdown, bullets, code fences, or URLs.\n\
+- No meta-narration (\"I should…\", \"Let me…\", \"As an AI…\"). Just answer.\n\
+- Respond in ENGLISH ONLY regardless of the speaker's language — TTS is English-only.\n\
+")
+}
+
+/// Route a non-owner caption through the toolless chat-v1 LLM.
+/// Returns the spoken text — the caller TTS's it and enqueues.
+async fn llm_general_no_tools(prompt: &str, owner: &str) -> Result<String, String> {
+    let system_prompt = non_owner_system_prompt(owner);
+    // No rolling history for the non-owner path — each ask is a
+    // fresh conversation. Sharing history between owner turns and
+    // non-owner turns risks leaking the owner's tool-call results
+    // into a stranger-facing reply.
+    llm_meeting_basic(prompt, &[], &system_prompt).await
 }
 
 /// Friendly hi-back canned line when a non-owner just greets the
@@ -328,9 +381,34 @@ pub async fn run_soft_deny_turn(
         .with_session(request_id, |s| s.owner_display_name().to_string())
         .unwrap_or_default();
     let intent = classify_unauthorized_intent(caption_text);
+    // Greeting → canned hi (no network round-trip needed).
+    // TaskAsk  → toolless LLM. The LLM has no tools attached, has
+    //            an explicit "refuse personal-data asks" system
+    //            prompt, and is asked to point the owner at the
+    //            magic word when refusing. So a Q like "what's
+    //            the capital of France" lands as a normal answer
+    //            ("Paris"), while "read Nikhil's Slack" lands as
+    //            the refusal. The LLM picks; we don't classify.
     let message = match intent {
         UnauthorizedIntent::Greeting => friendly_greeting_message(asker),
-        UnauthorizedIntent::TaskAsk => soft_deny_message(asker, &owner),
+        UnauthorizedIntent::TaskAsk => match llm_general_no_tools(caption_text, &owner).await {
+            Ok(reply) if !reply.trim().is_empty() => reply,
+            Ok(_) => {
+                // Empty reply = LLM declined silently. Fall back to
+                // the explicit canned refusal so the speaker hears
+                // *something* and knows the bot didn't crash.
+                log::info!(
+                    "[meet-agent] non-owner LLM returned empty — using canned refusal request_id={request_id}"
+                );
+                soft_deny_message(asker, &owner)
+            }
+            Err(err) => {
+                log::warn!(
+                    "[meet-agent] non-owner LLM failed request_id={request_id} err={err}"
+                );
+                soft_deny_message(asker, &owner)
+            }
+        },
     };
     log::info!(
         "[meet-agent] soft-deny request_id={request_id} asker=\"{asker}\" owner=\"{owner}\" intent={intent:?}"
@@ -919,7 +997,11 @@ async fn get_or_build_agent_for_meet(request_id: &str) -> Result<Arc<TokioMutex<
 /// gives memory/tool/integration access; this bare path only gets
 /// the rolling caption history. Acceptable degradation so the bot
 /// doesn't go silent in a config-degraded environment.
-async fn llm_meeting_basic(prompt: &str, history: &[ConversationTurn]) -> Result<String, String> {
+async fn llm_meeting_basic(
+    prompt: &str,
+    history: &[ConversationTurn],
+    system_prompt: &str,
+) -> Result<String, String> {
     use crate::api::config::effective_backend_api_url;
     use crate::api::jwt::get_session_token;
     use crate::api::BackendOAuthClient;
@@ -935,7 +1017,7 @@ async fn llm_meeting_basic(prompt: &str, history: &[ConversationTurn]) -> Result
     let client = BackendOAuthClient::new(&api_url).map_err(|e| e.to_string())?;
 
     let mut messages: Vec<Value> = Vec::with_capacity(history.len() + 2);
-    messages.push(json!({ "role": "system", "content": MEETING_SYSTEM_PROMPT }));
+    messages.push(json!({ "role": "system", "content": system_prompt }));
     for turn in history {
         messages.push(json!({ "role": turn.role, "content": turn.content }));
     }

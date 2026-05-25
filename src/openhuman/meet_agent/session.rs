@@ -46,15 +46,20 @@ pub enum CaptionOutcome {
 /// ask") without leaving the gate softened indefinitely.
 const PENDING_GRANT_WINDOW_MS: u64 = 120_000;
 
-/// Minimum gap between consecutive soft-deny dispatches. Meet's STT
+/// Minimum gap between consecutive non-owner dispatches. Meet's STT
 /// re-transcribes the same utterance with slight wording jitter
 /// ("Openhuman. I open." → "Openhuman. High openhum." →
 /// "Openhuman. High Openhuman.") so per-text dedup misses the
-/// duplicates and fires a fresh refusal on each variant. This
-/// session-wide cooldown caps the soft-deny TTS to one dispatch
-/// per minute regardless of caption variation. 2026-05-25 smoke
-/// hit the loop repeatedly without this.
-const UNAUTHORIZED_COOLDOWN_MS: u64 = 60_000;
+/// duplicates. Without a session-wide rate limit each variant
+/// would fire a fresh LLM + TTS round-trip.
+///
+/// Set at 20s (vs the prior 60s) so a non-owner can actually
+/// engage in back-and-forth conversation — the toolless LLM
+/// answers general questions now, so a 1-minute gate would feel
+/// like the bot has gone deaf between asks. 20s is long enough
+/// to cover Meet's STT replay window while letting real new
+/// utterances through. 2026-05-25 smoke matrix.
+const UNAUTHORIZED_COOLDOWN_MS: u64 = 20_000;
 
 /// Cap on the inbound buffer so a runaway shell push (e.g. shell never
 /// stops, brain never drains) can't grow memory unboundedly. 30s @ 16kHz
