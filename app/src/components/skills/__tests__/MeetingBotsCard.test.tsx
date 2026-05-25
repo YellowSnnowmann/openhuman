@@ -58,17 +58,25 @@ describe('MeetingBotsCard', () => {
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/abc-defg-hij' },
     });
+    // Owner display name is now required — the wake-word gate refuses
+    // every caption when this is empty (privacy lock), so the submit
+    // button stays disabled and the test would hang on form submit
+    // without typing a value here.
+    fireEvent.change(screen.getByLabelText(/your name in the call/i), {
+      target: { value: 'Alice' },
+    });
     const form = screen.getByRole('dialog').querySelector('form')!;
     fireEvent.submit(form);
 
-    // Flow A's joinMeetCall takes { meetUrl, displayName }. The component
-    // synthesises displayName from the user profile; the test asserts on
-    // meetUrl + the presence of a displayName field rather than its exact
-    // value (which would couple the test to the auth-fixture seam).
+    // Flow A's joinMeetCall takes { meetUrl, displayName, ownerDisplayName }.
+    // Assert on the owner name (the new privacy-lock contract) and meetUrl;
+    // the bot displayName is a UI-supplied default and not contract-load-
+    // bearing for this assertion.
     await vi.waitFor(() => {
       expect(joinMock).toHaveBeenCalledWith(
         expect.objectContaining({
           meetUrl: 'https://meet.google.com/abc-defg-hij',
+          ownerDisplayName: 'Alice',
         })
       );
     });
@@ -94,6 +102,9 @@ describe('MeetingBotsCard', () => {
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/x' },
+    });
+    fireEvent.change(screen.getByLabelText(/your name in the call/i), {
+      target: { value: 'Alice' },
     });
     fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
 

@@ -114,6 +114,13 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const [platform, setPlatform] = useState<MascotMeetPlatform>('gmeet');
   const [meetUrl, setMeetUrl] = useState('');
   const [displayName, setDisplayName] = useState('OpenHuman');
+  // Privacy lock: the bot will only react to the wake word when this
+  // exact name is the speaker in Meet's captions. Anyone else who
+  // says "hey openhuman …" is silently ignored — preventing a
+  // remote participant from issuing tool calls in the owner's
+  // name. Empty fails closed; the submit handler will surface an
+  // explicit error before opening the CEF window.
+  const [ownerDisplayName, setOwnerDisplayName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -143,7 +150,13 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       // installs the audio/video bridges via CDP, then meet_scanner
       // drives the join automatically. Returns once the window has
       // been created — meet_audio + meet_scanner take it from there.
-      await joinMeetCall({ meetUrl, displayName });
+      //
+      // ownerDisplayName is the privacy lock: the wake-word gate in
+      // the core only accepts captions whose speaker matches this
+      // value (case-insensitive, "(host)" / "(you)" suffix stripped).
+      // Anyone else in the room saying the wake phrase is dropped
+      // without dispatching a tool turn.
+      await joinMeetCall({ meetUrl, displayName, ownerDisplayName });
       onToast?.({
         type: 'success',
         title: t('skills.meetingBots.joiningTitle'),
@@ -244,6 +257,29 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               />
             </label>
 
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+                Your name in the call
+              </span>
+              <input
+                type="text"
+                value={ownerDisplayName}
+                onChange={e => setOwnerDisplayName(e.target.value)}
+                maxLength={64}
+                placeholder="As shown in Google Meet (e.g. Nikhil Bajaj)"
+                disabled={isComingSoon || submitting}
+                aria-describedby="meeting-bots-owner-hint"
+                required
+                className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
+              />
+              <p
+                id="meeting-bots-owner-hint"
+                className="mt-1 text-[10px] leading-relaxed text-stone-500 dark:text-neutral-400">
+                Privacy lock. OpenHuman will only respond to the wake word when this exact name
+                is speaking — anyone else in the call cannot trigger tool calls in your name.
+              </p>
+            </label>
+
             {error && (
               <div
                 role="alert"
@@ -261,7 +297,9 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               </button>
               <button
                 type="submit"
-                disabled={submitting || isComingSoon || !meetUrl.trim()}
+                disabled={
+                  submitting || isComingSoon || !meetUrl.trim() || !ownerDisplayName.trim()
+                }
                 className="rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-stone-200 dark:disabled:bg-neutral-700 disabled:text-stone-400 dark:disabled:text-neutral-500">
                 {isComingSoon
                   ? `${selected.label} ${t('skills.meetingBots.comingSoon')}`
