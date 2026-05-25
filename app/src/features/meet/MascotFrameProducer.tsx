@@ -122,6 +122,16 @@ const ProducerSession: FC<{ session: BusSession }> = ({ session }) => {
   const stoppedRef = useRef(false);
   const inflightRef = useRef(false);
   const sentFramesRef = useRef(0);
+  // True while the bot is actively producing PCM into the Meet
+  // call. Drives the mascot's `talking` prop so the mouth visibly
+  // animates in time with the audio the participants hear. Source
+  // of truth lives in the Rust speak_pump (edge-detected from the
+  // RPC poll loop with a ~400ms hangover that bridges the natural
+  // gap between consecutive PCM chunks) — the producer just
+  // subscribes here and rerenders on flip. Same `requestId` we got
+  // from `meet-video:bus-started` so a stale event from a previous
+  // session can never bleed into this session's mascot state.
+  const [isSpeaking, setIsSpeaking] = useState(false);
   // Frame counter feeding our own FrameContext below. We DON'T use the
   // shared `<FrameProvider>` wrapper because it ticks via
   // requestAnimationFrame, which Chromium throttles when the main
@@ -313,8 +323,32 @@ const ProducerSession: FC<{ session: BusSession }> = ({ session }) => {
     worker.onmessage = onTick;
     worker.postMessage({ cmd: 'start', intervalMs });
 
+    // Subscribe to the speak_pump's speaking-state edge events.
+    // Done inside the existing effect (rather than a sibling useEffect)
+    // so the listener lifetime is bound to the same session.port — a
+    // session swap (rare; the producer keys on `session.requestId` and
+    // remounts) tears the listener down with the rest of the
+    // pipeline.
+    let unlistenSpeaking: UnlistenFn | undefined;
+    let speakingListenerCancelled = false;
+    listen<{ requestId?: string; speaking?: boolean }>('meet-video:speaking-state', event => {
+      const payload = event.payload;
+      if (!payload) return;
+      // Defensive: ignore events from a different session that might
+      // be in flight during a teardown / restart race.
+      if (payload.requestId && payload.requestId !== session.requestId) return;
+      setIsSpeaking(!!payload.speaking);
+    })
+      .then(stop => {
+        if (speakingListenerCancelled) stop();
+        else unlistenSpeaking = stop;
+      })
+      .catch(err => console.debug('[meet-video-producer] speaking-state listen failed', err));
+
     return () => {
       stoppedRef.current = true;
+      speakingListenerCancelled = true;
+      if (unlistenSpeaking) unlistenSpeaking();
       window.clearInterval(diagInterval);
       try {
         worker.postMessage({ cmd: 'stop' });
@@ -376,6 +410,10 @@ const ProducerSession: FC<{ session: BusSession }> = ({ session }) => {
         <FrameConfigContext.Provider value={frameConfig}>
           <FrameContext.Provider value={frame}>
             <YellowMascotIdle
+              // `face` is the icon overlay (normal eyes / recording dot
+              // / loading ring) — kept as 'normal' so the speaking
+              // animation lives on the `talking` prop alone, which
+              // drives the mouth-open shape every frame.
               face="normal"
               recordingColor="#ff3b30"
               loadingColor="#ffffff"
@@ -383,7 +421,10 @@ const ProducerSession: FC<{ session: BusSession }> = ({ session }) => {
               sleeping={false}
               mascotColor={mascotColor}
               arm="wave"
-              talking={false}
+              // Toggled by the speak_pump's edge-detector. The
+              // mascot's mouth animates open/closed in sync with
+              // the synthesized PCM the bot is feeding into Meet.
+              talking={isSpeaking}
               thinking={false}
             />
           </FrameContext.Provider>
