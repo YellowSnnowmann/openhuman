@@ -39,6 +39,12 @@ pub struct StartSessionRequest {
     /// posture.
     #[serde(default)]
     pub bot_display_name: String,
+    /// Normalised Meet URL the call joined. Persisted into the
+    /// recent-calls log so the UI can show "Joined `…/abc-defg-hij`
+    /// — 12 min ago". Defaulted so older shells that haven't been
+    /// updated to forward the URL still parse the payload.
+    #[serde(default)]
+    pub meet_url: String,
 }
 
 fn default_sample_rate() -> u32 {
@@ -127,6 +133,31 @@ pub struct PushCaptionResponse {
     /// True when this caption tripped the wake-word and a brain turn
     /// is now in flight.
     pub turn_started: bool,
+}
+
+/// Inputs to `openhuman.meet_agent_list_calls`.
+///
+/// Returns the most recently completed Meet calls (newest first) so
+/// the Skills "Meeting Bots" card can render a history list inside
+/// the same modal the user used to launch the call. Capped server-
+/// side at `store::MAX_RECENT_CALLS` so a misconfigured client
+/// can't request an unbounded read.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListCallsRequest {
+    /// Maximum rows to return. Defaults to 50 if absent. Hard cap
+    /// applied server-side regardless of what the caller asks for.
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+/// Outputs from `openhuman.meet_agent_list_calls`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ListCallsResponse {
+    pub ok: bool,
+    pub calls: Vec<super::store::MeetCallRecord>,
+    /// Number of rows in `calls`. Convenient for the UI when
+    /// rendering a header like "Recent calls (12)".
+    pub count: usize,
 }
 
 /// Inputs to `openhuman.meet_agent_stop_session`.

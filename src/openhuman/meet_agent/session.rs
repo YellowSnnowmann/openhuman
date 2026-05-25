@@ -120,6 +120,15 @@ pub struct MeetAgentSession {
     /// own voice). Empty until set; while empty the bot-self filter
     /// is inert.
     bot_display_name: String,
+    /// Normalised Meet URL the call joined. Snapshotted at start
+    /// so the recent-calls log captures which meeting this was
+    /// without forcing the frontend to keep an in-memory map.
+    meet_url: String,
+    /// Wall-clock ms when `start_session` ran. The session also
+    /// keeps `started_at: Instant` for monotonic elapsed-seconds
+    /// math, but the JSONL persistence layer needs an absolute
+    /// timestamp that can be sorted across process restarts.
+    started_at_ms: u64,
 }
 
 impl MeetAgentSession {
@@ -146,7 +155,34 @@ impl MeetAgentSession {
             last_turn_done_at_ms: 0,
             owner_display_name: String::new(),
             bot_display_name: String::new(),
+            meet_url: String::new(),
+            started_at_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
         }
+    }
+
+    /// Record the Meet URL the call joined. Stored alongside the
+    /// session so `stop_session` can write it into the JSONL
+    /// recent-calls log. Empty string acceptable (older shells that
+    /// don't yet forward the URL will simply log calls with an
+    /// empty `meet_url` field — the UI degrades gracefully).
+    pub fn set_meet_url(&mut self, meet_url: &str) {
+        self.meet_url = meet_url.trim().to_string();
+    }
+
+    /// Read accessors used when persisting the call record on
+    /// `stop_session`. Kept at the session boundary so the store
+    /// module doesn't have to reach into private fields.
+    pub fn meet_url(&self) -> &str {
+        &self.meet_url
+    }
+    pub fn bot_display_name(&self) -> &str {
+        &self.bot_display_name
+    }
+    pub fn started_at_ms(&self) -> u64 {
+        self.started_at_ms
     }
 
     /// Set the call-owner display name (the human who launched the
