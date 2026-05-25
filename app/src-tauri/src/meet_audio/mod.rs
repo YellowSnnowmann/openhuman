@@ -120,6 +120,11 @@ pub async fn start<R: Runtime>(
             "sample_rate_hz": 16_000,
             "owner_display_name": owner_display_name,
             "bot_display_name": bot_display_name,
+            // Persisted into the recent-calls JSONL by stop_session
+            // so the Skills "Meeting Bots" card can show "joined
+            // <code>" in the history list. The URL the shell built
+            // the CEF window with is the canonical value.
+            "meet_url": meet_url,
         }),
     )
     .await?;
