@@ -18,7 +18,7 @@ use crate::rpc::RpcOutcome;
 
 use super::brain;
 use super::ops::VadEvent;
-use super::session::registry;
+use super::session::{registry, CaptionOutcome};
 use super::store::{self, MeetCallRecord};
 use super::types::{
     ListCallsRequest, ListCallsResponse, PollSpeechRequest, PushCaptionRequest,
@@ -110,35 +110,63 @@ pub async fn handle_push_caption(params: Map<String, Value>) -> Result<Value, St
     // safe to leave on for now — captions are already broadcast to all
     // participants in the meeting; nothing here that isn't on the wire.
     let preview: String = req.text.chars().take(120).collect();
-    let wake_fired = registry().with_session(&req.request_id, |s| {
+    let outcome = registry().with_session(&req.request_id, |s| {
         s.note_caption(&req.speaker, &req.text, req.ts_ms)
     })?;
     log::info!(
-        "{LOG_PREFIX} push_caption request_id={} speaker={} text=\"{}\" wake_fired={}",
+        "{LOG_PREFIX} push_caption request_id={} speaker={} text=\"{}\" outcome={:?}",
         req.request_id,
         req.speaker,
         preview,
-        wake_fired,
+        outcome,
     );
 
-    if wake_fired {
-        log::info!(
-            "{LOG_PREFIX} wake word fired request_id={} speaker={}",
-            req.request_id,
-            req.speaker
-        );
-        let request_id = req.request_id.clone();
-        tokio::spawn(async move {
-            if let Err(err) = brain::run_caption_turn(&request_id).await {
-                log::warn!("{LOG_PREFIX} caption-turn failed request_id={request_id} err={err}");
-            }
-        });
+    // Branch on the gate's verdict:
+    //   - WakeFired         → kick the normal LLM+TTS turn
+    //   - UnauthorizedWake  → kick a soft-deny canned TTS turn so the
+    //                          non-owner gets an audible "sorry, only
+    //                          <owner> can ask" and the owner is told
+    //                          how to grant them access
+    //   - Ignored           → no audible response
+    let turn_started = matches!(outcome, CaptionOutcome::WakeFired);
+    match outcome {
+        CaptionOutcome::WakeFired => {
+            log::info!(
+                "{LOG_PREFIX} wake word fired request_id={} speaker={}",
+                req.request_id,
+                req.speaker
+            );
+            let request_id = req.request_id.clone();
+            tokio::spawn(async move {
+                if let Err(err) = brain::run_caption_turn(&request_id).await {
+                    log::warn!(
+                        "{LOG_PREFIX} caption-turn failed request_id={request_id} err={err}"
+                    );
+                }
+            });
+        }
+        CaptionOutcome::UnauthorizedWake { speaker } => {
+            log::info!(
+                "{LOG_PREFIX} unauthorized wake — soft-deny turn request_id={} speaker={}",
+                req.request_id,
+                speaker
+            );
+            let request_id = req.request_id.clone();
+            tokio::spawn(async move {
+                if let Err(err) = brain::run_soft_deny_turn(&request_id, &speaker).await {
+                    log::warn!(
+                        "{LOG_PREFIX} soft-deny turn failed request_id={request_id} err={err}"
+                    );
+                }
+            });
+        }
+        CaptionOutcome::Ignored => {}
     }
 
     RpcOutcome::new(
         json!({
             "ok": true,
-            "turn_started": wake_fired,
+            "turn_started": turn_started,
         }),
         vec![],
     )
