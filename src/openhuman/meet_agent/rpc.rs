@@ -145,7 +145,7 @@ pub async fn handle_push_caption(params: Map<String, Value>) -> Result<Value, St
                 }
             });
         }
-        CaptionOutcome::UnauthorizedWake { speaker } => {
+        CaptionOutcome::UnauthorizedWake { speaker, text } => {
             log::info!(
                 "{LOG_PREFIX} unauthorized wake — soft-deny turn request_id={} speaker={}",
                 req.request_id,
@@ -153,7 +153,7 @@ pub async fn handle_push_caption(params: Map<String, Value>) -> Result<Value, St
             );
             let request_id = req.request_id.clone();
             tokio::spawn(async move {
-                if let Err(err) = brain::run_soft_deny_turn(&request_id, &speaker).await {
+                if let Err(err) = brain::run_soft_deny_turn(&request_id, &speaker, &text).await {
                     log::warn!(
                         "{LOG_PREFIX} soft-deny turn failed request_id={request_id} err={err}"
                     );

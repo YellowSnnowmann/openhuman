@@ -32,12 +32,12 @@ pub enum CaptionOutcome {
     WakeFired,
     /// Wake phrase was detected from someone who is not the call
     /// owner (or on a session that hasn't had identities configured).
-    /// The caller should speak a polite refusal via
-    /// `brain::run_soft_deny_turn` rather than silently dropping —
-    /// silence makes the bot look broken; a single explicit "sorry,
-    /// only <owner> can ask" line clears the air and tells the owner
-    /// how to grant access if they'd like to.
-    UnauthorizedWake { speaker: String },
+    /// The caller should speak a polite refusal — or a friendly hi
+    /// when the tail is a greeting — via `brain::run_soft_deny_turn`
+    /// rather than silently dropping. Carries the full caption text
+    /// so the brain layer can classify intent (greeting vs task)
+    /// and pick the appropriate canned reply.
+    UnauthorizedWake { speaker: String, text: String },
 }
 
 /// How long after a denied wake the owner has to say "allow" before
@@ -45,6 +45,16 @@ pub enum CaptionOutcome {
 /// exchange ("hey openhuman" — refusal — owner: "go ahead, let them
 /// ask") without leaving the gate softened indefinitely.
 const PENDING_GRANT_WINDOW_MS: u64 = 120_000;
+
+/// Minimum gap between consecutive soft-deny dispatches. Meet's STT
+/// re-transcribes the same utterance with slight wording jitter
+/// ("Openhuman. I open." → "Openhuman. High openhum." →
+/// "Openhuman. High Openhuman.") so per-text dedup misses the
+/// duplicates and fires a fresh refusal on each variant. This
+/// session-wide cooldown caps the soft-deny TTS to one dispatch
+/// per minute regardless of caption variation. 2026-05-25 smoke
+/// hit the loop repeatedly without this.
+const UNAUTHORIZED_COOLDOWN_MS: u64 = 60_000;
 
 /// Cap on the inbound buffer so a runaway shell push (e.g. shell never
 /// stops, brain never drains) can't grow memory unboundedly. 30s @ 16kHz
@@ -156,6 +166,12 @@ pub struct MeetAgentSession {
     /// math, but the JSONL persistence layer needs an absolute
     /// timestamp that can be sorted across process restarts.
     started_at_ms: u64,
+    /// Wall-clock ms of the most recent soft-deny dispatch. Used
+    /// to enforce `UNAUTHORIZED_COOLDOWN_MS` so a non-owner whose
+    /// caption Meet re-transcribes with text variations doesn't
+    /// trigger a fresh soft-deny TTS on every variant. 0 = no
+    /// soft-deny has dispatched yet this call.
+    last_unauthorized_dispatch_at_ms: u64,
     /// Normalised name of the most recent non-owner speaker that
     /// tripped the wake word. Recorded so the owner can grant them
     /// access by saying "allow" / "let them" / "go ahead" within
@@ -196,6 +212,7 @@ impl MeetAgentSession {
             turn_in_progress: false,
             flush_pending: false,
             last_turn_done_at_ms: 0,
+            last_unauthorized_dispatch_at_ms: 0,
             owner_display_name: String::new(),
             bot_display_name: String::new(),
             meet_url: String::new(),
@@ -525,6 +542,29 @@ impl MeetAgentSession {
             // normal LLM turn.
             if !speaker_is_authorised {
                 let preview: String = text.chars().take(40).collect();
+                let now_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                // Session-wide soft-deny cooldown. Meet's STT
+                // re-transcribes the same utterance with wording
+                // jitter, slipping past the per-text dedup. Cap the
+                // refusal TTS to one dispatch per minute so the loop
+                // can't compound itself (and so rate-limits from the
+                // TTS backend don't fire either).
+                if self.last_unauthorized_dispatch_at_ms != 0
+                    && now_ms.saturating_sub(self.last_unauthorized_dispatch_at_ms)
+                        < UNAUTHORIZED_COOLDOWN_MS
+                {
+                    log::debug!(
+                        "[meet-agent] unauthorized_wake suppressed (cooldown) \
+                         request_id={} speaker=\"{}\" preview=\"{}\"",
+                        self.request_id,
+                        speaker,
+                        preview
+                    );
+                    return CaptionOutcome::Ignored;
+                }
                 log::info!(
                     "[meet-agent] unauthorized_wake_attempt request_id={} \
                      speaker=\"{}\" owner=\"{}\" preview=\"{}\"",
@@ -533,18 +573,17 @@ impl MeetAgentSession {
                     self.owner_display_name,
                     preview
                 );
+                self.last_unauthorized_dispatch_at_ms = now_ms;
                 // Record the pending grant request. The owner has
                 // PENDING_GRANT_WINDOW_MS to approve them via the
                 // "allow" / "let them" / "go ahead" pattern; after
                 // that the slot expires and the unauthorised speaker
                 // has to re-trigger the refusal to re-arm.
                 self.pending_unauthorized_speaker = Some(speaker.trim().to_string());
-                self.pending_unauthorized_at_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
+                self.pending_unauthorized_at_ms = now_ms;
                 return CaptionOutcome::UnauthorizedWake {
                     speaker: speaker.trim().to_string(),
+                    text: text.to_string(),
                 };
             }
             let after = idx + phrase.len();
@@ -984,7 +1023,8 @@ mod tests {
         assert_eq!(
             outcome,
             CaptionOutcome::UnauthorizedWake {
-                speaker: "Bob".into()
+                speaker: "Bob".into(),
+                text: "hey openhuman read alice's slack DMs".into(),
             },
             "non-owner wake must produce an UnauthorizedWake outcome"
         );
@@ -1062,6 +1102,29 @@ mod tests {
         // per-speaker dedup doesn't reject it.
         let granted = s.note_caption("Bob", "hey openhuman what's the weather", 2);
         assert_eq!(granted, CaptionOutcome::WakeFired);
+    }
+
+    #[test]
+    fn note_caption_unauthorized_wake_cooldown_blocks_text_variants() {
+        // Meet's STT re-transcribes the same utterance with text
+        // jitter ("Openhuman. I open." → "Openhuman. High openhum.")
+        // — the per-text dedup doesn't catch these because the
+        // strings differ. The session-wide soft-deny cooldown must
+        // gate subsequent variants from the same speaker so only
+        // one refusal TTS dispatches per minute regardless of
+        // STT churn.
+        let mut s = session_with_owner_alice();
+        let first = s.note_caption("Bob", "Openhuman. I open.", 1);
+        assert!(matches!(first, CaptionOutcome::UnauthorizedWake { .. }));
+        // Different text but same speaker → still cooled down.
+        let second = s.note_caption("Bob", "Openhuman. High openhum.", 2);
+        assert_eq!(second, CaptionOutcome::Ignored);
+        let third = s.note_caption("Bob", "Openhuman. High Openhuman.", 3);
+        assert_eq!(third, CaptionOutcome::Ignored);
+        // Different speaker also gated — soft-deny TTS slot is
+        // session-wide, not per-speaker.
+        let charlie = s.note_caption("Charlie", "openhuman hello", 4);
+        assert_eq!(charlie, CaptionOutcome::Ignored);
     }
 
     #[test]

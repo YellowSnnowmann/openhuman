@@ -118,6 +118,94 @@ const MIN_TURN_SAMPLES: usize = 4_000;
 /// the ops boundary check rejects anything else outright.
 const SAMPLE_RATE_HZ: u32 = super::ops::REQUIRED_SAMPLE_RATE;
 
+/// Classify a non-owner caption that tripped the wake word. The
+/// gate has already decided the speaker isn't authorised; this
+/// picks between a friendly hi-back (greeting / pleasantry) and
+/// a polite refusal (real task ask). Matching is conservative:
+/// when the post-wake tail is empty OR only contains greeting
+/// words, treat it as a greeting. Anything else is assumed to be
+/// a task ask.
+fn classify_unauthorized_intent(caption_text: &str) -> UnauthorizedIntent {
+    // Lift the bit of text that comes after the matched wake
+    // phrase so we don't get fooled by the wake itself ("hey
+    // openhuman" obviously contains "hey").
+    let lower = caption_text.to_ascii_lowercase();
+    let wake_phrases = [
+        "hey open human",
+        "hi open human",
+        "hello open human",
+        "hey openhuman",
+        "hi openhuman",
+        "hello openhuman",
+        "open human",
+        "openhuman",
+    ];
+    let tail = wake_phrases
+        .iter()
+        .filter_map(|p| lower.find(p).map(|i| &lower[i + p.len()..]))
+        .next()
+        .unwrap_or(&lower);
+    // Strip punctuation / common filler so "hi there!" reduces to
+    // ["hi", "there"]. Keeping the word list cheap and English-only
+    // for v1; the locale-aware story lands with multilingual TTS.
+    let words: Vec<&str> = tail
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.is_empty() {
+        return UnauthorizedIntent::Greeting;
+    }
+    const GREETING_WORDS: &[&str] = &[
+        "hi",
+        "hello",
+        "hey",
+        "yo",
+        "sup",
+        "howdy",
+        "greetings",
+        "hola",
+        "good",
+        "morning",
+        "afternoon",
+        "evening",
+        "night",
+        "there",
+        "everyone",
+        "all",
+        "folks",
+        "team",
+        "guys",
+        "yall",
+    ];
+    if words.iter().all(|w| GREETING_WORDS.contains(w)) {
+        UnauthorizedIntent::Greeting
+    } else {
+        UnauthorizedIntent::TaskAsk
+    }
+}
+
+/// Output of `classify_unauthorized_intent`. Drives whether the
+/// soft-deny turn speaks a friendly hi-back or a polite refusal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnauthorizedIntent {
+    /// Just a greeting — bot says hi back without offering tools.
+    Greeting,
+    /// Real task ask — refuse + tell the owner how to grant.
+    TaskAsk,
+}
+
+/// Friendly hi-back canned line when a non-owner just greets the
+/// bot. Kept short and warm; doesn't mention the owner / privacy
+/// gate at all — that's noise on a "hello".
+fn friendly_greeting_message(asker: &str) -> String {
+    let asker = asker.trim();
+    if asker.is_empty() {
+        "Hi there! Nice to meet you.".to_string()
+    } else {
+        format!("Hi {asker}! Nice to meet you.")
+    }
+}
+
 /// Spoken refusal when a non-owner trips the wake word. Built per
 /// call from the configured owner display name so the audible
 /// response names the actual person who has the keys, and tells
@@ -221,21 +309,31 @@ pub async fn run_grant_turn(request_id: &str, grantee: &str) -> Result<bool, Str
     Ok(true)
 }
 
-/// Soft-deny path: kick a polite refusal TTS reply when the wake
-/// word fires from a non-owner. Does NOT touch the orchestrator
-/// agent (no tool calls, no memory writes) — it's a single canned
-/// line, so the failure modes are limited to TTS errors.
+/// Soft-deny path: kick a canned-line TTS reply when the wake word
+/// fires from a non-owner. Branches on intent: a bare greeting gets
+/// a friendly hi-back; a substantive task ask gets the refusal that
+/// tells the owner how to grant access. Does NOT touch the
+/// orchestrator agent (no tool calls, no memory writes) — it's a
+/// single canned line, so the failure modes are limited to TTS errors.
 ///
-/// The session has already recorded the pending grant request
-/// inside `note_caption`, so all this routine has to do is
-/// synthesize + enqueue the line + log a transcript event.
-pub async fn run_soft_deny_turn(request_id: &str, asker: &str) -> Result<bool, String> {
+/// `caption_text` is the full caption from `note_caption` so we can
+/// classify intent here; the session has already recorded the
+/// pending grant request and dispatch timestamp.
+pub async fn run_soft_deny_turn(
+    request_id: &str,
+    asker: &str,
+    caption_text: &str,
+) -> Result<bool, String> {
     let owner = registry()
         .with_session(request_id, |s| s.owner_display_name().to_string())
         .unwrap_or_default();
-    let message = soft_deny_message(asker, &owner);
+    let intent = classify_unauthorized_intent(caption_text);
+    let message = match intent {
+        UnauthorizedIntent::Greeting => friendly_greeting_message(asker),
+        UnauthorizedIntent::TaskAsk => soft_deny_message(asker, &owner),
+    };
     log::info!(
-        "[meet-agent] soft-deny request_id={request_id} asker=\"{asker}\" owner=\"{owner}\""
+        "[meet-agent] soft-deny request_id={request_id} asker=\"{asker}\" owner=\"{owner}\" intent={intent:?}"
     );
     // Cancel any prior outbound so the refusal doesn't queue behind a
     // half-drained reply from a previous turn.
@@ -248,18 +346,24 @@ pub async fn run_soft_deny_turn(request_id: &str, asker: &str) -> Result<bool, S
         }
     };
     registry().with_session(request_id, |s| {
+        let kind = match intent {
+            UnauthorizedIntent::Greeting => "greeting",
+            UnauthorizedIntent::TaskAsk => "refusal",
+        };
         s.record_event(
             SessionEventKind::Note,
-            format!("soft-deny: {asker} attempted wake without owner approval"),
+            format!("soft-deny ({kind}): {asker} unauthorised wake"),
         );
         s.record_event(SessionEventKind::Spoke, message.clone());
         if !samples.is_empty() {
             s.enqueue_outbound_pcm(&samples, true);
         }
-        // Stamp turn-done so the min-turn-gap backstop covers the
-        // refusal the same way it covers a real reply. Without this,
-        // a chatty non-owner could re-trip the gate every few seconds.
-        s.mark_turn_done();
+        // NB: do NOT call `mark_turn_done` here — that's the
+        // owner-min-turn-gap stamp, and we want the owner to be
+        // able to wake (e.g. say "allow them") within seconds of a
+        // refusal. The session's own `UNAUTHORIZED_COOLDOWN_MS` is
+        // what guards against a soft-deny loop from the same
+        // non-owner speaker.
     })?;
     Ok(true)
 }
@@ -1309,6 +1413,55 @@ mod tests {
             "you can tell Bob",
         ] {
             assert!(looks_like_grant_intent(phrase), "should accept: {phrase}");
+        }
+    }
+
+    #[test]
+    fn classify_unauthorized_intent_treats_bare_wake_as_greeting() {
+        // Empty tail after the wake phrase — the non-owner just
+        // said "hey openhuman" with nothing else. Friendly hi-back
+        // is the right call, not a refusal.
+        assert_eq!(
+            classify_unauthorized_intent("hey openhuman"),
+            UnauthorizedIntent::Greeting
+        );
+        assert_eq!(
+            classify_unauthorized_intent("Hi openhuman."),
+            UnauthorizedIntent::Greeting
+        );
+    }
+
+    #[test]
+    fn classify_unauthorized_intent_treats_filler_as_greeting() {
+        // Common pleasantries that contain greeting words only.
+        for text in [
+            "hello openhuman there",
+            "hi openhuman everyone",
+            "hey openhuman hi",
+            "hey openhuman good morning",
+        ] {
+            assert_eq!(
+                classify_unauthorized_intent(text),
+                UnauthorizedIntent::Greeting,
+                "should be greeting: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn classify_unauthorized_intent_flags_task_asks() {
+        // Substantive task asks — refuse + tell owner how to grant.
+        for text in [
+            "hey openhuman read my slack",
+            "hi openhuman what's on alice's calendar",
+            "openhuman send the report",
+            "hello openhuman remember the launch",
+        ] {
+            assert_eq!(
+                classify_unauthorized_intent(text),
+                UnauthorizedIntent::TaskAsk,
+                "should be task: {text}"
+            );
         }
     }
 
