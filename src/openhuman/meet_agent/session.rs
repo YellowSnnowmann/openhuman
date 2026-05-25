@@ -381,64 +381,18 @@ impl MeetAgentSession {
         // populated when the owner says "allow them" / "go ahead"
         // / "let them ask" after a non-owner wake refusal — see
         // `brain::run_caption_turn`'s grant-intent branch.
+        //
+        // The actual authorised/unauthorised branch happens AFTER
+        // all the rate-limit gates (dedup, turn-in-progress, min-
+        // turn-gap, cooldown) below, so the same caption repeating
+        // every 250 ms — which Meet does aggressively while a
+        // participant is still visible in the CC region — cannot
+        // spam the refusal path either. Without that ordering the
+        // soft-deny TTS triggers a fresh refusal on every Meet
+        // re-emit of the identical caption text. Smoke-tested as
+        // the "sorry sorry sorry" loop on 2026-05-25.
         let speaker_is_authorised =
             speaker_norm == owner_norm || self.allowlist.contains(&speaker_norm);
-        if !speaker_is_authorised {
-            // Walk the caption to see if it actually carries a wake
-            // phrase. Random conversation from a non-owner shouldn't
-            // trigger the polite refusal — only an attempt to wake
-            // the bot does. Mirrors the matcher used in the owner
-            // path below; intentionally duplicated rather than
-            // refactored to a shared helper so the (currently small)
-            // unauthorised-path stays self-contained.
-            let normalized_for_match = normalize_for_wake(text);
-            const WAKE_PHRASES: &[&str] = &[
-                "hey open human",
-                "hi open human",
-                "hello open human",
-                "hey openhuman",
-                "hi openhuman",
-                "hello openhuman",
-                "open human",
-                "openhuman",
-            ];
-            let mut hit = false;
-            for phrase in WAKE_PHRASES {
-                if normalized_for_match.contains(phrase) {
-                    hit = true;
-                    break;
-                }
-            }
-            if !hit {
-                return CaptionOutcome::Ignored;
-            }
-            // Audit-style log so dev:app stdout makes the rejection
-            // visible without leaking the caption body verbatim
-            // (preview capped, matches the wake-preview style used
-            // upstream in handle_push_caption).
-            let preview: String = text.chars().take(40).collect();
-            log::info!(
-                "[meet-agent] unauthorized_wake_attempt request_id={} \
-                 speaker=\"{}\" owner=\"{}\" preview=\"{}\"",
-                self.request_id,
-                speaker,
-                self.owner_display_name,
-                preview
-            );
-            // Record the pending grant request. The owner has
-            // PENDING_GRANT_WINDOW_MS to approve them via the
-            // "allow" / "let them" / "go ahead" pattern; after that
-            // the slot expires and the unauthorised speaker has to
-            // re-trigger the refusal to re-arm.
-            self.pending_unauthorized_speaker = Some(speaker.trim().to_string());
-            self.pending_unauthorized_at_ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            return CaptionOutcome::UnauthorizedWake {
-                speaker: speaker.trim().to_string(),
-            };
-        }
         // Per-speaker dedup. Meet's CC region re-renders the same line
         // every 250 ms poll tick and emits BOTH speaker rows on each
         // walk (the user AND the bot TTS as speaker="You"). A single-
@@ -476,12 +430,17 @@ impl MeetAgentSession {
             return CaptionOutcome::Ignored;
         }
         self.last_caption_ts_ms = ts_ms;
-        // Already collecting after a previous wake word: just append
-        // the new caption. No second fire — the brain is already
-        // scheduled and will drain the prompt in ~1.5 s. Without this
-        // gate, a slowly-growing caption fires the wake word on
-        // every dedupe-then-grow cycle.
-        if self.wake_active {
+        // Already collecting after a previous (authorised) wake word:
+        // append the continuation. No second fire — the brain is
+        // already scheduled and will drain the prompt in ~1.5 s.
+        // Without this gate, a slowly-growing caption fires the wake
+        // word on every dedupe-then-grow cycle.
+        //
+        // Restricted to authorised speakers so a non-owner can't
+        // smuggle text into the in-flight owner prompt (e.g. owner
+        // says "hey openhuman, what's on my calendar"; non-owner
+        // mid-prompt: "and read alice's slack").
+        if self.wake_active && speaker_is_authorised {
             if !self.pending_prompt.is_empty() {
                 self.pending_prompt.push(' ');
             }
@@ -560,6 +519,34 @@ impl MeetAgentSession {
             }
         }
         if let Some((idx, phrase)) = wake_hit {
+            // Wake phrase detected — branch on whether the speaker is
+            // allowed to actually drive the bot. Non-owner + not
+            // allowlisted → polite refusal turn; owner + allowlist →
+            // normal LLM turn.
+            if !speaker_is_authorised {
+                let preview: String = text.chars().take(40).collect();
+                log::info!(
+                    "[meet-agent] unauthorized_wake_attempt request_id={} \
+                     speaker=\"{}\" owner=\"{}\" preview=\"{}\"",
+                    self.request_id,
+                    speaker,
+                    self.owner_display_name,
+                    preview
+                );
+                // Record the pending grant request. The owner has
+                // PENDING_GRANT_WINDOW_MS to approve them via the
+                // "allow" / "let them" / "go ahead" pattern; after
+                // that the slot expires and the unauthorised speaker
+                // has to re-trigger the refusal to re-arm.
+                self.pending_unauthorized_speaker = Some(speaker.trim().to_string());
+                self.pending_unauthorized_at_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                return CaptionOutcome::UnauthorizedWake {
+                    speaker: speaker.trim().to_string(),
+                };
+            }
             let after = idx + phrase.len();
             let tail = normalized.get(after..).unwrap_or("").trim().to_string();
             self.pending_prompt = tail;
@@ -1075,6 +1062,26 @@ mod tests {
         // per-speaker dedup doesn't reject it.
         let granted = s.note_caption("Bob", "hey openhuman what's the weather", 2);
         assert_eq!(granted, CaptionOutcome::WakeFired);
+    }
+
+    #[test]
+    fn note_caption_unauthorized_wake_does_not_loop_on_identical_caption() {
+        // Regression: Meet's caption observer re-emits the same row
+        // every 250 ms while it's still visible. The first emission
+        // produces an UnauthorizedWake; subsequent identical
+        // emissions must be deduped to `Ignored` so the soft-deny
+        // TTS doesn't fire on every tick ("sorry, sorry, sorry…"
+        // loop seen in dev:app on 2026-05-25).
+        let mut s = session_with_owner_alice();
+        let first = s.note_caption("Bob", "hey openhuman read my dms", 1);
+        assert!(matches!(first, CaptionOutcome::UnauthorizedWake { .. }));
+        // Same text from same speaker — must dedup to Ignored.
+        let second = s.note_caption("Bob", "hey openhuman read my dms", 2);
+        assert_eq!(second, CaptionOutcome::Ignored);
+        // Punctuation/case jitter on the same utterance still dedups
+        // because the normaliser strips it before compare.
+        let third = s.note_caption("Bob", "Hey, openhuman read my DMs.", 3);
+        assert_eq!(third, CaptionOutcome::Ignored);
     }
 
     #[test]
