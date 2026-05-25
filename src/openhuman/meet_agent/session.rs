@@ -871,11 +871,7 @@ mod tests {
         // The bot must never wake on its own voice — regardless of
         // the text content, including text that happens to repeat the
         // wake phrase.
-        let fired = s.note_caption(
-            "OpenHuman",
-            "hey openhuman would you like to know more",
-            1,
-        );
+        let fired = s.note_caption("OpenHuman", "hey openhuman would you like to know more", 1);
         assert!(!fired, "bot-self caption must be filtered");
     }
 

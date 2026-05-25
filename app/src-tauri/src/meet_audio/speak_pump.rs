@@ -209,9 +209,7 @@ impl SpeakingTracker {
                 "[meet-audio] speaking-state emit failed request_id={request_id} speaking={next} err={err}"
             );
         } else {
-            log::debug!(
-                "[meet-audio] speaking-state -> {next} request_id={request_id}"
-            );
+            log::debug!("[meet-audio] speaking-state -> {next} request_id={request_id}");
         }
     }
 }
