@@ -157,8 +157,10 @@ fn looks_like_grant_intent(prompt: &str) -> bool {
     // Whole-prompt matches first so short approvals ("allow", "yes")
     // don't collide with longer prompts that happen to start with
     // the same word.
-    matches!(p.as_str(), "allow" | "yes" | "ok" | "okay" | "go ahead" | "let them in" | "let them ask" | "permit")
-        || p.starts_with("allow ")
+    matches!(
+        p.as_str(),
+        "allow" | "yes" | "ok" | "okay" | "go ahead" | "let them in" | "let them ask" | "permit"
+    ) || p.starts_with("allow ")
         || p.starts_with("let them")
         || p.starts_with("let him")
         || p.starts_with("let her")
@@ -1267,7 +1269,10 @@ mod tests {
         let line = soft_deny_message("Bob", "Alice");
         assert!(line.contains("Bob"), "must address the asker: {line}");
         assert!(line.contains("Alice"), "must name the owner: {line}");
-        assert!(line.to_lowercase().contains("allow"), "must hint the magic word: {line}");
+        assert!(
+            line.to_lowercase().contains("allow"),
+            "must hint the magic word: {line}"
+        );
     }
 
     #[test]
@@ -1276,7 +1281,10 @@ mod tests {
         // not a templated stub with empty placeholders.
         let line = soft_deny_message("", "");
         assert!(!line.is_empty());
-        assert!(!line.contains("{"), "must not leak format placeholders: {line}");
+        assert!(
+            !line.contains("{"),
+            "must not leak format placeholders: {line}"
+        );
     }
 
     #[test]
