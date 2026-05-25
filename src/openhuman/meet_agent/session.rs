@@ -10,7 +10,7 @@
 //! live in a process-wide `OnceLock<Mutex<HashMap<...>>>`. The locking
 //! pattern matches `meet_call::MeetCallState` on the shell side.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -18,6 +18,33 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 
 use super::ops::{self, Vad, VadEvent};
 use super::types::{SessionEvent, SessionEventKind};
+
+/// What `note_caption` decided to do with a caption. Replaces the
+/// prior boolean return so the RPC layer can branch between the
+/// "fire a normal LLM turn", "speak a polite refusal", and "do
+/// nothing" paths without re-doing the gate logic out-of-band.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaptionOutcome {
+    /// Caption was dropped: not a wake, dedupped, cooled down, or
+    /// during a turn-in-flight. No audible response.
+    Ignored,
+    /// Wake fired and the caller should kick `brain::run_caption_turn`.
+    WakeFired,
+    /// Wake phrase was detected from someone who is not the call
+    /// owner (or on a session that hasn't had identities configured).
+    /// The caller should speak a polite refusal via
+    /// `brain::run_soft_deny_turn` rather than silently dropping —
+    /// silence makes the bot look broken; a single explicit "sorry,
+    /// only <owner> can ask" line clears the air and tells the owner
+    /// how to grant access if they'd like to.
+    UnauthorizedWake { speaker: String },
+}
+
+/// How long after a denied wake the owner has to say "allow" before
+/// the grant request expires. 2 minutes is enough for a back-and-forth
+/// exchange ("hey openhuman" — refusal — owner: "go ahead, let them
+/// ask") without leaving the gate softened indefinitely.
+const PENDING_GRANT_WINDOW_MS: u64 = 120_000;
 
 /// Cap on the inbound buffer so a runaway shell push (e.g. shell never
 /// stops, brain never drains) can't grow memory unboundedly. 30s @ 16kHz
@@ -129,6 +156,22 @@ pub struct MeetAgentSession {
     /// math, but the JSONL persistence layer needs an absolute
     /// timestamp that can be sorted across process restarts.
     started_at_ms: u64,
+    /// Normalised name of the most recent non-owner speaker that
+    /// tripped the wake word. Recorded so the owner can grant them
+    /// access by saying "allow" / "let them" / "go ahead" within
+    /// `PENDING_GRANT_WINDOW_MS` of the refusal. Cleared once a
+    /// grant lands or the window elapses.
+    pending_unauthorized_speaker: Option<String>,
+    /// Wall-clock ms when `pending_unauthorized_speaker` was set.
+    /// The owner has `PENDING_GRANT_WINDOW_MS` from this point to
+    /// approve the asker.
+    pending_unauthorized_at_ms: u64,
+    /// Speakers (normalised display names) the owner has explicitly
+    /// allowed to wake the bot during this call. Wake gate accepts
+    /// captions whose speaker matches the owner OR appears here.
+    /// Resets on `stop_session` (the registry drops the whole
+    /// session). Empty by default — grants are opt-in per call.
+    allowlist: HashSet<String>,
 }
 
 impl MeetAgentSession {
@@ -160,7 +203,45 @@ impl MeetAgentSession {
                 .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0),
+            pending_unauthorized_speaker: None,
+            pending_unauthorized_at_ms: 0,
+            allowlist: HashSet::new(),
         }
+    }
+
+    /// Add a speaker to the per-call allowlist. The wake gate
+    /// thereafter accepts captions from this speaker just like it
+    /// would from the owner — single source of truth so the
+    /// granted user can ask follow-up questions without saying
+    /// "allow" each time. Stored using the normalised name so
+    /// Meet's punctuation/case jitter doesn't reset the grant.
+    pub fn allow_speaker(&mut self, speaker_display_name: &str) {
+        let norm = normalise_participant_name(speaker_display_name);
+        if !norm.is_empty() {
+            self.allowlist.insert(norm);
+        }
+    }
+
+    /// Consume the pending unauthorized speaker if still inside the
+    /// grant window. Returns the display name (in its normalised
+    /// form) so the brain layer can both grant them access and name
+    /// them in the spoken confirmation ("Okay, <name> can ask me").
+    /// Returns `None` when no pending grant exists or the window
+    /// has already elapsed.
+    pub fn take_pending_unauthorized(&mut self) -> Option<String> {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let candidate = self.pending_unauthorized_speaker.take()?;
+        if now_ms.saturating_sub(self.pending_unauthorized_at_ms) > PENDING_GRANT_WINDOW_MS {
+            // Stale grant — drop without surfacing. The owner would
+            // need to re-trigger the refusal flow to re-arm.
+            self.pending_unauthorized_at_ms = 0;
+            return None;
+        }
+        self.pending_unauthorized_at_ms = 0;
+        Some(candidate)
     }
 
     /// Record the Meet URL the call joined. Stored alongside the
@@ -238,9 +319,9 @@ impl MeetAgentSession {
     /// the match in the same caption is treated as the start of the
     /// prompt; subsequent captions append until `take_pending_prompt`
     /// drains.
-    pub fn note_caption(&mut self, speaker: &str, text: &str, ts_ms: u64) -> bool {
+    pub fn note_caption(&mut self, speaker: &str, text: &str, ts_ms: u64) -> CaptionOutcome {
         if text.trim().is_empty() {
-            return false;
+            return CaptionOutcome::Ignored;
         }
         // Drop noise captions from Meet's local-user / UI affordances.
         // `speaker=="You"` is Meet's label for the local participant
@@ -252,7 +333,7 @@ impl MeetAgentSession {
         // eating the prompt budget and producing endless speech.
         let speaker_lower = speaker.trim().to_lowercase();
         if speaker_lower == "you" || speaker_lower.is_empty() {
-            return false;
+            return CaptionOutcome::Ignored;
         }
         // Privacy gate — owner-only wake.
         //
@@ -280,7 +361,7 @@ impl MeetAgentSession {
         // owner check so a (very contrived) bot_display_name ==
         // owner_display_name still doesn't let the bot wake itself.
         if !bot_norm.is_empty() && speaker_norm == bot_norm {
-            return false;
+            return CaptionOutcome::Ignored;
         }
         // Fail-closed when no owner has been configured. A live
         // session without a known owner is by definition unsafe —
@@ -293,9 +374,44 @@ impl MeetAgentSession {
                 self.request_id,
                 speaker
             );
-            return false;
+            return CaptionOutcome::Ignored;
         }
-        if speaker_norm != owner_norm {
+        // Treat owner + previously-granted allowlist members as
+        // authorised speakers for wake purposes. The allowlist is
+        // populated when the owner says "allow them" / "go ahead"
+        // / "let them ask" after a non-owner wake refusal — see
+        // `brain::run_caption_turn`'s grant-intent branch.
+        let speaker_is_authorised =
+            speaker_norm == owner_norm || self.allowlist.contains(&speaker_norm);
+        if !speaker_is_authorised {
+            // Walk the caption to see if it actually carries a wake
+            // phrase. Random conversation from a non-owner shouldn't
+            // trigger the polite refusal — only an attempt to wake
+            // the bot does. Mirrors the matcher used in the owner
+            // path below; intentionally duplicated rather than
+            // refactored to a shared helper so the (currently small)
+            // unauthorised-path stays self-contained.
+            let normalized_for_match = normalize_for_wake(text);
+            const WAKE_PHRASES: &[&str] = &[
+                "hey open human",
+                "hi open human",
+                "hello open human",
+                "hey openhuman",
+                "hi openhuman",
+                "hello openhuman",
+                "open human",
+                "openhuman",
+            ];
+            let mut hit = false;
+            for phrase in WAKE_PHRASES {
+                if normalized_for_match.contains(phrase) {
+                    hit = true;
+                    break;
+                }
+            }
+            if !hit {
+                return CaptionOutcome::Ignored;
+            }
             // Audit-style log so dev:app stdout makes the rejection
             // visible without leaking the caption body verbatim
             // (preview capped, matches the wake-preview style used
@@ -309,7 +425,19 @@ impl MeetAgentSession {
                 self.owner_display_name,
                 preview
             );
-            return false;
+            // Record the pending grant request. The owner has
+            // PENDING_GRANT_WINDOW_MS to approve them via the
+            // "allow" / "let them" / "go ahead" pattern; after that
+            // the slot expires and the unauthorised speaker has to
+            // re-trigger the refusal to re-arm.
+            self.pending_unauthorized_speaker = Some(speaker.trim().to_string());
+            self.pending_unauthorized_at_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            return CaptionOutcome::UnauthorizedWake {
+                speaker: speaker.trim().to_string(),
+            };
         }
         // Per-speaker dedup. Meet's CC region re-renders the same line
         // every 250 ms poll tick and emits BOTH speaker rows on each
@@ -328,7 +456,7 @@ impl MeetAgentSession {
         let normalised = normalise_for_dedup(text);
         if let Some(prev) = self.last_caption_by_speaker.get(&key) {
             if prev == &normalised {
-                return false;
+                return CaptionOutcome::Ignored;
             }
         }
         self.last_caption_by_speaker.insert(key, normalised);
@@ -345,7 +473,7 @@ impl MeetAgentSession {
                 SessionEventKind::Heard,
                 format!("{speaker}: {text} (suppressed: turn_in_progress)"),
             );
-            return false;
+            return CaptionOutcome::Ignored;
         }
         self.last_caption_ts_ms = ts_ms;
         // Already collecting after a previous wake word: just append
@@ -358,7 +486,7 @@ impl MeetAgentSession {
                 self.pending_prompt.push(' ');
             }
             self.pending_prompt.push_str(text.trim());
-            return false;
+            return CaptionOutcome::Ignored;
         }
         // Min-turn-gap backstop. Even if the page-side caption
         // cooldown window expires, refuse to start a new turn
@@ -381,7 +509,7 @@ impl MeetAgentSession {
                     MIN_TURN_GAP_MS
                 ),
             );
-            return false;
+            return CaptionOutcome::Ignored;
         }
         // In cooldown after a recent turn — Meet keeps the same
         // utterance visible for several seconds, so without this
@@ -397,7 +525,7 @@ impl MeetAgentSession {
                     format!("{speaker}: {text}")
                 },
             );
-            return false;
+            return CaptionOutcome::Ignored;
         }
         // Normalize before matching: Meet's STT punctuates the wake
         // phrase ("hey, openhuman"), capitalizes mid-sentence, and
@@ -440,7 +568,7 @@ impl MeetAgentSession {
                 SessionEventKind::Note,
                 format!("wake word from speaker={speaker}"),
             );
-            return true;
+            return CaptionOutcome::WakeFired;
         }
         // Outside a wake context, just record the line for the
         // transcript log. Useful for debugging "why didn't the agent
@@ -454,7 +582,7 @@ impl MeetAgentSession {
                 format!("{speaker}: {text}")
             },
         );
-        false
+        CaptionOutcome::Ignored
     }
 
     /// Drain the assembled wake-word prompt and clear the active
@@ -806,8 +934,8 @@ mod tests {
     fn note_caption_handles_punctuated_wake() {
         let mut s = session_with_owner_alice();
         // Meet often inserts a comma after "hey".
-        let fired = s.note_caption("Alice", "Hey, OpenHuman remember the launch", 1);
-        assert!(fired, "punctuated wake phrase should still fire");
+        let outcome = s.note_caption("Alice", "Hey, OpenHuman remember the launch", 1);
+        assert_eq!(outcome, CaptionOutcome::WakeFired);
         let prompt = s.take_pending_prompt().expect("prompt drained");
         assert_eq!(prompt, "remember the launch");
     }
@@ -815,8 +943,8 @@ mod tests {
     #[test]
     fn note_caption_handles_split_brand() {
         let mut s = session_with_owner_alice();
-        let fired = s.note_caption("Alice", "hey open-human, send the report", 1);
-        assert!(fired);
+        let outcome = s.note_caption("Alice", "hey open-human, send the report", 1);
+        assert_eq!(outcome, CaptionOutcome::WakeFired);
         let prompt = s.take_pending_prompt().expect("prompt drained");
         assert_eq!(prompt, "send the report");
     }
@@ -825,9 +953,13 @@ mod tests {
     fn note_caption_does_not_double_fire_on_growing_caption() {
         let mut s = session_with_owner_alice();
         let first = s.note_caption("Alice", "hey openhuman take notes", 1);
-        assert!(first);
+        assert_eq!(first, CaptionOutcome::WakeFired);
         let second = s.note_caption("Alice", "hey openhuman take notes about the launch", 2);
-        assert!(!second, "second caption while wake_active must not refire");
+        assert_eq!(
+            second,
+            CaptionOutcome::Ignored,
+            "second caption while wake_active must not refire"
+        );
         let prompt = s.take_pending_prompt().expect("prompt drained");
         // First wake stripped "hey openhuman"; the continuation
         // appended the WHOLE growing caption (still containing "hey
@@ -858,10 +990,27 @@ mod tests {
     fn note_caption_rejects_non_owner_speaker() {
         let mut s = session_with_owner_alice();
         // Bob is in the room but not the owner; even with a perfect
-        // wake phrase the gate must refuse.
-        let fired = s.note_caption("Bob", "hey openhuman read alice's slack DMs", 1);
-        assert!(!fired, "non-owner must not wake the bot");
+        // wake phrase the gate must refuse with a soft-deny outcome
+        // (so the bot can speak a polite refusal) rather than
+        // silently ignoring.
+        let outcome = s.note_caption("Bob", "hey openhuman read alice's slack DMs", 1);
+        assert_eq!(
+            outcome,
+            CaptionOutcome::UnauthorizedWake { speaker: "Bob".into() },
+            "non-owner wake must produce an UnauthorizedWake outcome"
+        );
+        // Soft-deny path doesn't drain the wake prompt — the brain
+        // only synthesises a canned refusal line.
         assert!(s.take_pending_prompt().is_none());
+    }
+
+    #[test]
+    fn note_caption_non_owner_without_wake_phrase_is_ignored() {
+        // Random chatter from a non-owner shouldn't trigger the
+        // refusal — only an actual attempt to wake the bot does.
+        let mut s = session_with_owner_alice();
+        let outcome = s.note_caption("Bob", "hey did you watch the game last night", 1);
+        assert_eq!(outcome, CaptionOutcome::Ignored);
     }
 
     #[test]
@@ -870,9 +1019,12 @@ mod tests {
         // Meet often re-captions the bot's own TTS in the same region.
         // The bot must never wake on its own voice — regardless of
         // the text content, including text that happens to repeat the
-        // wake phrase.
-        let fired = s.note_caption("OpenHuman", "hey openhuman would you like to know more", 1);
-        assert!(!fired, "bot-self caption must be filtered");
+        // wake phrase. Bot-self caption is `Ignored` (no audible
+        // response at all) rather than `UnauthorizedWake` — surfacing
+        // a soft-deny here would create an infinite loop where the
+        // refusal triggers its own bot-self caption.
+        let outcome = s.note_caption("OpenHuman", "hey openhuman would you like to know more", 1);
+        assert_eq!(outcome, CaptionOutcome::Ignored);
     }
 
     #[test]
@@ -881,8 +1033,8 @@ mod tests {
         // speaker. Mirrors the misconfigured-launch posture: better
         // silent failure than an open mic for the user's tool surface.
         let mut s = MeetAgentSession::new("p".into(), 16_000);
-        let fired = s.note_caption("Alice", "hey openhuman do the thing", 1);
-        assert!(!fired, "empty owner must fail-closed");
+        let outcome = s.note_caption("Alice", "hey openhuman do the thing", 1);
+        assert_eq!(outcome, CaptionOutcome::Ignored);
     }
 
     #[test]
@@ -892,8 +1044,8 @@ mod tests {
         // gate still recognises Alice when Meet renders her as
         // "Alice (host)".
         let mut s = session_with_owner_alice();
-        let fired = s.note_caption("Alice (host)", "hey openhuman take a note", 1);
-        assert!(fired, "owner with parenthetical decorator must match");
+        let outcome = s.note_caption("Alice (host)", "hey openhuman take a note", 1);
+        assert_eq!(outcome, CaptionOutcome::WakeFired);
     }
 
     #[test]
@@ -902,8 +1054,39 @@ mod tests {
         // entered in lowercase, or vice versa. The comparison must
         // be case-insensitive.
         let mut s = session_with_owner_alice();
-        let fired = s.note_caption("ALICE", "hey openhuman summarise", 1);
-        assert!(fired, "owner match must be case-insensitive");
+        let outcome = s.note_caption("ALICE", "hey openhuman summarise", 1);
+        assert_eq!(outcome, CaptionOutcome::WakeFired);
+    }
+
+    #[test]
+    fn allowlist_grants_subsequent_wakes() {
+        // After the owner grants Bob via `allow_speaker`, Bob's
+        // next wake-phrase caption should fire just like the
+        // owner's — no soft-deny, no Ignored.
+        let mut s = session_with_owner_alice();
+        // First attempt without a grant is soft-deny:
+        let denied = s.note_caption("Bob", "hey openhuman read slack", 1);
+        assert!(matches!(denied, CaptionOutcome::UnauthorizedWake { .. }));
+        // Owner grants Bob:
+        s.allow_speaker("Bob");
+        // Bob now wakes successfully. Use a different text so the
+        // per-speaker dedup doesn't reject it.
+        let granted = s.note_caption("Bob", "hey openhuman what's the weather", 2);
+        assert_eq!(granted, CaptionOutcome::WakeFired);
+    }
+
+    #[test]
+    fn take_pending_unauthorized_returns_within_window() {
+        // The soft-deny path records the speaker so the owner can
+        // grant them shortly after. Inside the window we get the
+        // name back; we'd need to fast-forward time to test the
+        // expiry path, so just assert the in-window happy path here.
+        let mut s = session_with_owner_alice();
+        let _ = s.note_caption("Bob", "hey openhuman list my emails", 1);
+        let pending = s.take_pending_unauthorized();
+        assert_eq!(pending.as_deref(), Some("Bob"));
+        // Consumed — second take returns None.
+        assert!(s.take_pending_unauthorized().is_none());
     }
 
     #[test]
