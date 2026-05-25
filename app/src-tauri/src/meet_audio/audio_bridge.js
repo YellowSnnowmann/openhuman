@@ -133,6 +133,16 @@
       var src = ctx.createBufferSource();
       src.buffer = buffer;
       src.connect(dest);
+      // Also pipe to the page's default audio output so the bot is
+      // audible on the host machine (the openhuman app's speakers).
+      // Without this, bot audio only flows up Meet's gUM intercept
+      // and the user has to be receiving the meeting on a separate
+      // endpoint (other browser tab / phone) to hear it. Playing
+      // locally too costs nothing audio-quality-wise and removes the
+      // "captions appear but no sound" foot-gun. Follow-up #20
+      // (mute bot CEF at OS level) will re-introduce a clean off
+      // switch once we have a config toggle.
+      src.connect(ctx.destination);
       // Schedule strictly after the previous chunk so successive
       // 100 ms feeds line up gaplessly. If the queue has emptied
       // (caller fell behind), restart at currentTime so we don't try
