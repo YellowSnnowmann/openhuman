@@ -113,6 +113,48 @@ export async function closeMeetCall(requestId: string): Promise<boolean> {
 }
 
 /**
+ * One completed Meet call as persisted by the core in the JSONL
+ * recent-calls log (written by `handle_stop_session`). Same shape
+ * as `MeetCallRecord` in `src/openhuman/meet_agent/store.rs` —
+ * snake_case fields because the core surfaces them verbatim.
+ */
+export interface MeetCallRecord {
+  request_id: string;
+  meet_url: string;
+  bot_display_name: string;
+  owner_display_name: string;
+  started_at_ms: number;
+  ended_at_ms: number;
+  listened_seconds: number;
+  spoken_seconds: number;
+  turn_count: number;
+}
+
+interface CoreListCallsResponse {
+  ok: boolean;
+  calls: MeetCallRecord[];
+  count: number;
+}
+
+/**
+ * Fetch the most recent completed Meet calls (newest first). Used
+ * by the Skills "Meeting Bots" modal to render a history list
+ * underneath the join form. Returns an empty array on a fresh
+ * install (no recorded calls yet) — the core treats a missing
+ * JSONL file as "no rows" rather than an error.
+ */
+export async function listMeetCalls(limit = 20): Promise<MeetCallRecord[]> {
+  const result = await callCoreRpc<CoreListCallsResponse>({
+    method: 'openhuman.meet_agent_list_calls',
+    params: { limit },
+  });
+  if (!result?.ok) {
+    throw new Error('Core rejected the meet_agent_list_calls request.');
+  }
+  return result.calls ?? [];
+}
+
+/**
  * Backend-driven meet bot join (PR tinyhumansai/backend#773).
  *
  * Hits `POST /mascots/join-meeting` which:

@@ -41,23 +41,29 @@ describe('joinMeetCall', () => {
     const result = await joinMeetCall({
       meetUrl: 'https://meet.google.com/abc-defg-hij',
       displayName: 'Agent Alice',
+      ownerDisplayName: 'Owner Bob',
     });
 
     expect(callCoreRpc).toHaveBeenCalledWith({
       method: 'openhuman.meet_join_call',
       params: { meet_url: 'https://meet.google.com/abc-defg-hij', display_name: 'Agent Alice' },
     });
+    // owner_display_name is forwarded to the shell (not to the core's
+    // meet_join_call, which is stateless validation only) — assert on
+    // the shell args, not the core RPC params.
     expect(invoke).toHaveBeenCalledWith('meet_call_open_window', {
       args: {
         request_id: 'req-1',
         meet_url: 'https://meet.google.com/abc-defg-hij',
         display_name: 'Agent Alice',
+        owner_display_name: 'Owner Bob',
       },
     });
     expect(result).toEqual({
       requestId: 'req-1',
       meetUrl: 'https://meet.google.com/abc-defg-hij',
       displayName: 'Agent Alice',
+      ownerDisplayName: 'Owner Bob',
       windowLabel: 'meet-call-req-1',
     });
   });
@@ -65,7 +71,11 @@ describe('joinMeetCall', () => {
   it('throws if core rejects the request', async () => {
     vi.mocked(callCoreRpc).mockResolvedValueOnce({ ok: false } as never);
     await expect(
-      joinMeetCall({ meetUrl: 'https://meet.google.com/abc-defg-hij', displayName: 'Agent Alice' })
+      joinMeetCall({
+        meetUrl: 'https://meet.google.com/abc-defg-hij',
+        displayName: 'Agent Alice',
+        ownerDisplayName: 'Owner Bob',
+      })
     ).rejects.toThrow(/Core rejected/);
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -80,8 +90,28 @@ describe('joinMeetCall', () => {
     } as never);
 
     await expect(
-      joinMeetCall({ meetUrl: 'https://meet.google.com/abc-defg-hij', displayName: 'Agent Alice' })
+      joinMeetCall({
+        meetUrl: 'https://meet.google.com/abc-defg-hij',
+        displayName: 'Agent Alice',
+        ownerDisplayName: 'Owner Bob',
+      })
     ).rejects.toThrow(/desktop app/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty owner_display_name as a privacy-lock guard', async () => {
+    // Privacy lock: empty owner would fail closed at the core wake
+    // gate (no captions ever wake the bot). Surface the requirement
+    // up front so the user doesn't sit through a join only to find
+    // the bot silent — see feat/mascot-meet-flowA Plan C.
+    await expect(
+      joinMeetCall({
+        meetUrl: 'https://meet.google.com/abc-defg-hij',
+        displayName: 'Agent Alice',
+        ownerDisplayName: '   ',
+      })
+    ).rejects.toThrow(/your own name/i);
+    expect(callCoreRpc).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
   });
 });
