@@ -21,6 +21,24 @@ pub struct StartSessionRequest {
     /// sending. Validated on entry.
     #[serde(default = "default_sample_rate")]
     pub sample_rate_hz: u32,
+    /// Display name of the call owner — the human who launched the
+    /// bot. Used by the wake-word gate in [`crate::openhuman::meet_agent::session`]
+    /// as the *only* speaker allowed to issue tool calls. Captions
+    /// from any other participant are dropped without recording an
+    /// event. Empty string fails closed (no wake fires) so a
+    /// misconfigured shell can never expose the user's tool surface.
+    /// Defaulted so older shells / smoke tests that don't yet set
+    /// the field still parse the payload.
+    #[serde(default)]
+    pub owner_display_name: String,
+    /// Display name the bot uses as its Meet participant tile.
+    /// Captions whose `speaker` matches this name are treated as the
+    /// bot's own TTS echoing back and dropped — without an explicit
+    /// filter the bot would re-wake on its own voice. Empty disables
+    /// the filter; dedup + cooldown still apply but it's a weaker
+    /// posture.
+    #[serde(default)]
+    pub bot_display_name: String,
 }
 
 fn default_sample_rate() -> u32 {

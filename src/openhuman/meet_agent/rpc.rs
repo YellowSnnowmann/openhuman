@@ -31,10 +31,24 @@ pub async fn handle_start_session(params: Map<String, Value>) -> Result<Value, S
         .map_err(|e| format!("{LOG_PREFIX} invalid start_session params: {e}"))?;
 
     registry().start(&req.request_id, req.sample_rate_hz)?;
+    // Install the call-owner identity before any captions can arrive.
+    // The session is created with empty identities — which deliberately
+    // fails closed in note_caption — so racing a push_caption against
+    // this with_session call would simply drop the early caption rather
+    // than leak it. Done as a second step (vs threading through
+    // `start`) so the registry's start signature stays unchanged and
+    // existing callers (legacy shell variants, smoke tests) don't have
+    // to be updated in lockstep.
+    registry().with_session(&req.request_id, |s| {
+        s.set_identities(&req.owner_display_name, &req.bot_display_name);
+    })?;
     log::info!(
-        "{LOG_PREFIX} start_session request_id={} sample_rate_hz={}",
+        "{LOG_PREFIX} start_session request_id={} sample_rate_hz={} \
+         owner_chars={} bot_chars={}",
         req.request_id,
-        req.sample_rate_hz
+        req.sample_rate_hz,
+        req.owner_display_name.chars().count(),
+        req.bot_display_name.chars().count()
     );
 
     RpcOutcome::new(
