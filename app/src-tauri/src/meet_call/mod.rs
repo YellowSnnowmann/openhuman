@@ -81,7 +81,18 @@ impl Default for MeetCallState {
 pub struct OpenWindowArgs {
     pub request_id: String,
     pub meet_url: String,
+    /// Bot's Meet participant tile name — what the bot types into
+    /// Meet's "Your name" input. Also passed to the core wake gate
+    /// so the bot's own captioned TTS is filtered out as self-echo.
     pub display_name: String,
+    /// Call owner's Meet participant name — the human who launched
+    /// the bot. The core wake-word gate (privacy lock: only the
+    /// owner can trigger tool calls) compares speaker captions
+    /// against this value. Defaulted to empty so callers staged
+    /// during the rollout window keep parsing; an empty owner
+    /// fails closed in core (no wakes fire).
+    #[serde(default)]
+    pub owner_display_name: String,
 }
 
 /// Open a dedicated top-level CEF webview window pointed at the Meet URL.
@@ -237,10 +248,17 @@ pub async fn meet_call_open_window<R: Runtime>(
         let app_for_audio = app.clone();
         let request_id_for_audio = request_id.clone();
         let url_for_audio = parsed.to_string();
+        let bot_for_audio = args.display_name.clone();
+        let owner_for_audio = args.owner_display_name.clone();
         tauri::async_runtime::spawn(async move {
-            if let Err(err) =
-                crate::meet_audio::start(app_for_audio, request_id_for_audio.clone(), url_for_audio)
-                    .await
+            if let Err(err) = crate::meet_audio::start(
+                app_for_audio,
+                request_id_for_audio.clone(),
+                url_for_audio,
+                owner_for_audio,
+                bot_for_audio,
+            )
+            .await
             {
                 log::warn!(
                     "[meet-call] meet_audio start failed request_id={request_id_for_audio} err={err}"
