@@ -209,7 +209,8 @@ fn non_owner_system_prompt(owner: &str) -> String {
     } else {
         owner.trim()
     };
-    format!("\
+    format!(
+        "\
 You are openhuman, an AI participant in a live Google Meet call. The speaker is NOT the call \
 owner — the owner is {owner_label}.\n\
 \n\
@@ -233,7 +234,8 @@ OUTPUT FORMAT (strict):\n\
 - Plain English. No markdown, bullets, code fences, or URLs.\n\
 - No meta-narration (\"I should…\", \"Let me…\", \"As an AI…\"). Just answer.\n\
 - Respond in ENGLISH ONLY regardless of the speaker's language — TTS is English-only.\n\
-")
+"
+    )
 }
 
 /// Route a non-owner caption through the toolless chat-v1 LLM.
@@ -403,9 +405,7 @@ pub async fn run_soft_deny_turn(
                 soft_deny_message(asker, &owner)
             }
             Err(err) => {
-                log::warn!(
-                    "[meet-agent] non-owner LLM failed request_id={request_id} err={err}"
-                );
+                log::warn!("[meet-agent] non-owner LLM failed request_id={request_id} err={err}");
                 soft_deny_message(asker, &owner)
             }
         },
