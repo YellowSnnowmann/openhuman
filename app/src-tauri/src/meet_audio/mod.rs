@@ -180,7 +180,7 @@ pub async fn start<R: Runtime>(
                     caption_listener_disabled(request_id.clone())
                 }
             };
-            let speak = speak_pump::start(request_id.clone(), cdp, session);
+            let speak = speak_pump::start(app.clone(), request_id.clone(), cdp, session);
             (speak, captions)
         }
         Err(err) => {
