@@ -118,6 +118,150 @@ const MIN_TURN_SAMPLES: usize = 4_000;
 /// the ops boundary check rejects anything else outright.
 const SAMPLE_RATE_HZ: u32 = super::ops::REQUIRED_SAMPLE_RATE;
 
+/// Spoken refusal when a non-owner trips the wake word. Built per
+/// call from the configured owner display name so the audible
+/// response names the actual person who has the keys, and tells
+/// the owner the magic word ("allow") to grant access. Kept short
+/// so it doesn't drown the conversation.
+fn soft_deny_message(asker: &str, owner: &str) -> String {
+    let asker = asker.trim();
+    let owner = owner.trim();
+    match (asker.is_empty(), owner.is_empty()) {
+        (true, true) => "Sorry, I only respond to my owner.".to_string(),
+        (true, false) => format!(
+            "Sorry, only {owner} can ask me things in this call. {owner}, say 'allow' if you'd like me to answer."
+        ),
+        (false, true) => format!("Sorry {asker}, I only respond to my owner."),
+        (false, false) => format!(
+            "Sorry {asker}, only {owner} can ask me things here. {owner}, say 'allow' to let them in."
+        ),
+    }
+}
+
+/// Recognise an "open the gate" intent from the owner's first words
+/// after the wake phrase. Conservative: only fires when the prompt
+/// begins with one of the canonical permit verbs so an unrelated
+/// owner query that happens to contain "allow" or "yes" deeper in
+/// the sentence isn't hijacked.
+///
+/// Returns `true` when the owner is explicitly granting access to
+/// the most-recently-refused asker. The caller still gates on
+/// session-level state (`take_pending_unauthorized`) — without a
+/// pending request the intent is meaningless and the prompt should
+/// just run as a normal LLM turn.
+fn looks_like_grant_intent(prompt: &str) -> bool {
+    let p = prompt.trim().to_ascii_lowercase();
+    if p.is_empty() {
+        return false;
+    }
+    // Whole-prompt matches first so short approvals ("allow", "yes")
+    // don't collide with longer prompts that happen to start with
+    // the same word.
+    matches!(p.as_str(), "allow" | "yes" | "ok" | "okay" | "go ahead" | "let them in" | "let them ask" | "permit")
+        || p.starts_with("allow ")
+        || p.starts_with("let them")
+        || p.starts_with("let him")
+        || p.starts_with("let her")
+        || p.starts_with("go ahead")
+        || p.starts_with("yes go ahead")
+        || p.starts_with("yes let")
+        || p.starts_with("permit ")
+        || p.starts_with("you can answer")
+        || p.starts_with("you can tell")
+}
+
+/// Owner-grant path: the owner said "allow them" / "go ahead" /
+/// "let them in" after a non-owner's wake refusal. Add the
+/// previously-refused speaker to the per-call allowlist (so their
+/// next wake fires through to the orchestrator), and speak a
+/// short confirmation so they know they're in.
+pub async fn run_grant_turn(request_id: &str, grantee: &str) -> Result<bool, String> {
+    let grantee = grantee.trim();
+    let message = if grantee.is_empty() {
+        "Okay, you can ask me now.".to_string()
+    } else {
+        format!("Okay, {grantee} can ask me now.")
+    };
+    log::info!("[meet-agent] grant request_id={request_id} grantee=\"{grantee}\"");
+    // Apply the grant on the session BEFORE speaking — if TTS races
+    // and the grantee re-asks during synthesis, we want their next
+    // wake to fire through. Also cancel any prior outbound so the
+    // confirmation doesn't queue behind a half-drained refusal.
+    let _ = registry().with_session(request_id, |s| {
+        s.allow_speaker(grantee);
+        s.cancel_outbound();
+    });
+    let samples = match tts(&message).await {
+        Ok(samples) => samples,
+        Err(err) => {
+            log::warn!("[meet-agent] grant TTS failed request_id={request_id} err={err}");
+            stub_tts(&message).await
+        }
+    };
+    registry().with_session(request_id, |s| {
+        s.record_event(
+            SessionEventKind::Note,
+            format!("owner granted wake access to {grantee}"),
+        );
+        s.record_event(SessionEventKind::Spoke, message.clone());
+        if !samples.is_empty() {
+            s.enqueue_outbound_pcm(&samples, true);
+        }
+        // Clear the wake_active + turn_in_progress flags so the
+        // next caption (likely the grantee's actual question) can
+        // fire a new turn. Without this, the wake state from the
+        // owner's "allow them" prompt would coalesce the grantee's
+        // first real caption into a continuation of this grant turn.
+        s.wake_active = false;
+        s.turn_in_progress = false;
+        s.mark_turn_done();
+    })?;
+    Ok(true)
+}
+
+/// Soft-deny path: kick a polite refusal TTS reply when the wake
+/// word fires from a non-owner. Does NOT touch the orchestrator
+/// agent (no tool calls, no memory writes) — it's a single canned
+/// line, so the failure modes are limited to TTS errors.
+///
+/// The session has already recorded the pending grant request
+/// inside `note_caption`, so all this routine has to do is
+/// synthesize + enqueue the line + log a transcript event.
+pub async fn run_soft_deny_turn(request_id: &str, asker: &str) -> Result<bool, String> {
+    let owner = registry()
+        .with_session(request_id, |s| s.owner_display_name().to_string())
+        .unwrap_or_default();
+    let message = soft_deny_message(asker, &owner);
+    log::info!(
+        "[meet-agent] soft-deny request_id={request_id} asker=\"{asker}\" owner=\"{owner}\""
+    );
+    // Cancel any prior outbound so the refusal doesn't queue behind a
+    // half-drained reply from a previous turn.
+    let _ = registry().with_session(request_id, |s| s.cancel_outbound());
+    let samples = match tts(&message).await {
+        Ok(samples) => samples,
+        Err(err) => {
+            log::warn!("[meet-agent] soft-deny TTS failed request_id={request_id} err={err}");
+            stub_tts(&message).await
+        }
+    };
+    registry().with_session(request_id, |s| {
+        s.record_event(
+            SessionEventKind::Note,
+            format!("soft-deny: {asker} attempted wake without owner approval"),
+        );
+        s.record_event(SessionEventKind::Spoke, message.clone());
+        if !samples.is_empty() {
+            s.enqueue_outbound_pcm(&samples, true);
+        }
+        // Stamp turn-done so the min-turn-gap backstop covers the
+        // refusal the same way it covers a real reply. Without this,
+        // a chatty non-owner could re-trip the gate every few seconds.
+        s.mark_turn_done();
+    })?;
+    Ok(true)
+}
+
 /// Caption-driven turn. Drains the session's pending wake-word prompt
 /// (assembled by `session::note_caption`) and runs LLM → TTS → enqueue
 /// outbound. Skips STT entirely — the captions are already text.
@@ -173,6 +317,29 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
         history.len(),
         was_bare_wake,
     );
+
+    // Grant-intent fast path. When the owner says "hey openhuman,
+    // allow them" / "let them in" / "go ahead" after a non-owner
+    // wake refusal, treat the turn as a single-shot session-level
+    // grant rather than handing the prompt to the orchestrator.
+    // The pending grantee was captured by `note_caption` at refusal
+    // time and lives on the session for `PENDING_GRANT_WINDOW_MS`.
+    if !was_bare_wake && looks_like_grant_intent(&prompt) {
+        let pending = registry()
+            .with_session(request_id, |s| s.take_pending_unauthorized())
+            .ok()
+            .flatten();
+        if let Some(grantee) = pending {
+            return run_grant_turn(request_id, &grantee).await;
+        }
+        // No pending request to grant — fall through to the normal
+        // LLM path. The model can interpret "allow" however it
+        // wants from there; without a pending grantee we have no
+        // session-level meaning to attach to it.
+        log::info!(
+            "[meet-agent] grant-intent prompt detected but no pending request — falling through request_id={request_id}"
+        );
+    }
 
     // Pre-roll filler. The orchestrator + integration tools take
     // 30–60s on slow paths (Slack / Gmail / Calendar). Without an
@@ -1093,5 +1260,66 @@ mod tests {
     fn strip_for_speech_preserves_empty_when_input_empty() {
         assert_eq!(strip_for_speech(""), "");
         assert_eq!(strip_for_speech("   \n  "), "");
+    }
+
+    #[test]
+    fn soft_deny_message_names_both_owner_and_asker() {
+        let line = soft_deny_message("Bob", "Alice");
+        assert!(line.contains("Bob"), "must address the asker: {line}");
+        assert!(line.contains("Alice"), "must name the owner: {line}");
+        assert!(line.to_lowercase().contains("allow"), "must hint the magic word: {line}");
+    }
+
+    #[test]
+    fn soft_deny_message_handles_missing_names_gracefully() {
+        // No asker, no owner — should still be a polite English sentence,
+        // not a templated stub with empty placeholders.
+        let line = soft_deny_message("", "");
+        assert!(!line.is_empty());
+        assert!(!line.contains("{"), "must not leak format placeholders: {line}");
+    }
+
+    #[test]
+    fn looks_like_grant_intent_accepts_canonical_phrases() {
+        // Whole-prompt approvals.
+        for phrase in ["allow", "yes", "ok", "okay", "go ahead", "permit"] {
+            assert!(
+                looks_like_grant_intent(phrase),
+                "must accept bare approval phrase: {phrase}"
+            );
+        }
+        // Common longer forms.
+        for phrase in [
+            "allow them",
+            "allow Bob to ask",
+            "let them in",
+            "let them ask",
+            "let her ask",
+            "go ahead and answer them",
+            "yes go ahead",
+            "permit Bob",
+            "you can tell Bob",
+        ] {
+            assert!(looks_like_grant_intent(phrase), "should accept: {phrase}");
+        }
+    }
+
+    #[test]
+    fn looks_like_grant_intent_rejects_unrelated_prompts() {
+        // Words that happen to contain "allow" / "yes" mid-prompt
+        // shouldn't hijack a normal question — the matcher only
+        // honors prompts that BEGIN with a permit verb.
+        for phrase in [
+            "what's on my calendar today",
+            "did i allow that meeting earlier",
+            "yesterday's notes please",
+            "remind me to ok the budget",
+            "permittivity of free space",
+        ] {
+            assert!(
+                !looks_like_grant_intent(phrase),
+                "must not match unrelated prompt: {phrase}"
+            );
+        }
     }
 }
