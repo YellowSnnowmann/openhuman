@@ -87,6 +87,31 @@ fn schema_start_session() -> ControllerSchema {
                 comment: "Sample rate of inbound/outbound PCM. Default 16000.",
                 required: false,
             },
+            FieldSchema {
+                name: "owner_display_name",
+                ty: TypeSchema::String,
+                comment:
+                    "Display name of the call owner (the user who launched the bot). \
+                     Used by the wake-word gate as the only speaker authorised to trigger \
+                     tool calls. Empty fails closed.",
+                required: false,
+            },
+            FieldSchema {
+                name: "bot_display_name",
+                ty: TypeSchema::String,
+                comment:
+                    "Display name the bot uses as its Meet participant tile. Used to drop \
+                     the bot's own captions (self-echo filter).",
+                required: false,
+            },
+            FieldSchema {
+                name: "meet_url",
+                ty: TypeSchema::String,
+                comment:
+                    "Normalised Meet URL the call joined. Persisted into the recent-calls \
+                     log on stop_session.",
+                required: false,
+            },
         ],
         outputs: vec![
             FieldSchema {
