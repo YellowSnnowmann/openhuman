@@ -19,10 +19,16 @@ use crate::rpc::RpcOutcome;
 use super::brain;
 use super::ops::VadEvent;
 use super::session::registry;
+use super::store::{self, MeetCallRecord};
 use super::types::{
-    PollSpeechRequest, PushCaptionRequest, PushListenPcmRequest, StartSessionRequest,
-    StopSessionRequest,
+    ListCallsRequest, ListCallsResponse, PollSpeechRequest, PushCaptionRequest,
+    PushListenPcmRequest, StartSessionRequest, StopSessionRequest,
 };
+
+/// Default `limit` for `handle_list_calls` when the caller omits one.
+/// Comfortably above the ~20 rows the UI shows initially while still
+/// keeping the response payload small.
+const LIST_CALLS_DEFAULT_LIMIT: usize = 50;
 
 const LOG_PREFIX: &str = "[meet-agent-rpc]";
 
@@ -41,6 +47,7 @@ pub async fn handle_start_session(params: Map<String, Value>) -> Result<Value, S
     // to be updated in lockstep.
     registry().with_session(&req.request_id, |s| {
         s.set_identities(&req.owner_display_name, &req.bot_display_name);
+        s.set_meet_url(&req.meet_url);
     })?;
     log::info!(
         "{LOG_PREFIX} start_session request_id={} sample_rate_hz={} \
@@ -179,6 +186,32 @@ pub async fn handle_stop_session(params: Map<String, Value>) -> Result<Value, St
         session.turn_count
     );
 
+    // Persist a recent-calls record. Best-effort: a failed write
+    // never blocks the stop_session response — the call is already
+    // over by definition and the UI doesn't depend on the record
+    // existing to function. We log loudly enough that a broken
+    // persistence path is visible in dev:app stdout.
+    let record = MeetCallRecord {
+        request_id: session.request_id.clone(),
+        meet_url: session.meet_url().to_string(),
+        bot_display_name: session.bot_display_name().to_string(),
+        owner_display_name: session.owner_display_name().to_string(),
+        started_at_ms: session.started_at_ms(),
+        ended_at_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+        listened_seconds: session.listened_seconds(),
+        spoken_seconds: session.spoken_seconds(),
+        turn_count: session.turn_count,
+    };
+    if let Err(err) = store::append_record(&record).await {
+        log::warn!(
+            "{LOG_PREFIX} append_record failed request_id={} err={err}",
+            session.request_id
+        );
+    }
+
     RpcOutcome::new(
         json!({
             "ok": true,
@@ -190,6 +223,26 @@ pub async fn handle_stop_session(params: Map<String, Value>) -> Result<Value, St
         vec![],
     )
     .into_cli_compatible_json()
+}
+
+/// Return the most recent completed calls (newest first). Reads
+/// the per-user JSONL log written by `handle_stop_session`. Missing
+/// file → empty list (first run after install). Caller may pass an
+/// optional `limit`; we apply `LIST_CALLS_DEFAULT_LIMIT` when absent
+/// and `store::MAX_RECENT_CALLS` as the hard ceiling.
+pub async fn handle_list_calls(params: Map<String, Value>) -> Result<Value, String> {
+    let req: ListCallsRequest = serde_json::from_value(Value::Object(params))
+        .map_err(|e| format!("{LOG_PREFIX} invalid list_calls params: {e}"))?;
+    let limit = req.limit.unwrap_or(LIST_CALLS_DEFAULT_LIMIT);
+    let calls = store::read_recent(limit).await?;
+    let response = ListCallsResponse {
+        ok: true,
+        count: calls.len(),
+        calls,
+    };
+    let value = serde_json::to_value(&response)
+        .map_err(|e| format!("{LOG_PREFIX} serialize list_calls response: {e}"))?;
+    RpcOutcome::new(value, vec![]).into_cli_compatible_json()
 }
 
 /// Decode a base64 string of PCM16LE bytes into samples. Empty input is
