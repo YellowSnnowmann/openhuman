@@ -2257,7 +2257,7 @@ pub fn run() {
                 "[single-instance] CreateMutexW returned NULL handle (GetLastError={last_error}); continuing without pre-CEF single-instance guard — concurrent launches may hit OPENHUMAN-TAURI-A"
             );
             OwnedMutex(0)
-        }else if last_error == ERROR_ALREADY_EXISTS {
+        } else if last_error == ERROR_ALREADY_EXISTS {
             // Another instance is already past this point — exit before we
             // touch CEF at all. Forward deep links first so OAuth callbacks
             // are not dropped by this early pre-plugin exit.
