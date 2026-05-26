@@ -131,11 +131,21 @@ fn default_forbidden_paths() -> Vec<String> {
 
 fn default_auto_approve() -> Vec<String> {
     vec![
+        // Read-only tools — always safe to skip the approval prompt
         "file_read".into(),
         "memory_search".into(),
         "memory_list".into(),
         "get_time".into(),
         "list_dir".into(),
+        // Workspace-scoped search tools — read-only, no side effects
+        "glob".into(),
+        "grep".into(),
+        // Workspace-scoped write tools — bounded by the workspace policy,
+        // not safe in ReadOnly mode (the tool implementation gates that),
+        // but reasonable to skip the per-call prompt in Supervised mode
+        // where the workspace boundary already constrains the blast radius.
+        "file_write".into(),
+        "edit_file".into(),
     ]
 }
 

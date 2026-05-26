@@ -908,6 +908,32 @@ fn write_to_not_yet_existing_path_in_workspace_still_allowed() {
     assert!(p.is_path_string_allowed("not-yet-existing/subdir/file.txt"));
 }
 
+// -- auto_approve defaults ----------------------------------------
+
+#[test]
+fn config_default_auto_approve_includes_expanded_tools() {
+    // Issue #2486: verify all new auto_approve tools are in the default list
+    // so workspace-scoped read/write tools skip the approval prompt without
+    // requiring manual configuration changes.
+    let cfg = crate::openhuman::config::AutonomyConfig::default();
+
+    // Pre-existing auto-approved tools must still be present
+    for tool in ["file_read", "memory_search", "memory_list", "get_time", "list_dir"] {
+        assert!(
+            cfg.auto_approve.iter().any(|t| t == tool),
+            "default auto_approve must still include pre-existing tool: {tool}"
+        );
+    }
+
+    // Newly added workspace-scoped tools
+    for tool in ["glob", "grep", "file_write", "edit_file"] {
+        assert!(
+            cfg.auto_approve.iter().any(|t| t == tool),
+            "default auto_approve must include newly added tool: {tool}"
+        );
+    }
+}
+
 // -- from_config --------------------------------------------------
 
 #[test]
