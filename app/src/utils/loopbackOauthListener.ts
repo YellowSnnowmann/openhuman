@@ -108,8 +108,8 @@ export const startLoopbackOauthListener = async (
       const timer = window.setTimeout(() => {
         timedOut = true;
         if (unlisten) {
-        unlisten();
-        if (activeUnlisten === unlisten) activeUnlisten = null;
+          unlisten();
+          if (activeUnlisten === unlisten) activeUnlisten = null;
         }
         void stop();
         reject(new Error('Loopback OAuth listener timed out'));
