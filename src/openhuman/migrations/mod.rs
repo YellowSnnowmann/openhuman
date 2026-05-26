@@ -25,11 +25,12 @@ use crate::openhuman::config::Config;
 
 mod expand_autonomy_defaults;
 mod phase_out_profile_md;
+mod remove_write_auto_approve;
 mod retire_chat_v1_model;
 mod unify_ai_provider_settings;
 
 /// Current target schema version. Bumped alongside every new migration.
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 /// Run any migrations whose `schema_version` gate hasn't yet been
 /// crossed for this workspace.
@@ -210,6 +211,40 @@ pub async fn run_pending(config: &mut Config) {
             Err(err) => {
                 log::warn!(
                     "[migrations] expand_autonomy_defaults failed: {err:#} — \
+                     will retry on next launch"
+                );
+            }
+        }
+    }
+
+    // 4 -> 5: remove write tools from `autonomy.auto_approve`. A short-lived
+    // v4 default/migration let Supervised mode skip prompts for file edits.
+    // Keep those tools available, but remove the prompt bypass so normal
+    // approval gating applies again. Guard on `== 4` so earlier failed steps
+    // do not get skipped.
+    if config.schema_version == 4 {
+        match remove_write_auto_approve::run(config) {
+            Ok(stats) => {
+                let previous_version = config.schema_version;
+                config.schema_version = 5;
+                if let Err(err) = config.save().await {
+                    config.schema_version = previous_version;
+                    log::warn!(
+                        "[migrations] remove_write_auto_approve ran but config.save failed: \
+                         {err:#} — rolled in-memory schema_version back to {previous_version}, \
+                         will retry on next launch"
+                    );
+                    return;
+                }
+                log::info!(
+                    "[migrations] schema_version bumped to 5 (remove_write_auto_approve \
+                     auto_approve_removed={})",
+                    stats.auto_approve_removed,
+                );
+            }
+            Err(err) => {
+                log::warn!(
+                    "[migrations] remove_write_auto_approve failed: {err:#} — \
                      will retry on next launch"
                 );
             }

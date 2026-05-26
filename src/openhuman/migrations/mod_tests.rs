@@ -85,7 +85,7 @@ async fn run_pending_skips_when_version_current() {
     let before = fs::read(&path).unwrap();
 
     let mut config = config_in(&tmp);
-    config.schema_version = CURRENT_SCHEMA_VERSION; // 4
+    config.schema_version = CURRENT_SCHEMA_VERSION;
     run_pending(&mut config).await;
 
     assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
@@ -102,7 +102,7 @@ async fn run_pending_runs_phase_out_when_version_zero() {
     assert_eq!(config.schema_version, 0);
     run_pending(&mut config).await;
 
-    assert_eq!(config.schema_version, 4);
+    assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
     let session = read_transcript(&path).unwrap();
     assert!(
         !session.messages[0].content.contains("### PROFILE.md"),
@@ -112,8 +112,8 @@ async fn run_pending_runs_phase_out_when_version_zero() {
 
     let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 4"),
-        "saved config.toml must record schema_version=4, got:\n{on_disk}"
+        on_disk.contains("schema_version = 5"),
+        "saved config.toml must record schema_version=5, got:\n{on_disk}"
     );
 }
 
@@ -126,9 +126,9 @@ async fn run_pending_bumps_version_on_fresh_install() {
     let mut config = config_in(&tmp);
     run_pending(&mut config).await;
 
-    assert_eq!(config.schema_version, 4);
+    assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
     let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
-    assert!(on_disk.contains("schema_version = 4"));
+    assert!(on_disk.contains("schema_version = 5"));
 }
 
 #[tokio::test]
@@ -160,7 +160,7 @@ async fn run_pending_is_a_no_op_on_second_invocation() {
 
     let mut config = config_in(&tmp);
     run_pending(&mut config).await;
-    assert_eq!(config.schema_version, 4);
+    assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
 
     // Mutate the config file timestamp marker by reading + comparing
     // before vs after the second invocation.
@@ -169,7 +169,7 @@ async fn run_pending_is_a_no_op_on_second_invocation() {
     run_pending(&mut config).await;
     let after = fs::metadata(&config.config_path).unwrap().modified().ok();
 
-    assert_eq!(config.schema_version, 4);
+    assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
     assert_eq!(
         before, after,
         "config.toml must not be re-saved on second run"
@@ -196,8 +196,8 @@ async fn run_pending_expands_autonomy_defaults_from_v3() {
     run_pending(&mut config).await;
 
     assert_eq!(
-        config.schema_version, 4,
-        "schema_version must be bumped to 4"
+        config.schema_version, CURRENT_SCHEMA_VERSION,
+        "schema_version must be bumped to current"
     );
 
     // New commands must be present after the migration.
@@ -252,8 +252,47 @@ async fn run_pending_expands_autonomy_defaults_from_v3() {
     // On-disk config must reflect the new schema_version.
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 4"),
-        "saved config.toml must record schema_version=4, got:\n{on_disk}"
+        on_disk.contains("schema_version = 5"),
+        "saved config.toml must record schema_version=5, got:\n{on_disk}"
+    );
+}
+
+// ── v4 → v5: remove_write_auto_approve integration test ─────────────────────
+
+/// Verify that workspaces already migrated to schema_version=4 have write tools
+/// removed from `auto_approve` so Supervised mode prompts before file edits.
+#[tokio::test]
+async fn run_pending_v4_to_v5_removes_write_tools_from_auto_approve() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+    let mut config = config_in(&tmp);
+    config.schema_version = 4;
+    config.autonomy.auto_approve = vec![
+        "file_read".into(),
+        "file_write".into(),
+        "edit_file".into(),
+        "glob".into(),
+    ];
+    config.autonomy.always_ask = vec!["file_write".into()];
+
+    run_pending(&mut config).await;
+
+    assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
+    assert_eq!(
+        config.autonomy.auto_approve,
+        vec!["file_read".to_string(), "glob".to_string()]
+    );
+    assert_eq!(
+        config.autonomy.always_ask,
+        vec!["file_write".to_string()],
+        "already re-gated write tools should stay in always_ask"
+    );
+
+    let on_disk = fs::read_to_string(&config.config_path).unwrap();
+    assert!(
+        on_disk.contains("schema_version = 5"),
+        "saved config.toml must record schema_version=5, got:\n{on_disk}"
     );
 }
 
@@ -271,7 +310,7 @@ async fn run_pending_v3_to_v4_preserves_custom_max_actions() {
 
     run_pending(&mut config).await;
 
-    assert_eq!(config.schema_version, 4);
+    assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
     assert_eq!(
         config.autonomy.max_actions_per_hour, 50,
         "user-customised max_actions_per_hour must not be overwritten"
