@@ -133,16 +133,25 @@ describe('startLoopbackOauthListener', () => {
 describe('E2E build hook', () => {
   // Top-level side effect in loopbackOauthListener.ts: when the
   // VITE_OPENHUMAN_E2E_RESTART_APP_AS_RELOAD flag is set to 'true' at
-  // build time, the module exposes startLoopbackOauthListener on
+  // build time (surfaced via the `E2E_RESTART_APP_AS_RELOAD` constant in
+  // utils/config.ts per the CLAUDE.md "no direct import.meta.env" rule),
+  // the module exposes startLoopbackOauthListener on
   // window.__startLoopbackOauthListener so E2E spec helpers can drive
   // the real loopback flow. Exercise both branches so the conditional
   // assignment is covered.
+  //
+  // We mock `../config` directly rather than `vi.stubEnv` + `vi.resetModules`
+  // because the gate is now a derived constant, not a live read of
+  // `import.meta.env`. Stubbing the env after the module graph has already
+  // been loaded does not flip the already-evaluated constant unless EVERY
+  // transitive importer is also reset, which is brittle. Mocking the module
+  // export is direct and resilient to refactors of how the flag is derived.
 
   type WithE2eHook = Window & { __startLoopbackOauthListener?: typeof startLoopbackOauthListener };
 
   test('exposes __startLoopbackOauthListener on window when the E2E build flag is set', async () => {
     vi.resetModules();
-    vi.stubEnv('VITE_OPENHUMAN_E2E_RESTART_APP_AS_RELOAD', 'true');
+    vi.doMock('../config', () => ({ E2E_RESTART_APP_AS_RELOAD: true }));
     delete (window as WithE2eHook).__startLoopbackOauthListener;
     try {
       const mod = await import('../loopbackOauthListener');
@@ -150,20 +159,20 @@ describe('E2E build hook', () => {
         mod.startLoopbackOauthListener
       );
     } finally {
-      vi.unstubAllEnvs();
+      vi.doUnmock('../config');
       delete (window as WithE2eHook).__startLoopbackOauthListener;
     }
   });
 
   test('does NOT expose the hook when the E2E build flag is absent', async () => {
     vi.resetModules();
-    vi.stubEnv('VITE_OPENHUMAN_E2E_RESTART_APP_AS_RELOAD', '');
+    vi.doMock('../config', () => ({ E2E_RESTART_APP_AS_RELOAD: false }));
     delete (window as WithE2eHook).__startLoopbackOauthListener;
     try {
       await import('../loopbackOauthListener');
       expect((window as WithE2eHook).__startLoopbackOauthListener).toBeUndefined();
     } finally {
-      vi.unstubAllEnvs();
+      vi.doUnmock('../config');
       delete (window as WithE2eHook).__startLoopbackOauthListener;
     }
   });
