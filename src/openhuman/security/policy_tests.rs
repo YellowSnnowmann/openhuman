@@ -2129,7 +2129,7 @@ fn full_access_bypasses_command_allowlist() {
 #[test]
 fn supervised_still_enforces_command_allowlist() {
     let p = default_policy(); // Supervised
-    assert!(!p.is_command_allowed("mkdir -p foo/bar")); // not allow-listed
+    assert!(p.is_command_allowed("mkdir -p foo/bar")); // allow-listed (expanded in #2486)
     assert!(!p.is_command_allowed("ls 2>/dev/null")); // redirect blocked
     assert!(p.is_command_allowed("ls -la")); // allow-listed, no redirect
 }
