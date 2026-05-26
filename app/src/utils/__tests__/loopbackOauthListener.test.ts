@@ -109,7 +109,8 @@ describe('startLoopbackOauthListener', () => {
     try {
       mockInvoke
         .mockResolvedValueOnce({ redirectUri: 'http://127.0.0.1:53824/auth', state: 's' })
-        .mockResolvedValueOnce(undefined);
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ redirectUri: 'http://127.0.0.1:53824/auth', state: 's2' });
       const unlisten = vi.fn();
       mockListen.mockResolvedValue(unlisten);
 
@@ -124,6 +125,79 @@ describe('startLoopbackOauthListener', () => {
       // Drain the queued microtask that calls stop().
       await Promise.resolve();
       expect(mockInvoke).toHaveBeenNthCalledWith(2, 'stop_loopback_oauth_listener');
+
+      // Ensure timeout cleanup removed activeUnlisten (starting a new listener
+      // should not invoke the previous unlisten again).
+      await startLoopbackOauthListener();
+      expect(unlisten).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('tears down late listen registration when timeout fires before listen() resolves', async () => {
+    vi.useFakeTimers();
+    try {
+      mockInvoke
+        .mockResolvedValueOnce({ redirectUri: 'http://127.0.0.1:53824/auth', state: 's' })
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ redirectUri: 'http://127.0.0.1:53824/auth', state: 's2' });
+
+      let resolveListen: ((fn: () => void) => void) | null = null;
+      const lateUnlisten = vi.fn();
+      mockListen.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveListen = resolve;
+          })
+      );
+
+      const handle = await startLoopbackOauthListener({ timeoutSecs: 1 });
+      const callbackPromise = handle!.awaitCallback();
+      vi.advanceTimersByTime(1000);
+
+      await expect(callbackPromise).rejects.toThrow('Loopback OAuth listener timed out');
+      await Promise.resolve();
+      expect(mockInvoke).toHaveBeenNthCalledWith(2, 'stop_loopback_oauth_listener');
+
+      // listen() resolves after timeout: the returned unlisten must be called
+      // immediately and must not become the active global handle.
+      resolveListen!(lateUnlisten);
+      await Promise.resolve();
+      expect(lateUnlisten).toHaveBeenCalledTimes(1);
+
+      await startLoopbackOauthListener();
+      expect(lateUnlisten).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('ignores callback events that arrive after timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      mockInvoke
+        .mockResolvedValueOnce({ redirectUri: 'http://127.0.0.1:53824/auth', state: 's' })
+        .mockResolvedValueOnce(undefined);
+      const unlisten = vi.fn();
+      let registered: ((event: { payload: { url: string } }) => void) | null = null;
+      mockListen.mockImplementation((_event, handler) => {
+        registered = handler;
+        return Promise.resolve(unlisten);
+      });
+
+      const handle = await startLoopbackOauthListener({ timeoutSecs: 1 });
+      const callbackPromise = handle!.awaitCallback();
+      await Promise.resolve();
+      vi.advanceTimersByTime(1000);
+
+      await expect(callbackPromise).rejects.toThrow('Loopback OAuth listener timed out');
+      expect(unlisten).toHaveBeenCalledTimes(1);
+
+      // Late callback should be ignored by the timedOut guard.
+      registered!({ payload: { url: 'http://127.0.0.1:53824/auth?token=late&state=s' } });
+      await Promise.resolve();
+      expect(unlisten).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
