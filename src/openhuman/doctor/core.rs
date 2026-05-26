@@ -65,6 +65,12 @@ pub struct DoctorReport {
 
 // ── Public entry point ───────────────────────────────────────────
 
+/// Build the full doctor report.
+///
+/// `ops::doctor_report` runs this in `tokio::task::spawn_blocking` because the
+/// checks are synchronous and may touch the file system, sqlite, or local HTTP
+/// endpoints. Keep this function blocking-only; add async probes in the caller
+/// or behind their own runtime boundary instead of introducing `.await` here.
 pub fn run(config: &Config) -> Result<DoctorReport> {
     let mut items: Vec<DiagnosticItem> = Vec::new();
 
@@ -932,9 +938,6 @@ fn check_embedding_model_health(config: &Config, items: &mut Vec<DiagnosticItem>
         }
     };
 
-    // The model name in /api/tags may include a tag suffix (e.g. `bge-m3:latest`).
-    // We match on the base name so `bge-m3` matches `bge-m3:latest`.
-    let model_base = model.split(':').next().unwrap_or(&model);
     let model_found = serde_json::from_str::<serde_json::Value>(&body)
         .ok()
         .and_then(|v| v.get("models").cloned())
@@ -945,11 +948,7 @@ fn check_embedding_model_health(config: &Config, items: &mut Vec<DiagnosticItem>
             entry
                 .get("name")
                 .and_then(serde_json::Value::as_str)
-                .map(|name| {
-                    // Match exact name OR base-name prefix (e.g. `bge-m3` matches `bge-m3:latest`).
-                    let tag_base = name.split(':').next().unwrap_or(name);
-                    name == model || tag_base == model_base
-                })
+                .map(|name| model_matches(name, &model))
                 .unwrap_or(false)
         });
 
@@ -975,6 +974,14 @@ fn parse_rfc3339(input: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(input)
         .ok()
         .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn model_matches(installed: &str, configured: &str) -> bool {
+    installed == configured || model_base(installed) == model_base(configured)
+}
+
+fn model_base(model: &str) -> &str {
+    model.split(':').next().unwrap()
 }
 
 fn truncate_for_display(text: &str, max_len: usize) -> String {

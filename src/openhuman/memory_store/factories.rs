@@ -735,6 +735,8 @@ mod tests {
     /// subsequent calls in the same process must be suppressed. We can't
     /// observe the Sentry side effect directly here, but the boolean return
     /// value is the gate's contract — covers the once-per-process guarantee.
+    /// Event publication is fire-and-forget via the global event bus and is
+    /// verified manually/log-side rather than by this unit test.
     ///
     /// Acquires the local-AI domain mutex to serialize with `probed_settings_*`
     /// tests that also touch the latch; without that, parallel test execution
