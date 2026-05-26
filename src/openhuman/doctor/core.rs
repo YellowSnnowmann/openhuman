@@ -977,7 +977,15 @@ fn parse_rfc3339(input: &str) -> Option<DateTime<Utc>> {
 }
 
 fn model_matches(installed: &str, configured: &str) -> bool {
-    installed == configured || model_base(installed) == model_base(configured)
+    if installed == configured {
+        return true;
+    }
+
+    if installed.contains(':') && configured.contains(':') {
+        return false;
+    }
+
+    model_base(installed) == model_base(configured)
 }
 
 fn model_base(model: &str) -> &str {
