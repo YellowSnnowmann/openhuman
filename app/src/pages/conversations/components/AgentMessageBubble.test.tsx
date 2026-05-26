@@ -79,32 +79,24 @@ describe('AgentMessageBubble markdown links', () => {
 
 describe('BubbleMarkdown math rendering', () => {
   test('renders \\[ ... \\] block math via KaTeX', () => {
-    const { container } = render(
-      <BubbleMarkdown content={'\\[ x^2 + y^2 = z^2 \\]'} />
-    );
+    const { container } = render(<BubbleMarkdown content={'\\[ x^2 + y^2 = z^2 \\]'} />);
     expect(container.querySelector('.katex')).not.toBeNull();
   });
 
   test('renders inline \\( ... \\) math via KaTeX', () => {
-    const { container } = render(
-      <BubbleMarkdown content={'value \\(a+b\\) here'} />
-    );
+    const { container } = render(<BubbleMarkdown content={'value \\(a+b\\) here'} />);
     expect(container.querySelector('.katex')).not.toBeNull();
   });
 
   test('renders bare bracket vmatrix block via KaTeX', () => {
     const { container } = render(
-      <BubbleMarkdown
-        content={'[ \\begin{vmatrix} 1 & 2 \\\\ 3 & 4 \\end{vmatrix} = -2 ]'}
-      />
+      <BubbleMarkdown content={'[ \\begin{vmatrix} 1 & 2 \\\\ 3 & 4 \\end{vmatrix} = -2 ]'} />
     );
     expect(container.querySelector('.katex')).not.toBeNull();
   });
 
   test('does NOT treat currency mentions as math', () => {
-    const { container } = render(
-      <BubbleMarkdown content={'total is $10 versus $20'} />
-    );
+    const { container } = render(<BubbleMarkdown content={'total is $10 versus $20'} />);
     expect(container.querySelector('.katex')).toBeNull();
     expect(container.textContent).toContain('$10');
     expect(container.textContent).toContain('$20');

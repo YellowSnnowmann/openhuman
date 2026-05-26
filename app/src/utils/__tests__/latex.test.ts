@@ -4,9 +4,7 @@ import { hasLatexContent, normalizeLatexDelimiters } from '../latex';
 
 describe('normalizeLatexDelimiters', () => {
   it('converts \\[ ... \\] to $$ ... $$', () => {
-    expect(normalizeLatexDelimiters('\\[ x^2 + y^2 = z^2 \\]')).toContain(
-      '$$ x^2 + y^2 = z^2 $$'
-    );
+    expect(normalizeLatexDelimiters('\\[ x^2 + y^2 = z^2 \\]')).toContain('$$ x^2 + y^2 = z^2 $$');
   });
 
   it('converts \\( ... \\) to $ ... $', () => {

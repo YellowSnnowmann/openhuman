@@ -23,10 +23,7 @@ export function normalizeLatexDelimiters(input: string): string {
   let out = input;
   out = out.replace(DISPLAY_BACKSLASH, (_m, body) => `\n\n$$${body}$$\n\n`);
   out = out.replace(INLINE_BACKSLASH, (_m, body) => `$${body}$`);
-  out = out.replace(
-    DISPLAY_BARE_BRACKETS,
-    (_m, lead, body) => `${lead}\n$$${body}$$\n`
-  );
+  out = out.replace(DISPLAY_BARE_BRACKETS, (_m, lead, body) => `${lead}\n$$${body}$$\n`);
   return out;
 }
 

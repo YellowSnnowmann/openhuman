@@ -6,10 +6,6 @@ import remarkMath from 'remark-math';
 import { OPENHUMAN_LINK_EVENT } from '../../../components/OpenhumanLinkModal';
 import { parseMarkdownTable } from '../../../utils/agentMessageBubbles';
 import { hasLatexContent, normalizeLatexDelimiters } from '../../../utils/latex';
-
-const MATH_REMARK_PLUGINS = [remarkMath];
-const MATH_REHYPE_PLUGINS = [rehypeKatex];
-const EMPTY_PLUGINS: [] = [];
 import { openUrl } from '../../../utils/openUrl';
 import { openWorkspacePath } from '../../../utils/tauriCommands/workspacePaths';
 import { parseWorkspaceHref } from '../../../utils/workspaceLinks';
@@ -19,6 +15,10 @@ import {
   isAllowedExternalHref,
   parseBubbleSegments,
 } from '../utils/format';
+
+const MATH_REMARK_PLUGINS = [remarkMath];
+const MATH_REHYPE_PLUGINS = [rehypeKatex];
+const EMPTY_PLUGINS: [] = [];
 
 /**
  * Pill rendered below an agent bubble for each
