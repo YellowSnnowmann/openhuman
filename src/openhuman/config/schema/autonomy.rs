@@ -58,9 +58,16 @@ fn default_max_cost_per_day_cents() -> u32 {
 
 fn default_allowed_commands() -> Vec<String> {
     vec![
+        // Version control
         "git".into(),
+        // Package managers / build systems
         "npm".into(),
+        "pnpm".into(),
+        "yarn".into(),
         "cargo".into(),
+        "make".into(),
+        "cmake".into(),
+        // Directory / file inspection (read-only)
         "ls".into(),
         "cat".into(),
         "grep".into(),
@@ -71,6 +78,26 @@ fn default_allowed_commands() -> Vec<String> {
         "head".into(),
         "tail".into(),
         "date".into(),
+        "sort".into(),
+        "uniq".into(),
+        "diff".into(),
+        "which".into(),
+        "uname".into(),
+        "basename".into(),
+        "dirname".into(),
+        "tr".into(),
+        "cut".into(),
+        "realpath".into(),
+        "readlink".into(),
+        "stat".into(),
+        "file".into(),
+        // Filesystem mutations (medium-risk — require approval in Supervised mode)
+        "mkdir".into(),
+        "touch".into(),
+        "cp".into(),
+        "mv".into(),
+        "ln".into(),
+        // Windows read-only equivalents for ls/cat/grep/which
         "dir".into(),
         "type".into(),
         "where".into(),

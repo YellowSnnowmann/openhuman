@@ -82,6 +82,64 @@ fn enforce_tool_operation_act_uses_rate_budget() {
 // -- is_command_allowed -------------------------------------------
 
 #[test]
+fn default_policy_allowed_commands_expanded() {
+    // Issue #2486: verify all newly added safe commands are present in the
+    // default allowlist so agents can use them without manual configuration.
+    let p = default_policy();
+
+    // Build tools
+    for cmd in ["make", "cmake", "pnpm", "yarn"] {
+        assert!(
+            p.is_command_allowed(cmd),
+            "default policy should allow build tool: {cmd}"
+        );
+    }
+
+    // Read-only inspection tools (low-risk)
+    for cmd in [
+        "sort file.txt",
+        "uniq file.txt",
+        "diff a.txt b.txt",
+        "which git",
+        "uname -a",
+        "basename /foo/bar.rs",
+        "dirname /foo/bar.rs",
+        "tr 'a' 'b'",
+        "cut -d: -f1 /dev/stdin",
+        "realpath .",
+        "readlink file",
+        "stat file.txt",
+        "file README.md",
+    ] {
+        assert!(
+            p.is_command_allowed(cmd),
+            "default policy should allow read-only tool: {cmd}"
+        );
+    }
+
+    // Filesystem mutation tools (medium-risk — allowed on allowlist,
+    // but require approval in Supervised mode)
+    for cmd in [
+        "mkdir src/new",
+        "touch Makefile",
+        "cp src/a.rs src/b.rs",
+        "mv old.txt new.txt",
+        "ln -s src/a.rs link.rs",
+    ] {
+        assert!(
+            p.is_command_allowed(cmd),
+            "default policy should allow medium-risk tool: {cmd}"
+        );
+        // Confirm they are actually medium-risk so the approval gate applies
+        assert_eq!(
+            p.command_risk_level(cmd),
+            CommandRiskLevel::Medium,
+            "{cmd} should be classified as medium-risk"
+        );
+    }
+}
+
+#[test]
 fn allowed_commands_basic() {
     let p = default_policy();
     assert!(p.is_command_allowed("ls"));
