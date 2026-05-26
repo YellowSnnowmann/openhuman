@@ -58,12 +58,12 @@ interface MemoryWorkspaceProps {
  * persist items via `store_skill_sync` into the memory tree.
  */
 const SYNCABLE_TOOLKITS: ReadonlySet<string> = new Set([
-   'clickup',
-   'github',
-   'gmail',
-   'linear',
-   'notion',
-   'slack',
+  'clickup',
+  'github',
+  'gmail',
+  'linear',
+  'notion',
+  'slack',
 ]);
 
 export function MemoryWorkspace({ onToast }: MemoryWorkspaceProps) {
