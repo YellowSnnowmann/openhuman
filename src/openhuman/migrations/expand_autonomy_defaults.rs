@@ -46,7 +46,7 @@ const NEW_COMMANDS: &[&str] = &[
 ///
 /// These were added to the code default in PR #2500 but are absent from any
 /// `config.toml` written before that change.
-const NEW_AUTO_APPROVE_TOOLS: &[&str] = &["glob", "grep", "file_write", "edit_file"];
+const NEW_AUTO_APPROVE_TOOLS: &[&str] = &["glob", "grep"];
 
 /// Counters returned by [`run`] for diagnostics. Logged at INFO once per
 /// successful migration run.
@@ -202,6 +202,14 @@ mod tests {
             assert!(
                 config.autonomy.auto_approve.iter().any(|t| t == tool),
                 "expected {:?} in auto_approve after migration",
+                tool
+            );
+        }
+        // Write tools must keep Supervised mode's ask-before-edit contract.
+        for tool in &["file_write", "edit_file"] {
+            assert!(
+                !config.autonomy.auto_approve.iter().any(|t| t == *tool),
+                "expected {:?} to require approval after migration",
                 tool
             );
         }

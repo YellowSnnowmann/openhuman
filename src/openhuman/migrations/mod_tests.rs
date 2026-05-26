@@ -217,11 +217,19 @@ async fn run_pending_expands_autonomy_defaults_from_v3() {
         );
     }
 
-    // New auto-approve tools must be present.
-    for tool in &["glob", "grep", "file_write", "edit_file"] {
+    // New read-only auto-approve tools must be present.
+    for tool in &["glob", "grep"] {
         assert!(
             config.autonomy.auto_approve.iter().any(|t| t == *tool),
             "expected {:?} in auto_approve after v3→v4 migration",
+            tool
+        );
+    }
+    // Write tools must keep Supervised mode's ask-before-edit contract.
+    for tool in &["file_write", "edit_file"] {
+        assert!(
+            !config.autonomy.auto_approve.iter().any(|t| t == *tool),
+            "expected {:?} to require approval after v3→v4 migration",
             tool
         );
     }
