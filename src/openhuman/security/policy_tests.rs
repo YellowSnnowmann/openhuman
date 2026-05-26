@@ -918,7 +918,13 @@ fn config_default_auto_approve_includes_expanded_tools() {
     let cfg = crate::openhuman::config::AutonomyConfig::default();
 
     // Pre-existing auto-approved tools must still be present
-    for tool in ["file_read", "memory_search", "memory_list", "get_time", "list_dir"] {
+    for tool in [
+        "file_read",
+        "memory_search",
+        "memory_list",
+        "get_time",
+        "list_dir",
+    ] {
         assert!(
             cfg.auto_approve.iter().any(|t| t == tool),
             "default auto_approve must still include pre-existing tool: {tool}"
