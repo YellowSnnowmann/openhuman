@@ -73,6 +73,7 @@ pub fn run(config: &Config) -> Result<DoctorReport> {
     check_daemon_state(config, &mut items);
     check_environment(&mut items);
     check_memory_tree_db(config, &mut items);
+    check_embedding_model_health(config, &mut items);
 
     let errors = items
         .iter()
@@ -833,6 +834,139 @@ fn check_memory_tree_db(config: &Config, items: &mut Vec<DiagnosticItem>) {
                 format!("DB probe failed at {}: {err:#}", db_path.display()),
             ));
         }
+    }
+}
+
+// ── Embedding model health ───────────────────────────────────────
+
+/// Probe the configured embedding provider and model.
+///
+/// - If the intended provider is not `"ollama"` (e.g. cloud): `Ok` — no
+///   local daemon is involved and nothing to diagnose here.
+/// - If Ollama is configured but the daemon at `<base_url>/api/tags` is
+///   unreachable: `Error` with the pull command as the fix hint.
+/// - If the daemon is reachable but the configured embedding model is not
+///   listed in `/api/tags`: `Error` with `ollama pull <model>` guidance.
+/// - If both daemon and model are healthy: `Ok`.
+///
+/// This check is synchronous (uses a small blocking HTTP call) so it fits
+/// the existing `run()` contract. The timeout is capped at 3 s to avoid
+/// stalling `openhuman doctor` on a very slow Ollama daemon.
+fn check_embedding_model_health(config: &Config, items: &mut Vec<DiagnosticItem>) {
+    let cat = "embedding_model";
+
+    // Resolve the effective (intended, non-probed) embedding settings.
+    let local_embedding_model = config.workload_local_model("embeddings");
+    let (provider, model, _dims) = crate::openhuman::memory_store::factories::effective_embedding_settings(
+        &config.memory,
+        local_embedding_model.as_deref(),
+    );
+
+    log::debug!(
+        "[doctor] check_embedding_model_health: provider={provider} model={model}"
+    );
+
+    if provider != "ollama" {
+        // Cloud or custom provider — no local daemon to probe.
+        items.push(DiagnosticItem::ok(
+            cat,
+            format!("embedding provider: {provider} (model: {model}) — no local daemon required"),
+        ));
+        return;
+    }
+
+    // Ollama path: probe reachability then model availability.
+    let base_url = crate::openhuman::inference::local::ollama_base_url();
+    let tags_url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+
+    log::debug!("[doctor] probing ollama at {tags_url} for embedding model {model}");
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            items.push(DiagnosticItem::warn(
+                cat,
+                format!("could not build HTTP client for Ollama probe: {e}"),
+            ));
+            return;
+        }
+    };
+
+    let resp = match client.get(&tags_url).send() {
+        Ok(r) => r,
+        Err(e) => {
+            items.push(DiagnosticItem::error(
+                cat,
+                format!(
+                    "Ollama daemon unreachable at {base_url} — embedding model `{model}` cannot be used. \
+                     Start Ollama, then run: ollama pull {model}  (error: {e})"
+                ),
+            ));
+            return;
+        }
+    };
+
+    if !resp.status().is_success() {
+        items.push(DiagnosticItem::error(
+            cat,
+            format!(
+                "Ollama /api/tags returned {} at {base_url} — cannot verify embedding model `{model}`. \
+                 Start Ollama and run: ollama pull {model}",
+                resp.status()
+            ),
+        ));
+        return;
+    }
+
+    // Parse the tags response and look for the configured model.
+    let body = match resp.text() {
+        Ok(t) => t,
+        Err(e) => {
+            items.push(DiagnosticItem::warn(
+                cat,
+                format!("Ollama /api/tags response could not be read: {e}"),
+            ));
+            return;
+        }
+    };
+
+    // The model name in /api/tags may include a tag suffix (e.g. `bge-m3:latest`).
+    // We match on the base name so `bge-m3` matches `bge-m3:latest`.
+    let model_base = model.split(':').next().unwrap_or(&model);
+    let model_found = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("models").cloned())
+        .and_then(|m| m.as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .any(|entry| {
+            entry
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(|name| {
+                    // Match exact name OR base-name prefix (e.g. `bge-m3` matches `bge-m3:latest`).
+                    let tag_base = name.split(':').next().unwrap_or(name);
+                    name == model || tag_base == model_base
+                })
+                .unwrap_or(false)
+        });
+
+    if model_found {
+        items.push(DiagnosticItem::ok(
+            cat,
+            format!("embedding model `{model}` is installed and reachable at {base_url}"),
+        ));
+    } else {
+        items.push(DiagnosticItem::error(
+            cat,
+            format!(
+                "embedding model `{model}` is NOT installed on Ollama at {base_url}. \
+                 Run: ollama pull {model}"
+            ),
+        ));
     }
 }
 
