@@ -32,10 +32,11 @@ use crate::openhuman::config::Config;
 /// and bump it to the new unlimited sentinel.
 const OLD_DEFAULT_MAX_ACTIONS_PER_HOUR: u32 = 20;
 
-/// New commands to merge into `allowed_commands`.
+/// Commands to merge into persisted `allowed_commands` during the v3→v4 bump.
 ///
-/// These were added to the code default in PR #2500 but are absent from any
-/// `config.toml` written before that change.
+/// The target set mirrors the current default more closely than old v3 configs.
+/// Some entries may already be present for customized users; the migration is
+/// additive and skips duplicates.
 const NEW_COMMANDS: &[&str] = &[
     "pnpm", "yarn", "make", "cmake", "sort", "uniq", "diff", "which", "uname", "basename",
     "dirname", "tr", "cut", "realpath", "readlink", "stat", "file", "mkdir", "touch", "cp", "mv",

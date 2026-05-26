@@ -60,7 +60,9 @@ fn default_allowed_commands() -> Vec<String> {
     vec![
         // Version control
         "git".into(),
-        // Package managers / build systems
+        // Package managers / build systems. `make` can run arbitrary recipes,
+        // but the shell policy still gates execution to this command allow-list
+        // and Supervised mode approval remains responsible for risky invocations.
         "npm".into(),
         "pnpm".into(),
         "yarn".into(),
