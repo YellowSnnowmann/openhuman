@@ -245,7 +245,7 @@ describe('MemoryWorkspace (graph view)', () => {
       ],
     });
     renderWithProviders(<MemoryWorkspace />);
-    // Provider-backed toolkits should render actionable Sync rows.
+    // Provider-backed toolkits should render actionable Sync rows
     expect(await screen.findByTestId('memory-source-sync-gmail')).toBeInTheDocument();
     expect(screen.getByTestId('memory-source-sync-slack')).toBeInTheDocument();
     expect(screen.getByTestId('memory-source-sync-notion')).toBeInTheDocument();
