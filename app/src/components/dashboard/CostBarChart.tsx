@@ -190,7 +190,7 @@ const CostBarChart = ({
                         fontSize={9}
                         fontWeight={600}
                         fill="#4A83DD">
-                        {t('settings.costDashboard.today').toUpperCase()}
+                        {t('settings.costDashboard.todayBadge')}
                       </text>
                     </g>
                   );

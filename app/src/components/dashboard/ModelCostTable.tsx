@@ -72,7 +72,7 @@ const ModelCostTable = ({ models, currency }: ModelCostTableProps) => {
                 <Td>
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${providerChipClass(row.provider)}`}>
-                    {row.provider ?? '—'}
+                    {row.provider ?? t('settings.costDashboard.unknownProvider')}
                   </span>
                 </Td>
                 <Td align="right">
@@ -101,7 +101,7 @@ const ModelCostTable = ({ models, currency }: ModelCostTableProps) => {
                       />
                     </div>
                     <span className="tabular-nums w-10 text-right text-stone-600 dark:text-neutral-300">
-                      {`${row.percent_of_total.toFixed(1)}%`}
+                      {`${sharePct.toFixed(1)}%`}
                     </span>
                   </div>
                 </Td>

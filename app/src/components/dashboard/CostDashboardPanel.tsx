@@ -51,7 +51,7 @@ const CostDashboardPanel = () => {
                   aria-hidden
                   className={`inline-block h-1.5 w-1.5 rounded-full ${isFetching ? 'bg-ocean-500 animate-pulse' : 'bg-sage-500'}`}
                 />
-                {`${t('settings.costDashboard.updated')} ${relativeTime(lastUpdated)}`}
+                {`${t('settings.costDashboard.updated')} ${relativeTime(lastUpdated, t)}`}
               </span>
             )}
             <button

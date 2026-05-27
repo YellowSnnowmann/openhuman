@@ -70,18 +70,44 @@ export function dayOfMonth(isoDate: string): string {
 }
 
 /**
- * Human-friendly relative-time string for the "updated Ns ago" pill.
- * Caps at 60s/60m/24h boundaries; returns a plain "Just now" within 5s
- * to avoid a flickering "0s ago" right after a refetch.
+ * i18n translator signature accepted by [`relativeTime`] — matches the
+ * shape of `useT()`'s `t` so callers can pass it directly. The function
+ * is invoked with a string key and is expected to return the localised
+ * value (or the key itself when no translation is available).
  */
-export function relativeTime(timestampMs: number, nowMs: number = Date.now()): string {
+export type RelativeTimeTranslator = (key: string, fallback?: string) => string;
+
+/**
+ * Human-friendly relative-time string for the "updated Ns ago" pill.
+ *
+ * Localised via the i18n translator the caller hands in — never returns
+ * hard-coded English. Keys consumed (all under `settings.costDashboard.*`):
+ * `justNow`, `secondsAgo`, `minutesAgo`, `hoursAgo`, `daysAgo`. The
+ * three numeric variants use a literal `{value}` placeholder so locales
+ * can position the number naturally; the placeholder is substituted
+ * verbatim before return.
+ *
+ * Caps at 60s/60m/24h boundaries; returns the localised "Just now"
+ * within 5s to avoid a flickering "0s ago" right after a refetch.
+ */
+export function relativeTime(
+  timestampMs: number,
+  t: RelativeTimeTranslator,
+  nowMs: number = Date.now()
+): string {
   const deltaSec = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
-  if (deltaSec < 5) return 'Just now';
-  if (deltaSec < 60) return `${deltaSec}s ago`;
+  if (deltaSec < 5) return t('settings.costDashboard.justNow');
+  if (deltaSec < 60) {
+    return t('settings.costDashboard.secondsAgo').replace('{value}', String(deltaSec));
+  }
   const deltaMin = Math.floor(deltaSec / 60);
-  if (deltaMin < 60) return `${deltaMin}m ago`;
+  if (deltaMin < 60) {
+    return t('settings.costDashboard.minutesAgo').replace('{value}', String(deltaMin));
+  }
   const deltaHr = Math.floor(deltaMin / 60);
-  if (deltaHr < 24) return `${deltaHr}h ago`;
+  if (deltaHr < 24) {
+    return t('settings.costDashboard.hoursAgo').replace('{value}', String(deltaHr));
+  }
   const deltaDay = Math.floor(deltaHr / 24);
-  return `${deltaDay}d ago`;
+  return t('settings.costDashboard.daysAgo').replace('{value}', String(deltaDay));
 }

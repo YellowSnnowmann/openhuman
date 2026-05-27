@@ -110,8 +110,17 @@ export function useCostDashboard(options: UseCostDashboardOptions = {}): UseCost
 
   useEffect(() => {
     cancelledRef.current = false;
+    // Always fire one fetch on mount so the panel has data to render even
+    // when polling is paused (background tab, hidden panel). `paused`
+    // only suppresses the periodic interval — not the initial load —
+    // so the user never sees a blank chart on first navigation. If you
+    // need a fully-inert hook, gate the call site on the same flag.
     void fetchOnce();
-    if (paused) return;
+    if (paused) {
+      return () => {
+        cancelledRef.current = true;
+      };
+    }
     const interval = window.setInterval(
       () => {
         void fetchOnce();
