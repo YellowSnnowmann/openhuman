@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCurrency, formatTokens, shortDayLabel } from './formatCurrency';
+import { formatCurrency, formatTokens, relativeTime, shortDayLabel } from './formatCurrency';
 
 describe('formatCurrency', () => {
   it('formats positive USD amounts with two decimals under 100', () => {
@@ -50,5 +50,44 @@ describe('shortDayLabel', () => {
   it('falls back to the suffix for malformed input', () => {
     const label = shortDayLabel('not-a-date');
     expect(typeof label).toBe('string');
+  });
+});
+
+describe('relativeTime', () => {
+  // Stub translator: returns the key untouched so the test can assert
+  // both the key routing and the {value} placeholder substitution.
+  const t = (key: string) => {
+    if (key === 'settings.costDashboard.justNow') return 'Just now';
+    if (key === 'settings.costDashboard.secondsAgo') return '{value}s ago';
+    if (key === 'settings.costDashboard.minutesAgo') return '{value}m ago';
+    if (key === 'settings.costDashboard.hoursAgo') return '{value}h ago';
+    if (key === 'settings.costDashboard.daysAgo') return '{value}d ago';
+    return key;
+  };
+  const now = 1_700_000_000_000;
+
+  it('returns "Just now" within 5 seconds', () => {
+    expect(relativeTime(now - 2_000, t, now)).toBe('Just now');
+  });
+
+  it('renders seconds branch with substituted value', () => {
+    expect(relativeTime(now - 30_000, t, now)).toBe('30s ago');
+  });
+
+  it('renders minutes branch', () => {
+    expect(relativeTime(now - 5 * 60_000, t, now)).toBe('5m ago');
+  });
+
+  it('renders hours branch', () => {
+    expect(relativeTime(now - 3 * 60 * 60_000, t, now)).toBe('3h ago');
+  });
+
+  it('renders days branch', () => {
+    expect(relativeTime(now - 2 * 24 * 60 * 60_000, t, now)).toBe('2d ago');
+  });
+
+  it('returns the raw translation key when missing (i18n fallback)', () => {
+    const passthrough = (key: string) => key;
+    expect(relativeTime(now - 1_000, passthrough, now)).toBe('settings.costDashboard.justNow');
   });
 });
