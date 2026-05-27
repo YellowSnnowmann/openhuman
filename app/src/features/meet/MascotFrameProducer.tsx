@@ -172,9 +172,9 @@ const ProducerSession: FC<{ session: BusSession }> = ({ session }) => {
     // the mascot's mouth animates while the bot is producing TTS audio.
     let unlistenSpeaking: UnlistenFn | undefined;
     let speakingListenerCancelled = false;
-    listen<{ request_id: string; speaking: boolean }>('meet-video:speaking-state', event => {
+    listen<{ requestId: string; speaking: boolean }>('meet-video:speaking-state', event => {
       const p = event.payload;
-      if (p && p.request_id === session.requestId) {
+      if (p && p.requestId === session.requestId) {
         setIsSpeaking(p.speaking);
       }
     })
