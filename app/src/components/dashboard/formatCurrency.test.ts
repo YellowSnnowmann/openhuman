@@ -90,4 +90,15 @@ describe('relativeTime', () => {
     const passthrough = (key: string) => key;
     expect(relativeTime(now - 1_000, passthrough, now)).toBe('settings.costDashboard.justNow');
   });
+
+  it('replaces every {value} placeholder in a translation, not just the first', () => {
+    // Some locales repeat the number for clarity (e.g. "5m ago — 5 minutes").
+    // replaceAll must substitute every occurrence; the previous .replace
+    // implementation left the trailing token literal.
+    const repeating = (key: string) => {
+      if (key === 'settings.costDashboard.minutesAgo') return '{value}m ago ({value} min)';
+      return key;
+    };
+    expect(relativeTime(now - 5 * 60_000, repeating, now)).toBe('5m ago (5 min)');
+  });
 });

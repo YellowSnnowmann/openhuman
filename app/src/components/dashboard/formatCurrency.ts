@@ -98,16 +98,16 @@ export function relativeTime(
   const deltaSec = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
   if (deltaSec < 5) return t('settings.costDashboard.justNow');
   if (deltaSec < 60) {
-    return t('settings.costDashboard.secondsAgo').replace('{value}', String(deltaSec));
+    return t('settings.costDashboard.secondsAgo').replaceAll('{value}', String(deltaSec));
   }
   const deltaMin = Math.floor(deltaSec / 60);
   if (deltaMin < 60) {
-    return t('settings.costDashboard.minutesAgo').replace('{value}', String(deltaMin));
+    return t('settings.costDashboard.minutesAgo').replaceAll('{value}', String(deltaMin));
   }
   const deltaHr = Math.floor(deltaMin / 60);
   if (deltaHr < 24) {
-    return t('settings.costDashboard.hoursAgo').replace('{value}', String(deltaHr));
+    return t('settings.costDashboard.hoursAgo').replaceAll('{value}', String(deltaHr));
   }
   const deltaDay = Math.floor(deltaHr / 24);
-  return t('settings.costDashboard.daysAgo').replace('{value}', String(deltaDay));
+  return t('settings.costDashboard.daysAgo').replaceAll('{value}', String(deltaDay));
 }
