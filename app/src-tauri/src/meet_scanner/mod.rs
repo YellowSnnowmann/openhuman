@@ -428,7 +428,7 @@ async fn dump_aria_labels(cdp: &mut CdpConn, session: &str, pattern: &str) {
         }
     };
     if let Some(arr) = res.get("result").and_then(|r| r.get("value")) {
-        log::warn!(
+        log::info!(
             "[meet-scanner] aria-label dump pattern={} hits={}",
             pattern,
             arr
