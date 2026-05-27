@@ -733,6 +733,9 @@ impl Agent {
                         // the provider doesn't return usage.
                         if let Some(ref usage) = resp.usage {
                             self.context.record_usage(usage);
+                            // Feed the dashboard tracker (no-op when global
+                            // tracker is uninitialised or `cost.enabled = false`).
+                            crate::openhuman::cost::record_provider_usage(&effective_model, usage);
                             cumulative_input_tokens += usage.input_tokens;
                             cumulative_output_tokens += usage.output_tokens;
                             cumulative_cached_input_tokens += usage.cached_input_tokens;
@@ -1056,6 +1059,7 @@ impl Agent {
             // checkpoint message (mirrors the normal final-response path).
             if let Some(ref usage) = checkpoint_usage {
                 self.context.record_usage(usage);
+                crate::openhuman::cost::record_provider_usage(&effective_model, usage);
                 cumulative_input_tokens += usage.input_tokens;
                 cumulative_output_tokens += usage.output_tokens;
                 cumulative_cached_input_tokens += usage.cached_input_tokens;
