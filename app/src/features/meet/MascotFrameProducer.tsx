@@ -217,12 +217,17 @@ const ProducerSession: FC<{ session: BusSession }> = ({ session }) => {
       aria-hidden="true"
       style={{
         position: 'fixed',
-        left: '-99999px',
+        // Keep at a real screen position (not -99999px) so the WebGL
+        // canvas backing RiveMascot actually renders. Browsers skip
+        // painting GPU contexts that are fully off-viewport. opacity:0
+        // makes it invisible to the user while keeping the render alive.
+        left: 0,
         top: 0,
         width: FRAME_H,
         height: FRAME_H,
         pointerEvents: 'none',
         opacity: 0,
+        zIndex: -1,
       }}>
       <RiveMascot face={isSpeaking ? 'speaking' : 'idle'} size={FRAME_H} />
     </div>
