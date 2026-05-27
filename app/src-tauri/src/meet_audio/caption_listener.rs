@@ -65,9 +65,7 @@ pub fn start(request_id: String, cdp: CdpConn, session_id: String) -> CaptionLis
         let mut tick_count: u64 = 0;
         let mut total_captions: u64 = 0;
 
-        log::info!(
-            "[meet-audio] caption listener started request_id={request_id_for_task}"
-        );
+        log::info!("[meet-audio] caption listener started request_id={request_id_for_task}");
 
         loop {
             tokio::select! {
@@ -130,9 +128,7 @@ async fn drain_and_forward(
         return Ok(0);
     }
     let count = captions.len() as u64;
-    log::info!(
-        "[meet-audio] captions drained count={count} request_id={request_id}",
-    );
+    log::info!("[meet-audio] captions drained count={count} request_id={request_id}",);
     for (speaker, text, ts_ms) in captions {
         // Propagate the failure so MAX_CONSECUTIVE_ERRORS can trip if
         // core's session/RPC path is broken — without this the

@@ -634,7 +634,9 @@ async fn dispatch_caption_shortcut(cdp: &mut CdpConn, session: &str) -> Result<(
     if found {
         log::info!("[meet-scanner] captions enabled via keyboard shortcut 'c'");
     } else {
-        log::info!("[meet-scanner] caption region not found after 'c' shortcut — may need manual enable");
+        log::info!(
+            "[meet-scanner] caption region not found after 'c' shortcut — may need manual enable"
+        );
     }
     Ok(())
 }
