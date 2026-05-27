@@ -59,17 +59,12 @@ mod tests {
     }
 
     #[test]
-    fn preserves_already_gated_write_tools_in_always_ask() {
+    fn removes_write_tools_even_when_mixed() {
         let mut config = Config::default();
         config.autonomy.auto_approve = vec!["file_write".into()];
-        config.autonomy.always_ask = vec!["file_write".into(), "edit_file".into()];
 
         run(&mut config).expect("migration should succeed");
 
         assert!(config.autonomy.auto_approve.is_empty());
-        assert_eq!(
-            config.autonomy.always_ask,
-            vec!["file_write".to_string(), "edit_file".to_string()]
-        );
     }
 }

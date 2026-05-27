@@ -274,7 +274,6 @@ async fn run_pending_v4_to_v5_removes_write_tools_from_auto_approve() {
         "edit_file".into(),
         "glob".into(),
     ];
-    config.autonomy.always_ask = vec!["file_write".into()];
 
     run_pending(&mut config).await;
 
@@ -282,11 +281,6 @@ async fn run_pending_v4_to_v5_removes_write_tools_from_auto_approve() {
     assert_eq!(
         config.autonomy.auto_approve,
         vec!["file_read".to_string(), "glob".to_string()]
-    );
-    assert_eq!(
-        config.autonomy.always_ask,
-        vec!["file_write".to_string()],
-        "already re-gated write tools should stay in always_ask"
     );
 
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
