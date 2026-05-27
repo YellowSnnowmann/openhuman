@@ -43,6 +43,14 @@ const en4: TranslationMap = {
   'composio.connect.retryConnection': 'Retry connection',
   'composio.connect.scopeLoadError': "Couldn't load scope preferences: {msg}",
   'composio.connect.scopeSaveError': "Couldn't save {key} scope: {msg}",
+  'composio.connect.scope.read': 'Read',
+  'composio.connect.scope.readHint': 'Allow the agent to read data from this connection.',
+  'composio.connect.scope.write': 'Write',
+  'composio.connect.scope.writeHint':
+    'Allow the agent to create or modify data through this connection.',
+  'composio.connect.scope.admin': 'Admin',
+  'composio.connect.scope.adminHint':
+    'Allow the agent to manage settings, permissions, or destructive actions.',
   'composio.connect.subdomainInvalid':
     'Enter the short subdomain only (e.g. "acme"), not the full URL. It should contain only letters, numbers, and hyphens.',
   'composio.connect.subdomainRequired': 'Please enter your Atlassian subdomain to continue.',
@@ -146,6 +154,8 @@ const en4: TranslationMap = {
   'notifications.center.filterAll': 'Filter all',
   'notifications.center.markAllRead': 'Mark all read',
   'notifications.center.title': 'Notifications',
+  'oauth.button.loopbackTimeout':
+    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': 'Connecting...',
   'oauth.login.continueWith': 'Continue with',
   'onboarding.contextGathering.buildingDesc': 'Building desc',
@@ -191,9 +201,14 @@ const en4: TranslationMap = {
   'pages.settings.ai.llmDesc': 'Llm desc',
   'pages.settings.ai.voice': 'Voice',
   'pages.settings.ai.voiceDesc': 'Voice desc',
+  'pages.settings.ai.embeddings': 'Embeddings',
+  'pages.settings.ai.embeddingsDesc': 'Vector encoding model for memory retrieval',
   'pages.settings.aiSection.description':
     'Language model providers, local Ollama, and voice (STT / TTS).',
   'pages.settings.aiSection.title': 'AI',
+  'pages.settings.composioSection.title': 'Composio',
+  'pages.settings.composioSection.description':
+    'Routing, triggers, and history for integrations powered by Composio.',
   'pages.settings.features.desktopCompanion': 'Desktop Companion',
   'pages.settings.features.desktopCompanionDesc':
     'Voice assistant with screen awareness — listens, sees, speaks, points',
@@ -303,6 +318,18 @@ const en4: TranslationMap = {
   'settings.ai.localOllama': 'Local (Ollama)',
   'settings.ai.modelLabel': 'Model',
   'settings.ai.noCustomProviders': 'No custom providers',
+  'settings.ai.openAiCompat.authHeaderExample': 'Authorization: Bearer <your key>',
+  'settings.ai.openAiCompat.authHeaderLabel': 'Auth header',
+  'settings.ai.openAiCompat.baseUrlLabel': 'Base URL',
+  'settings.ai.openAiCompat.baseUrlUnavailable': 'Unavailable',
+  'settings.ai.openAiCompat.clearKey': 'Clear key',
+  'settings.ai.openAiCompat.description':
+    "Point local harnesses at this /v1 server to route through the providers configured below. Authentication uses a stable key you set here, not the app's internal core bearer.",
+  'settings.ai.openAiCompat.keyConfigured': 'Key configured',
+  'settings.ai.openAiCompat.keyRequired': 'Key required',
+  'settings.ai.openAiCompat.rotateKey': 'Rotate key',
+  'settings.ai.openAiCompat.setKey': 'Set key',
+  'settings.ai.openAiCompat.title': 'OpenAI-compatible endpoint',
   'settings.ai.providerLabel': 'Provider',
   'settings.ai.routing': 'Routing',
   'settings.ai.routingCustom': 'Routing custom',

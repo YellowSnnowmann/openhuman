@@ -28,16 +28,23 @@ pub struct ModelInfo {
 pub async fn list_configured_models(
     provider_id: &str,
 ) -> Result<crate::rpc::RpcOutcome<serde_json::Value>, String> {
+    let config = crate::openhuman::config::Config::load_or_init()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    list_configured_models_from_config(provider_id, &config).await
+}
+
+async fn list_configured_models_from_config(
+    provider_id: &str,
+    config: &crate::openhuman::config::Config,
+) -> Result<crate::rpc::RpcOutcome<serde_json::Value>, String> {
     let provider_id = provider_id.trim().to_string();
     if provider_id.is_empty() {
         return Err("provider_id must not be empty".to_string());
     }
 
     log::debug!("[providers][list_models] provider_id={}", provider_id);
-
-    let config = crate::openhuman::config::Config::load_or_init()
-        .await
-        .map_err(|e| e.to_string())?;
 
     let entry = config
         .cloud_providers
@@ -56,7 +63,7 @@ pub async fn list_configured_models(
     );
 
     let api_key =
-        crate::openhuman::inference::provider::factory::lookup_key_for_slug(&entry.slug, &config)
+        crate::openhuman::inference::provider::factory::lookup_key_for_slug(&entry.slug, config)
             .unwrap_or_default();
     let api_key = api_key.trim().to_string();
 
@@ -478,21 +485,44 @@ pub(super) fn log_provider_access_policy_denied_http_403(
 /// abstract tier leaked to a custom provider, model-specific temperature
 /// constraint) that should be demoted from Sentry to an info log.
 ///
-/// Provider-aware (inverted polarity vs. the 401/403 backend rule): the
-/// same body from the OpenHuman **backend** stays Sentry-actionable —
-/// that would mean we sent our own backend a bad request (a regression,
-/// e.g. #2079). Only client errors from a *custom / third-party*
-/// provider are user-config state. Restricted to the observed shapes
-/// (400 invalid-param / unknown-model, 404 model-does-not-exist, 422
-/// unprocessable); 408/429 are transient and handled separately.
+/// Provider-aware (inverted polarity vs. the 401/403 backend rule): for
+/// most config-rejection phrases the same body from the OpenHuman
+/// **backend** stays Sentry-actionable — that would mean we sent our own
+/// backend a bad request (a regression, e.g. #2079). Restricted to the
+/// observed shapes (400 invalid-param / unknown-model, 404
+/// model-does-not-exist, 422 unprocessable); 408/429 are transient and
+/// handled separately.
+///
+/// **Exception: OpenAI-compatible "unknown model"** (`Model 'X' is not
+/// available. Use GET /openai/v1/models …`). The OpenHuman backend now
+/// emits this exact body for user-configured unknown model ids, so it is
+/// user-state regardless of provider — the polarity guard is dropped for
+/// this specific shape (TAURI-RUST-2Z1). See
+/// [`super::is_openai_compatible_unknown_model_message`].
 pub(super) fn is_provider_config_rejection_http(
     status: reqwest::StatusCode,
     provider: &str,
     body: &str,
 ) -> bool {
-    matches!(status.as_u16(), 400 | 404 | 422)
-        && provider != openhuman_backend::PROVIDER_LABEL
-        && super::is_provider_config_rejection_message(body)
+    if !matches!(status.as_u16(), 400 | 404 | 422) {
+        return false;
+    }
+    if !super::is_provider_config_rejection_message(body) {
+        return false;
+    }
+    // OpenAI-compatible "unknown model" body is user-state regardless of
+    // provider — both third-party `custom_openai` upstreams and our own
+    // OpenHuman backend now emit it for user-configured model ids that
+    // aren't in the registry (TAURI-RUST-2Z1).
+    if super::is_openai_compatible_unknown_model_message(body) {
+        return true;
+    }
+    // Remaining config-rejection phrases (DeepSeek `supported api model
+    // names are`, Moonshot `invalid temperature`, litellm envelopes, …)
+    // are intrinsically scoped to third-party providers — keep the
+    // polarity guard so a regression where our own backend emits one of
+    // those still reaches Sentry.
+    provider != openhuman_backend::PROVIDER_LABEL
 }
 
 pub(super) fn log_provider_config_rejection(
@@ -929,33 +959,6 @@ mod tests {
         model_authorization: Arc<Mutex<Vec<Option<String>>>>,
     }
 
-    struct WorkspaceEnvGuard {
-        prev: Option<std::ffi::OsString>,
-        _lock: std::sync::MutexGuard<'static, ()>,
-    }
-
-    impl Drop for WorkspaceEnvGuard {
-        fn drop(&mut self) {
-            unsafe {
-                match self.prev.take() {
-                    Some(value) => std::env::set_var("OPENHUMAN_WORKSPACE", value),
-                    None => std::env::remove_var("OPENHUMAN_WORKSPACE"),
-                }
-            }
-        }
-    }
-
-    fn set_workspace_env(path: &std::path::Path) -> WorkspaceEnvGuard {
-        let lock = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let prev = std::env::var_os("OPENHUMAN_WORKSPACE");
-        unsafe {
-            std::env::set_var("OPENHUMAN_WORKSPACE", path);
-        }
-        WorkspaceEnvGuard { prev, _lock: lock }
-    }
-
     async fn openrouter_key_handler(
         State(state): State<ModelProbeState>,
         headers: HeaderMap,
@@ -1139,11 +1142,10 @@ mod tests {
     #[tokio::test]
     async fn openrouter_invalid_key_fails_before_models_catalog_probe() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let _env = set_workspace_env(tmp.path());
         let (endpoint, state) = spawn_openrouter_probe_server(StatusCode::UNAUTHORIZED).await;
-        configure_openrouter_workspace(&tmp, endpoint, "bad-openrouter-key").await;
+        let config = configure_openrouter_workspace(&tmp, endpoint, "bad-openrouter-key").await;
 
-        let err = list_configured_models("openrouter")
+        let err = list_configured_models_from_config("openrouter", &config)
             .await
             .expect_err("invalid OpenRouter key must fail");
 
@@ -1162,11 +1164,10 @@ mod tests {
     #[tokio::test]
     async fn openrouter_valid_key_allows_models_catalog_probe() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let _env = set_workspace_env(tmp.path());
         let (endpoint, state) = spawn_openrouter_probe_server(StatusCode::OK).await;
-        configure_openrouter_workspace(&tmp, endpoint, "valid-openrouter-key").await;
+        let config = configure_openrouter_workspace(&tmp, endpoint, "valid-openrouter-key").await;
 
-        let outcome = list_configured_models("openrouter")
+        let outcome = list_configured_models_from_config("openrouter", &config)
             .await
             .expect("valid OpenRouter key should list models");
 
@@ -1178,11 +1179,11 @@ mod tests {
     #[tokio::test]
     async fn openrouter_key_is_trimmed_for_validation_and_catalog_probe() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let _env = set_workspace_env(tmp.path());
         let (endpoint, state) = spawn_openrouter_probe_server(StatusCode::OK).await;
-        configure_openrouter_workspace(&tmp, endpoint, "  valid-openrouter-key\r\n").await;
+        let config =
+            configure_openrouter_workspace(&tmp, endpoint, "  valid-openrouter-key\r\n").await;
 
-        list_configured_models("openrouter")
+        list_configured_models_from_config("openrouter", &config)
             .await
             .expect("trimmed OpenRouter key should list models");
 
@@ -1375,14 +1376,50 @@ mod tests {
 
         #[test]
         fn openhuman_backend_same_body_is_not_suppressed() {
-            // Inverted polarity: a model-rejection from our OWN backend
-            // means we sent it a bad request — a real regression that must
-            // still reach Sentry. (Mirror of the 401/403 backend rule.)
+            // Inverted polarity: for tier-leak / temperature / litellm /
+            // OpenRouter-style phrases, the OpenHuman backend never
+            // emits them, so the same body from our OWN backend would
+            // mean we sent it a bad request — a real regression that
+            // must still reach Sentry. (Mirror of the 401/403 backend
+            // rule.)
             assert!(!is_provider_config_rejection_http(
                 reqwest::StatusCode::BAD_REQUEST,
                 openhuman_backend::PROVIDER_LABEL,
                 TIER_LEAK_BODY,
             ));
+            assert!(!is_provider_config_rejection_http(
+                reqwest::StatusCode::BAD_REQUEST,
+                openhuman_backend::PROVIDER_LABEL,
+                TEMP_BODY,
+            ));
+        }
+
+        #[test]
+        fn openhuman_backend_openai_compatible_unknown_model_is_suppressed() {
+            // TAURI-RUST-2Z1 — the OpenHuman backend DOES emit the
+            // OpenAI-compatible "Model 'X' is not available. Use GET
+            // /openai/v1/models …" wire body for user-configured unknown
+            // model ids (here `MiniMax-M2.7-highspeed` and two
+            // `custom:`-prefixed fallback variants from the user's own
+            // `model_fallbacks` config). That's user-state, not a
+            // regression — drop the polarity guard for this specific
+            // shape so the per-attempt event stops reaching Sentry.
+            // (The aggregate sibling TAURI-RUST-2Z2 is already covered by
+            // `expected_error_kind` via the broader message-only
+            // classifier.)
+            for body in [
+                r#"OpenHuman API error (400 Bad Request): {"success":false,"error":"Model 'MiniMax-M2.7-highspeed' is not available. Use GET /openai/v1/models to list available models."}"#,
+                r#"OpenHuman API error (400 Bad Request): {"success":false,"error":"Model 'custom:MiniMax-M2.7' is not available. Use GET /openai/v1/models to list available models."}"#,
+            ] {
+                assert!(
+                    is_provider_config_rejection_http(
+                        reqwest::StatusCode::BAD_REQUEST,
+                        openhuman_backend::PROVIDER_LABEL,
+                        body,
+                    ),
+                    "TAURI-RUST-2Z1 body must be suppressed for openhuman backend: {body:?}"
+                );
+            }
         }
 
         #[test]

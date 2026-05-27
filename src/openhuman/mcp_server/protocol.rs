@@ -2,7 +2,7 @@ use serde_json::{json, Map, Value};
 
 use super::{session::McpSession, tools};
 
-const LATEST_PROTOCOL_VERSION: &str = "2025-11-25";
+pub const LATEST_PROTOCOL_VERSION: &str = "2025-11-25";
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
     "2024-11-05",
     "2025-03-26",
@@ -174,7 +174,7 @@ async fn handle_request(id: Value, method: &str, params: Value, session: &mut Mc
                     session.source_type(),
                     object_keys(&arguments)
                 );
-                match tools::call_tool(&name, arguments).await {
+                match tools::call_tool(&name, arguments, session.source_type()).await {
                     Ok(result) => {
                         log::debug!(
                             "[mcp_server] tools/call response id={} tool={} client_source_type={} is_error={}",
@@ -562,10 +562,13 @@ mod tests {
             "agent.run_subagent",
             "memory.search",
             "memory.recall",
+            "memory.store",
+            "memory.note",
             "tree.read_chunk",
             "tree.browse",
             "tree.top_entities",
             "tree.list_sources",
+            "tree.tag",
         ];
         base_names.sort_unstable();
         expected_base_names.sort_unstable();
