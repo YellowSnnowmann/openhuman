@@ -344,5 +344,87 @@
     console.warn("[openhuman-audio-bridge] play() patch failed:", e);
   }
 
-  console.log("[openhuman-audio-bridge] install complete (local audio muted)");
+  // WebRTC-level muting: Meet routes incoming participant audio via
+  // RTCPeerConnection.ontrack, NOT through <audio> elements. The DOM
+  // patches above miss this entirely. We intercept at two layers:
+  //
+  //   1. RTCPeerConnection.prototype.addTrack — no-op (we don't need
+  //      to touch outbound, only inbound).
+  //   2. Incoming remote audio tracks — disable them so the browser
+  //      never sends their samples to the speaker.
+  //   3. AudioContext.createMediaStreamSource — return a silent
+  //      (disconnected) source so any Web Audio routing of remote
+  //      streams produces no output.
+  //
+  // Our bridge's TTS path is unaffected because it uses
+  // AudioBufferSource → dest (MediaStreamDestination) + ctx.destination,
+  // never an RTCPeerConnection or createMediaStreamSource.
+  try {
+    var origRTCPeerConnection = window.RTCPeerConnection;
+    if (origRTCPeerConnection) {
+      // Intercept the ontrack setter to disable incoming audio tracks.
+      var origAddEventListener = origRTCPeerConnection.prototype.addEventListener;
+      origRTCPeerConnection.prototype.addEventListener = function (type, listener, options) {
+        if (type === "track") {
+          var wrappedListener = function (event) {
+            if (event.track && event.track.kind === "audio") {
+              event.track.enabled = false;
+              console.log("[openhuman-audio-bridge] disabled incoming WebRTC audio track");
+            }
+            return listener.call(this, event);
+          };
+          return origAddEventListener.call(this, type, wrappedListener, options);
+        }
+        return origAddEventListener.call(this, type, listener, options);
+      };
+
+      // Also intercept the ontrack property setter.
+      var ontrackDesc = Object.getOwnPropertyDescriptor(origRTCPeerConnection.prototype, "ontrack");
+      if (ontrackDesc && ontrackDesc.set) {
+        var origOntrackSet = ontrackDesc.set;
+        Object.defineProperty(origRTCPeerConnection.prototype, "ontrack", {
+          get: ontrackDesc.get,
+          set: function (handler) {
+            var wrapped = function (event) {
+              if (event.track && event.track.kind === "audio") {
+                event.track.enabled = false;
+                console.log("[openhuman-audio-bridge] disabled incoming WebRTC audio track (ontrack)");
+              }
+              return handler.call(this, event);
+            };
+            origOntrackSet.call(this, wrapped);
+          },
+          configurable: true,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[openhuman-audio-bridge] RTCPeerConnection patch failed:", e);
+  }
+
+  // Intercept AudioContext.createMediaStreamSource so remote streams
+  // routed through Web Audio produce silence instead of speaker output.
+  try {
+    var origCreateMSS = AudioContext.prototype.createMediaStreamSource;
+    AudioContext.prototype.createMediaStreamSource = function (stream) {
+      var node = origCreateMSS.call(this, stream);
+      // Check if this is a remote stream (not our bridge's dest stream).
+      // Our bridge uses dest.stream which has a known track; anything
+      // else is remote audio we want to silence.
+      if (dest && stream === dest.stream) {
+        return node; // our bridge — pass through
+      }
+      // Remote stream — create a gain node set to 0 and interpose it
+      // so nothing reaches the destination.
+      var silencer = this.createGain();
+      silencer.gain.value = 0;
+      node.connect(silencer);
+      console.log("[openhuman-audio-bridge] silenced createMediaStreamSource (remote stream)");
+      return silencer;
+    };
+  } catch (e) {
+    console.warn("[openhuman-audio-bridge] createMediaStreamSource patch failed:", e);
+  }
+
+  console.log("[openhuman-audio-bridge] install complete (local audio + WebRTC muted)");
 })();
