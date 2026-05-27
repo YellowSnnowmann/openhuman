@@ -938,19 +938,42 @@ fn check_embedding_model_health(config: &Config, items: &mut Vec<DiagnosticItem>
         }
     };
 
-    let model_found = serde_json::from_str::<serde_json::Value>(&body)
-        .ok()
-        .and_then(|v| v.get("models").cloned())
-        .and_then(|m| m.as_array().cloned())
-        .unwrap_or_default()
-        .iter()
-        .any(|entry| {
-            entry
-                .get("name")
-                .and_then(serde_json::Value::as_str)
-                .map(|name| model_matches(name, &model))
-                .unwrap_or(false)
-        });
+    // Parse the JSON and extract the `models` array.  If the response is
+    // malformed or the schema changed (missing `models` key), report that
+    // explicitly instead of falling through to "model NOT installed".
+    let models_array = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => match v.get("models").and_then(|m| m.as_array()) {
+            Some(arr) => arr.clone(),
+            None => {
+                items.push(DiagnosticItem::warn(
+                    cat,
+                    format!(
+                        "Ollama /api/tags response is missing the `models` key — \
+                         cannot verify embedding model `{model}`. Ollama API may have changed."
+                    ),
+                ));
+                return;
+            }
+        },
+        Err(e) => {
+            items.push(DiagnosticItem::warn(
+                cat,
+                format!(
+                    "Ollama /api/tags returned invalid JSON — \
+                     cannot verify embedding model `{model}`: {e}"
+                ),
+            ));
+            return;
+        }
+    };
+
+    let model_found = models_array.iter().any(|entry| {
+        entry
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .map(|name| model_matches(name, &model))
+            .unwrap_or(false)
+    });
 
     if model_found {
         items.push(DiagnosticItem::ok(
