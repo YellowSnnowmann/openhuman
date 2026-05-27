@@ -10,7 +10,20 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct CostConfig {
-    /// Enable cost tracking (default: true)
+    /// Enable budget enforcement (default: true).
+    ///
+    /// When `true`, [`crate::openhuman::cost::CostTracker::check_budget`]
+    /// honours `daily_limit_usd` / `monthly_limit_usd` and refuses
+    /// over-budget requests via `BudgetCheck::Exceeded`.
+    ///
+    /// **Important:** as of the cost-dashboard PR this flag controls
+    /// **enforcement only**, not telemetry capture. The dashboard
+    /// JSONL store at `{workspace}/state/costs.jsonl` is populated by
+    /// [`crate::openhuman::cost::record_provider_usage`] regardless of
+    /// this flag, so users can review historical spend before opting
+    /// into hard caps. Set `dashboard.enabled = false` to hide the
+    /// Settings panel; delete the JSONL file to clear collected
+    /// history. The file is local and never leaves the workspace.
     #[serde(default = "default_cost_enabled")]
     pub enabled: bool,
 

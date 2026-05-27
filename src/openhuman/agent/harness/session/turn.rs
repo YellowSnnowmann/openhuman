@@ -733,8 +733,14 @@ impl Agent {
                         // the provider doesn't return usage.
                         if let Some(ref usage) = resp.usage {
                             self.context.record_usage(usage);
-                            // Feed the dashboard tracker (no-op when global
-                            // tracker is uninitialised or `cost.enabled = false`).
+                            // Feed the dashboard tracker. This always records
+                            // (model + usage) when the process-global tracker
+                            // is available — independent of `cost.enabled`,
+                            // which gates budget enforcement only. The call
+                            // is a no-op only when `init_global` has not yet
+                            // run (before bootstrap) or failed; errors are
+                            // logged and swallowed so cost telemetry never
+                            // breaks a turn.
                             crate::openhuman::cost::record_provider_usage(&effective_model, usage);
                             cumulative_input_tokens += usage.input_tokens;
                             cumulative_output_tokens += usage.output_tokens;
