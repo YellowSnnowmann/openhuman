@@ -1,6 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { CostDashboardDay } from '../../hooks/useCostDashboard';
+import TokenUsageChart from './TokenUsageChart';
+
 vi.mock('recharts', () => {
   // Stub recharts primitives — jsdom lacks the layout measurements
   // recharts' ResponsiveContainer needs. Passthrough divs are enough
@@ -19,9 +22,6 @@ vi.mock('recharts', () => {
     YAxis: stub,
   };
 });
-
-import TokenUsageChart from './TokenUsageChart';
-import type { CostDashboardDay } from '../../hooks/useCostDashboard';
 
 const days: CostDashboardDay[] = Array.from({ length: 7 }, (_, i) => ({
   date: `2026-05-${21 + i}`,

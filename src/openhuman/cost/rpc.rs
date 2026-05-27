@@ -332,7 +332,10 @@ mod tests {
 
     #[test]
     fn provider_for_extracts_namespace() {
-        assert_eq!(provider_for("anthropic/claude-sonnet-4"), Some("anthropic".to_string()));
+        assert_eq!(
+            provider_for("anthropic/claude-sonnet-4"),
+            Some("anthropic".to_string())
+        );
         assert_eq!(provider_for("openai/gpt-5"), Some("openai".to_string()));
         assert_eq!(provider_for("bare-model"), None);
     }
@@ -498,7 +501,12 @@ mod tests {
         usage.timestamp = Utc::now();
         tracker.record_usage_unconditional(usage).unwrap();
         let outcome = dashboard(&cfg).expect("dashboard should resolve");
-        let total = outcome.value.get("period_total_usd").unwrap().as_f64().unwrap();
+        let total = outcome
+            .value
+            .get("period_total_usd")
+            .unwrap()
+            .as_f64()
+            .unwrap();
         assert!((1.24..=1.26).contains(&total), "got total {total}");
     }
 }

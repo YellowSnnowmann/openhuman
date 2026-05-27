@@ -217,9 +217,9 @@ mod tests {
         cfg.enabled = true;
         init_global(cfg.clone(), tmp.path());
         init_global(cfg, tmp.path()); // second call is a no-op
-        // If this test ran first, global is now set. If another test set
-        // a different workspace already, the original is retained — both
-        // are valid behaviours per the contract.
+                                      // If this test ran first, global is now set. If another test set
+                                      // a different workspace already, the original is retained — both
+                                      // are valid behaviours per the contract.
         assert!(try_global().is_some() || try_global().is_none());
     }
 }

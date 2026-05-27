@@ -24,7 +24,11 @@ describe('<ChartTooltip />', () => {
 
   it('renders the optional footer when supplied', () => {
     render(
-      <ChartTooltip title="Today" rows={[{ label: 'X', value: '1' }]} footer="Daily target: $3.33" />
+      <ChartTooltip
+        title="Today"
+        rows={[{ label: 'X', value: '1' }]}
+        footer="Daily target: $3.33"
+      />
     );
     expect(screen.getByTestId('chart-tooltip')).toHaveTextContent('Daily target: $3.33');
   });
