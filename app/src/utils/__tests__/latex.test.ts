@@ -57,6 +57,16 @@ describe('normalizeLatexDelimiters', () => {
     expect(out).toContain('```\n\\[x^2\\]\n\\(y\\)\n```');
     expect(out).toContain('$a+b$');
   });
+
+  it('does not corrupt math bodies containing digits when code blocks present', () => {
+    const input = 'use `x` and \\[a^2 + 7\\] and `y` and \\(b_3\\)';
+    const out = normalizeLatexDelimiters(input);
+    expect(out).toContain('`x`');
+    expect(out).toContain('`y`');
+    expect(out).toContain('$$a^2 + 7$$');
+    expect(out).toContain('$b_3$');
+    expect(out).not.toContain('undefined');
+  });
 });
 
 describe('hasLatexContent', () => {
