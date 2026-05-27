@@ -36,6 +36,27 @@ describe('normalizeLatexDelimiters', () => {
     expect(out).toContain('$$');
     expect(out).toContain('\\begin{vmatrix}');
   });
+
+  it('preserves \\[...\\] inside inline code spans', () => {
+    const input = 'use `\\[x^2\\]` for display math and \\[a+b\\] renders';
+    const out = normalizeLatexDelimiters(input);
+    expect(out).toContain('`\\[x^2\\]`');
+    expect(out).toContain('$$a+b$$');
+  });
+
+  it('preserves \\(...\\) inside inline code spans', () => {
+    const input = 'use `\\(x\\)` for inline math and \\(a+b\\) renders';
+    const out = normalizeLatexDelimiters(input);
+    expect(out).toContain('`\\(x\\)`');
+    expect(out).toContain('$a+b$');
+  });
+
+  it('preserves LaTeX delimiters inside fenced code blocks', () => {
+    const input = '```\n\\[x^2\\]\n\\(y\\)\n```\n\nthen \\(a+b\\) here';
+    const out = normalizeLatexDelimiters(input);
+    expect(out).toContain('```\n\\[x^2\\]\n\\(y\\)\n```');
+    expect(out).toContain('$a+b$');
+  });
 });
 
 describe('hasLatexContent', () => {
