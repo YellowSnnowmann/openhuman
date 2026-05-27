@@ -38,22 +38,34 @@
   window.__openhumanCaptionsBridgeInstalled = true;
 
   var queue = [];
-  // Per-speaker last-text fingerprint so a caption that grows in place
-  // (Meet appends text mid-utterance) doesn't get queued multiple
-  // times. We emit the *latest* text for each speaker only when it
-  // changes; downstream wake-word logic dedupes on its own buffer.
+  // Set of ALL caption texts we've already queued, keyed by
+  // "speaker\t<normalized_text>". Meet keeps multiple caption rows
+  // visible per speaker (a running transcript), and a single-slot
+  // lastBySpeaker would flip-flop between rows on successive polls,
+  // re-emitting old rows as "new". A seen-set prevents any text
+  // (or prefix-growth of that text) from being emitted twice.
+  var seenTexts = {};
+  // Per-speaker last-text for delta extraction: when a caption row
+  // grows in place ("Hey openhuman" → "Hey openhuman what time"),
+  // we only emit the new tail, not the full text containing the
+  // already-processed wake phrase.
   var lastBySpeaker = {};
 
   function findCaptionsRegion() {
     // Meet's captions region carries a stable accessibility label
-    // even as class names churn between rollouts. Try the canonical
-    // English first, then fall back to a fuzzy match for localized
-    // builds ("Subtitles", "Sous-titres", etc.) that still embed
-    // "captions" / "caption" in the aria-label.
+    // even as class names churn between rollouts. Try several
+    // strategies — Meet keeps changing the exact DOM shape.
     return (
+      // Canonical English aria-label
       document.querySelector('[aria-label="Captions"]') ||
-      document.querySelector('div[role="region"][aria-label*="aption"]') ||
+      // Fuzzy match for localized builds
       document.querySelector('div[role="region"][aria-label*="aption" i]') ||
+      // Meet 2024+: the captions container sometimes uses role="log"
+      // with an aria-label containing "caption" or "subtitle"
+      document.querySelector('[role="log"][aria-label*="aption" i]') ||
+      document.querySelector('[role="log"][aria-label*="ubtitle" i]') ||
+      // Last resort: any element whose aria-label contains "caption"
+      document.querySelector('[aria-label*="aption" i][aria-live]') ||
       null
     );
   }
@@ -65,16 +77,25 @@
     // Each caption line is typically a flex row with the speaker name
     // at the top and the live transcript below. We don't depend on
     // exact class names; instead we walk direct children and treat
-    // each as one caption "row".
+    // each as one caption "row". Meet sometimes nests rows inside an
+    // intermediate wrapper div, so also look one level deeper.
     var rows = region.querySelectorAll(
-      ':scope > div, :scope > section, :scope > [role="listitem"]'
+      ':scope > div, :scope > section, :scope > [role="listitem"], ' +
+      ':scope > div > div, :scope > [role="list"] > [role="listitem"]'
     );
     if (!rows.length) {
       // Fall back to a single-block region: one big innerText blob.
       var blob = (region.innerText || "").trim();
-      if (blob && blob !== lastBySpeaker.__blob__) {
-        queue.push({ speaker: "", text: blob, ts: Date.now() });
+      var prevBlob = lastBySpeaker.__blob__ || "";
+      if (blob && blob !== prevBlob) {
+        var blobDelta = blob;
+        if (prevBlob && blob.indexOf(prevBlob) === 0) {
+          blobDelta = blob.slice(prevBlob.length).trim();
+        }
         lastBySpeaker.__blob__ = blob;
+        if (blobDelta) {
+          queue.push({ speaker: "", text: blobDelta, ts: Date.now() });
+        }
       }
       return;
     }
@@ -108,9 +129,21 @@
       if (!bestText) return;
 
       var key = speakerGuess || "_unknown";
-      if (lastBySpeaker[key] === bestText) return;
+      // Fingerprint: lowercase so "Hey Openhuman" and "hey openhuman"
+      // don't slip through as distinct entries.
+      var fp = key + "\t" + bestText.toLowerCase();
+      if (seenTexts[fp]) return;
+      seenTexts[fp] = true;
+      // Delta extraction: if this row is a prefix-growth of the last
+      // text we saw for this speaker, only emit the new tail.
+      var prev = lastBySpeaker[key] || "";
       lastBySpeaker[key] = bestText;
-      queue.push({ speaker: speakerGuess, text: bestText, ts: Date.now() });
+      var textToEmit = bestText;
+      if (prev && bestText.indexOf(prev) === 0) {
+        textToEmit = bestText.slice(prev.length).trim();
+      }
+      if (!textToEmit) return;
+      queue.push({ speaker: speakerGuess, text: textToEmit, ts: Date.now() });
     });
   }
 
@@ -138,49 +171,104 @@
     return true;
   }
 
-  // Auto-enable captions: walk every button on the page and click any
-  // that has an aria-label matching the "turn on captions" intent.
-  // Substring match (not prefix) — Meet rolls out variant labels
-  // ("Turn on captions (c)", "Turn on live captions", "Subtitles",
-  // "Captions") that the strict prefix-only matcher missed, forcing
-  // the user to click the toggle by hand. Caps attempts so a user who
-  // deliberately disables CC isn't fought over forever.
+  // Auto-enable captions. Strategy:
+  //
+  //   1. Try clicking a button whose aria-label matches known patterns
+  //      (covers older Meet builds + localized labels).
+  //   2. If no button found after a few tries, fall back to dispatching
+  //      the keyboard shortcut "c" which toggles captions in Meet
+  //      regardless of UI changes.
+  //   3. Once the captions region appears, stop trying.
+  //
+  // Caps attempts so a user who deliberately disables CC isn't fought
+  // over forever.
   var ENABLE_ATTEMPT_BUDGET = 60; // ~60 * 2s = 120s — covers slow admit
   var enableAttempts = 0;
+  // After this many failed button-click attempts, switch to keyboard shortcut.
+  var KEYBOARD_FALLBACK_AFTER = 8;
+  var captionsEnabledConfirmed = false;
+
   function tryEnableCaptions() {
-    if (enableAttempts >= ENABLE_ATTEMPT_BUDGET) return;
+    if (captionsEnabledConfirmed || enableAttempts >= ENABLE_ATTEMPT_BUDGET) return;
     enableAttempts++;
-    var buttons = document.querySelectorAll("button[aria-label]");
-    var ON_PATTERNS = [
-      "turn on captions",
-      "turn on live captions",
-      "turn on subtitles",
-      "turn on closed captions",
-      "captions on",
-      "captions (c)",
-      "show captions",
-      "enable captions",
-    ];
-    // Negative guard: never click anything that is already-on (Meet
-    // shows "Turn off captions" when CC is active).
-    var OFF_PATTERNS = ["turn off captions", "captions off", "disable captions"];
-    for (var i = 0; i < buttons.length; i++) {
-      var lbl = (buttons[i].getAttribute("aria-label") || "").toLowerCase();
-      if (OFF_PATTERNS.some(function (p) { return lbl.indexOf(p) >= 0; })) continue;
-      if (ON_PATTERNS.some(function (p) { return lbl.indexOf(p) >= 0; })) {
-        try {
-          buttons[i].click();
-          enableAttempts = ENABLE_ATTEMPT_BUDGET; // success — stop trying.
+
+    // If the captions region already exists, we're done.
+    if (findCaptionsRegion()) {
+      captionsEnabledConfirmed = true;
+      enableAttempts = ENABLE_ATTEMPT_BUDGET;
+      return true;
+    }
+
+    // Strategy 1: button click (works on older Meet builds)
+    if (enableAttempts <= KEYBOARD_FALLBACK_AFTER) {
+      var buttons = document.querySelectorAll("button[aria-label]");
+      var ON_PATTERNS = [
+        "turn on captions",
+        "turn on live captions",
+        "turn on subtitles",
+        "turn on closed captions",
+        "captions on",
+        "captions (c)",
+        "show captions",
+        "enable captions",
+      ];
+      var OFF_PATTERNS = [
+        "turn off captions",
+        "turn off live captions",
+        "turn off subtitles",
+        "captions off",
+        "disable captions",
+        "hide captions",
+        "hide subtitles",
+      ];
+      for (var i = 0; i < buttons.length; i++) {
+        var lbl = (buttons[i].getAttribute("aria-label") || "").toLowerCase();
+        if (OFF_PATTERNS.some(function (p) { return lbl.indexOf(p) >= 0; })) continue;
+        var pressed = buttons[i].getAttribute("aria-pressed");
+        if (pressed === "true") {
+          captionsEnabledConfirmed = true;
+          enableAttempts = ENABLE_ATTEMPT_BUDGET;
           return true;
+        }
+        if (ON_PATTERNS.some(function (p) { return lbl.indexOf(p) >= 0; })) {
+          try { buttons[i].click(); captionsEnabledConfirmed = true; enableAttempts = ENABLE_ATTEMPT_BUDGET; return true; } catch (_) {}
+        }
+        // Bare label fallback
+        if ((lbl === "captions" || lbl === "subtitles" || lbl === "cc") && pressed !== "true") {
+          try { buttons[i].click(); captionsEnabledConfirmed = true; enableAttempts = ENABLE_ATTEMPT_BUDGET; return true; } catch (_) {}
+        }
+      }
+    }
+
+    // Strategy 2: keyboard shortcut "c" — Meet toggles captions on
+    // key press regardless of button labels. We also try "j" (some
+    // locales bind subtitles to "j"). We must check the region isn't
+    // already visible first to avoid toggling OFF. Only fire the
+    // shortcut every other attempt to give the DOM time to react.
+    if (enableAttempts > KEYBOARD_FALLBACK_AFTER && enableAttempts % 2 === 0) {
+      if (!findCaptionsRegion()) {
+        try {
+          // Dispatch a real "c" keypress to the document body so Meet
+          // picks it up as its keyboard shortcut.
+          var keyOpts = { key: "c", code: "KeyC", keyCode: 67, which: 67, bubbles: true };
+          document.body.dispatchEvent(new KeyboardEvent("keydown", keyOpts));
+          document.body.dispatchEvent(new KeyboardEvent("keyup", keyOpts));
         } catch (_) {}
       }
     }
+
     return false;
   }
 
   setInterval(function () {
     attachObserver();
     pollOnce();
+    trimSeenTexts();
+    // Quick check: confirm captions region appeared after a shortcut press
+    if (!captionsEnabledConfirmed && findCaptionsRegion()) {
+      captionsEnabledConfirmed = true;
+      enableAttempts = ENABLE_ATTEMPT_BUDGET;
+    }
   }, 250);
   setInterval(tryEnableCaptions, 2000);
 
@@ -191,13 +279,49 @@
     return out;
   };
 
+  // Cap the seen-set so a multi-hour call doesn't leak memory.
+  // 500 entries ≈ a very active 30-minute meeting; beyond that,
+  // ancient captions have scrolled off Meet's visible region anyway.
+  var MAX_SEEN = 500;
+  function trimSeenTexts() {
+    var keys = Object.keys(seenTexts);
+    if (keys.length > MAX_SEEN) {
+      // Drop the oldest half (insertion-order is preserved in V8).
+      var toDrop = keys.slice(0, Math.floor(keys.length / 2));
+      for (var i = 0; i < toDrop.length; i++) {
+        delete seenTexts[toDrop[i]];
+      }
+    }
+  }
+
   window.__openhumanCaptionsBridgeInfo = function () {
+    var region = findCaptionsRegion();
+    // Scan for caption-related buttons to help diagnose enable failures.
+    var captionButtons = [];
+    try {
+      var buttons = document.querySelectorAll("button[aria-label]");
+      for (var i = 0; i < buttons.length; i++) {
+        var lbl = (buttons[i].getAttribute("aria-label") || "").toLowerCase();
+        if (lbl.indexOf("caption") >= 0 || lbl.indexOf("subtitle") >= 0 || lbl === "cc") {
+          captionButtons.push({
+            label: lbl,
+            pressed: buttons[i].getAttribute("aria-pressed"),
+          });
+        }
+      }
+    } catch (_) {}
     return {
       installed: true,
-      region_found: !!findCaptionsRegion(),
+      region_found: !!region,
+      region_tag: region ? region.tagName : null,
+      region_aria: region ? region.getAttribute("aria-label") : null,
+      region_children: region ? region.children.length : 0,
       queue_depth: queue.length,
       tracked_speakers: Object.keys(lastBySpeaker).length,
+      seen_texts: Object.keys(seenTexts).length,
       enable_attempts: enableAttempts,
+      enable_budget: ENABLE_ATTEMPT_BUDGET,
+      caption_buttons: captionButtons,
     };
   };
 })();

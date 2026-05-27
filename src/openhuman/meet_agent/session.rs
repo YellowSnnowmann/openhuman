@@ -378,11 +378,24 @@ impl MeetAgentSession {
         let speaker_norm = normalise_participant_name(speaker);
         let owner_norm = normalise_participant_name(&self.owner_display_name);
         let bot_norm = normalise_participant_name(&self.bot_display_name);
+        log::info!(
+            "[meet-agent] note_caption gate request_id={} speaker_raw=\"{}\" \
+             speaker_norm=\"{}\" owner_norm=\"{}\" bot_norm=\"{}\"",
+            self.request_id,
+            speaker,
+            speaker_norm,
+            owner_norm,
+            bot_norm
+        );
         // Bot-self filter first: a bot caption that happens to match
         // its own display name must never re-wake. Run before the
         // owner check so a (very contrived) bot_display_name ==
         // owner_display_name still doesn't let the bot wake itself.
         if !bot_norm.is_empty() && speaker_norm == bot_norm {
+            log::debug!(
+                "[meet-agent] caption dropped: bot self-caption request_id={}",
+                self.request_id
+            );
             return CaptionOutcome::Ignored;
         }
         // Fail-closed when no owner has been configured. A live

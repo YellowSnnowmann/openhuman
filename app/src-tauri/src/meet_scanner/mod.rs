@@ -331,6 +331,12 @@ async fn run(request_id: &str, meet_url: &str, display_name: &str) -> Result<(),
         {
             log::info!("[meet-scanner] captions toggle ON not clicked: {err}");
             dump_aria_labels(&mut cdp, &session, "caption|subtitle").await;
+            // Fallback: dispatch the "c" keyboard shortcut that toggles
+            // captions in Meet regardless of button label changes.
+            log::info!("[meet-scanner] trying keyboard shortcut 'c' to enable captions");
+            if let Err(key_err) = dispatch_caption_shortcut(&mut cdp, &session).await {
+                log::info!("[meet-scanner] caption shortcut dispatch failed: {key_err}");
+            }
         }
     }
 
@@ -586,6 +592,51 @@ async fn wait_and_click_text(
     Err(format!(
         "timeout waiting for clickable element matching {labels:?} (last={last_value})"
     ))
+}
+
+/// Dispatch the "c" keyboard shortcut via CDP `Input.dispatchKeyEvent`
+/// to toggle captions in Google Meet. This bypasses button-label
+/// matching entirely and works regardless of Meet's UI changes.
+async fn dispatch_caption_shortcut(cdp: &mut CdpConn, session: &str) -> Result<(), String> {
+    for event_type in ["keyDown", "keyUp"] {
+        cdp.call(
+            "Input.dispatchKeyEvent",
+            json!({
+                "type": event_type,
+                "key": "c",
+                "code": "KeyC",
+                "windowsVirtualKeyCode": 67,
+                "nativeVirtualKeyCode": 67,
+            }),
+            Some(session),
+        )
+        .await
+        .map_err(|e| format!("Input.dispatchKeyEvent({event_type}): {e}"))?;
+    }
+    // Give Meet a moment to react, then check if captions region appeared.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let check = cdp
+        .call(
+            "Runtime.evaluate",
+            json!({
+                "expression": "!!document.querySelector('[aria-label*=\"aption\" i], [role=\"log\"][aria-label]')",
+                "returnByValue": true,
+            }),
+            Some(session),
+        )
+        .await
+        .map_err(|e| format!("caption region check: {e}"))?;
+    let found = check
+        .get("result")
+        .and_then(|r| r.get("value"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if found {
+        log::info!("[meet-scanner] captions enabled via keyboard shortcut 'c'");
+    } else {
+        log::info!("[meet-scanner] caption region not found after 'c' shortcut — may need manual enable");
+    }
+    Ok(())
 }
 
 /// Focus an `<input>` whose `aria-label` or `placeholder` contains

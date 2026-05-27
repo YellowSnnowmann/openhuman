@@ -32,6 +32,10 @@ const POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// away (call ended) or the renderer crashed.
 const MAX_CONSECUTIVE_ERRORS: u32 = 30;
 
+/// How often (in ticks) to log a diagnostic heartbeat when drains are
+/// empty. 60 ticks × 500 ms = every 30 s.
+const DIAG_HEARTBEAT_TICKS: u64 = 60;
+
 /// RAII handle. Drop to stop the listener task.
 pub struct CaptionListener {
     pub request_id: String,
@@ -58,6 +62,13 @@ pub fn start(request_id: String, cdp: CdpConn, session_id: String) -> CaptionLis
         tick.tick().await;
         let mut cdp = cdp;
         let mut errors: u32 = 0;
+        let mut tick_count: u64 = 0;
+        let mut total_captions: u64 = 0;
+
+        log::info!(
+            "[meet-audio] caption listener started request_id={request_id_for_task}"
+        );
+
         loop {
             tokio::select! {
                 _ = &mut shutdown_rx => {
@@ -67,8 +78,12 @@ pub fn start(request_id: String, cdp: CdpConn, session_id: String) -> CaptionLis
                     break;
                 }
                 _ = tick.tick() => {
+                    tick_count += 1;
                     match drain_and_forward(&request_id_for_task, &mut cdp, &session_id).await {
-                        Ok(_) => errors = 0,
+                        Ok(count) => {
+                            errors = 0;
+                            total_captions += count;
+                        },
                         Err(err) => {
                             errors += 1;
                             log::debug!(
@@ -82,6 +97,17 @@ pub fn start(request_id: String, cdp: CdpConn, session_id: String) -> CaptionLis
                             }
                         }
                     }
+
+                    // Periodic diagnostic heartbeat so silent caption
+                    // listeners are visible in the logs.
+                    if tick_count % DIAG_HEARTBEAT_TICKS == 0 {
+                        let bridge_info = probe_bridge_info(&mut cdp, &session_id).await;
+                        log::info!(
+                            "[meet-audio] caption listener heartbeat request_id={request_id_for_task} \
+                             ticks={tick_count} total_captions={total_captions} \
+                             consec_errors={errors} bridge={bridge_info}"
+                        );
+                    }
                 }
             }
         }
@@ -93,18 +119,19 @@ pub fn start(request_id: String, cdp: CdpConn, session_id: String) -> CaptionLis
     }
 }
 
+/// Returns the number of captions forwarded to core.
 async fn drain_and_forward(
     request_id: &str,
     cdp: &mut CdpConn,
     session_id: &str,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let captions = inject::drain_captions(cdp, session_id).await?;
     if captions.is_empty() {
-        return Ok(());
+        return Ok(0);
     }
+    let count = captions.len() as u64;
     log::info!(
-        "[meet-audio] captions drained count={} request_id={request_id}",
-        captions.len()
+        "[meet-audio] captions drained count={count} request_id={request_id}",
     );
     for (speaker, text, ts_ms) in captions {
         // Propagate the failure so MAX_CONSECUTIVE_ERRORS can trip if
@@ -123,5 +150,31 @@ async fn drain_and_forward(
         .await
         .map_err(|err| format!("push_caption (request_id={request_id}): {err}"))?;
     }
-    Ok(())
+    Ok(count)
+}
+
+/// Query the page-side captions bridge for diagnostic info. Never
+/// fails — returns a human-readable string for the heartbeat log.
+async fn probe_bridge_info(cdp: &mut CdpConn, session_id: &str) -> String {
+    let res = cdp
+        .call(
+            "Runtime.evaluate",
+            serde_json::json!({
+                "expression": "(typeof window.__openhumanCaptionsBridgeInfo === 'function') \
+                               ? JSON.stringify(window.__openhumanCaptionsBridgeInfo()) \
+                               : '{\"installed\":false}'",
+                "returnByValue": true,
+            }),
+            Some(session_id),
+        )
+        .await;
+    match res {
+        Ok(v) => v
+            .get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("{\"error\":\"no value\"}")
+            .to_string(),
+        Err(err) => format!("{{\"error\":\"{err}\"}}"),
+    }
 }

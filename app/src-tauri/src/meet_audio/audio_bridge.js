@@ -45,9 +45,13 @@
 
   function ensureContext() {
     if (ctx) {
-      console.log(
-        "[openhuman-audio-bridge] reuse AudioContext state=" + ctx.state
-      );
+      // Resume if suspended (CEF suspends until user gesture; the
+      // meet_scanner's synthetic clicks count as gestures on some
+      // builds but not all).
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(function () {});
+        console.log("[openhuman-audio-bridge] resumed suspended AudioContext");
+      }
       return ctx;
     }
     var requestedRate = SAMPLE_RATE;
@@ -133,15 +137,12 @@
       var src = ctx.createBufferSource();
       src.buffer = buffer;
       src.connect(dest);
-      // Also pipe to the page's default audio output so the bot is
-      // audible on the host machine (the openhuman app's speakers).
-      // Without this, bot audio only flows up Meet's gUM intercept
-      // and the user has to be receiving the meeting on a separate
-      // endpoint (other browser tab / phone) to hear it. Playing
-      // locally too costs nothing audio-quality-wise and removes the
-      // "captions appear but no sound" foot-gun. Follow-up #20
-      // (mute bot CEF at OS level) will re-introduce a clean off
-      // switch once we have a config toggle.
+      // Also pipe to the page's default audio output so the bot's
+      // TTS is audible on the host machine. This does NOT cause echo
+      // because Meet attributes the bot's own speech to "You" (which
+      // is filtered in core's note_caption) and the media-element
+      // mute below silences Meet's INCOMING call audio (other
+      // participants' voices bouncing back through speakers).
       src.connect(ctx.destination);
       // Schedule strictly after the previous chunk so successive
       // 100 ms feeds line up gaplessly. If the queue has emptied
@@ -269,5 +270,79 @@
         });
     };
   }
-  console.log("[openhuman-audio-bridge] install complete");
+  // Mute all inbound call audio on this page. The bot's CEF window is
+  // a headless participant — it reads captions for input and uses the
+  // virtual mic for output. Any audio that plays through the local
+  // speakers gets picked up by the user's mic (they're on the same
+  // machine) and causes an echo loop. We:
+  //
+  //   1. Mute all existing <audio> and <video> elements.
+  //   2. Observe the DOM for new media elements and mute those too.
+  //   3. Monkey-patch HTMLMediaElement.prototype.play to auto-mute
+  //      before playing, catching dynamically created elements that
+  //      aren't in the DOM yet.
+  //
+  // This does NOT affect the bridge's outbound TTS path — that goes
+  // through the Web Audio graph's MediaStreamDestination (virtual mic),
+  // not through any <audio>/<video> element.
+  function muteMediaElement(el) {
+    try {
+      el.muted = true;
+      el.volume = 0;
+    } catch (_) {}
+  }
+
+  function muteAllMedia() {
+    var els = document.querySelectorAll("audio, video");
+    for (var i = 0; i < els.length; i++) {
+      muteMediaElement(els[i]);
+    }
+  }
+
+  // Initial sweep (may be empty at document-start; the observer
+  // and play-patch handle late arrivals).
+  muteAllMedia();
+
+  // Observe DOM for dynamically added media elements.
+  try {
+    var mediaObserver = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var added = mutations[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          var node = added[j];
+          if (node.nodeType !== 1) continue;
+          if (node.tagName === "AUDIO" || node.tagName === "VIDEO") {
+            muteMediaElement(node);
+          }
+          // Also check children (e.g. a div containing a <video>).
+          if (node.querySelectorAll) {
+            var inner = node.querySelectorAll("audio, video");
+            for (var k = 0; k < inner.length; k++) {
+              muteMediaElement(inner[k]);
+            }
+          }
+        }
+      }
+    });
+    mediaObserver.observe(document.documentElement || document.body || document, {
+      childList: true,
+      subtree: true,
+    });
+  } catch (e) {
+    console.warn("[openhuman-audio-bridge] media mute observer failed:", e);
+  }
+
+  // Monkey-patch play() to ensure mute sticks even for elements created
+  // outside the DOM (Meet sometimes uses detached <audio> for WebRTC).
+  try {
+    var origPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      muteMediaElement(this);
+      return origPlay.apply(this, arguments);
+    };
+  } catch (e) {
+    console.warn("[openhuman-audio-bridge] play() patch failed:", e);
+  }
+
+  console.log("[openhuman-audio-bridge] install complete (local audio muted)");
 })();
