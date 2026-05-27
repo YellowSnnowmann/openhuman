@@ -17,13 +17,29 @@ const INLINE_BACKSLASH = /\\\(([\s\S]+?)\\\)/g;
 const DISPLAY_BARE_BRACKETS =
   /(^|\n)[ \t]*\[[ \t]*((?:[^[\]\n]|\n(?!\n))*?\\(?:begin|end|frac|sqrt|cdot|times|sum|int|prod|lim|left|right|vmatrix|pmatrix|bmatrix|matrix|mathrm|mathbf|mathbb|alpha|beta|gamma|delta|theta|pi|sigma|infty)[^[\]]*?)[ \t]*\][ \t]*(?=\n|$)/g;
 
+// Match fenced code blocks (```...```) and inline code spans (`...`) so
+// they can be masked out before delimiter normalization. Without this,
+// content like "use `\[x^2\]` for display math" would get its inline
+// code corrupted into `$$x^2$$`.
+const CODE_BLOCKS = /```[\s\S]*?```|`[^`\n]+`/g;
+const PLACEHOLDER = /\x00CODE(\d+)\x00/g;
+
 export function normalizeLatexDelimiters(input: string): string {
   if (!input || (!input.includes('\\') && !input.includes('['))) return input;
 
-  let out = input;
+  const codeSegments: string[] = [];
+  let out = input.replace(CODE_BLOCKS, match => {
+    codeSegments.push(match);
+    return `\x00CODE${codeSegments.length - 1}\x00`;
+  });
+
   out = out.replace(DISPLAY_BACKSLASH, (_m, body) => `\n\n$$${body}$$\n\n`);
   out = out.replace(INLINE_BACKSLASH, (_m, body) => `$${body}$`);
   out = out.replace(DISPLAY_BARE_BRACKETS, (_m, lead, body) => `${lead}\n$$${body}$$\n`);
+
+  if (codeSegments.length > 0) {
+    out = out.replace(PLACEHOLDER, (_m, i) => codeSegments[Number(i)]);
+  }
   return out;
 }
 
