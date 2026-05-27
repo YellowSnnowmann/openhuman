@@ -22,7 +22,15 @@ const DISPLAY_BARE_BRACKETS =
 // content like "use `\[x^2\]` for display math" would get its inline
 // code corrupted into `$$x^2$$`.
 const CODE_BLOCKS = /```[\s\S]*?```|`[^`\n]+`/g;
-const PLACEHOLDER = /\x00CODE(\d+)\x00/g;
+
+// Sentinel uses Unicode Private Use Area (U+E000 / U+E001):
+//  - non-control (ESLint `no-control-regex` does not fire)
+//  - reserved by Unicode for private use, will not appear in real chat text
+//  - wrapped on both sides so the restore regex matches *only* placeholders
+//    and never stray digits inside math bodies (e.g. `$$a^2$$`).
+const PLACEHOLDER_OPEN = '';
+const PLACEHOLDER_CLOSE = '';
+const PLACEHOLDER = /(\d+)/g;
 
 export function normalizeLatexDelimiters(input: string): string {
   if (!input || (!input.includes('\\') && !input.includes('['))) return input;
@@ -30,7 +38,7 @@ export function normalizeLatexDelimiters(input: string): string {
   const codeSegments: string[] = [];
   let out = input.replace(CODE_BLOCKS, match => {
     codeSegments.push(match);
-    return `\x00CODE${codeSegments.length - 1}\x00`;
+    return `${PLACEHOLDER_OPEN}${codeSegments.length - 1}${PLACEHOLDER_CLOSE}`;
   });
 
   out = out.replace(DISPLAY_BACKSLASH, (_m, body) => `\n\n$$${body}$$\n\n`);
@@ -38,7 +46,7 @@ export function normalizeLatexDelimiters(input: string): string {
   out = out.replace(DISPLAY_BARE_BRACKETS, (_m, lead, body) => `${lead}\n$$${body}$$\n`);
 
   if (codeSegments.length > 0) {
-    out = out.replace(PLACEHOLDER, (_m, i) => codeSegments[Number(i)]);
+    out = out.replace(PLACEHOLDER, (_m, i) => codeSegments[Number(i)] ?? '');
   }
   return out;
 }
