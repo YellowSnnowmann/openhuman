@@ -912,9 +912,8 @@ fn write_to_not_yet_existing_path_in_workspace_still_allowed() {
 
 #[test]
 fn config_default_auto_approve_includes_expanded_tools() {
-    // Issue #2486: verify all new auto_approve tools are in the default list
-    // so workspace-scoped read/write tools skip the approval prompt without
-    // requiring manual configuration changes.
+    // Issue #2486: verify read-only tools are auto-approved by default,
+    // and write tools are NOT (Supervised mode must prompt for edits).
     let cfg = crate::openhuman::config::AutonomyConfig::default();
 
     // Pre-existing auto-approved tools must still be present
@@ -931,11 +930,19 @@ fn config_default_auto_approve_includes_expanded_tools() {
         );
     }
 
-    // Newly added workspace-scoped tools
-    for tool in ["glob", "grep", "file_write", "edit_file"] {
+    // Newly added read-only workspace-scoped tools
+    for tool in ["glob", "grep"] {
         assert!(
             cfg.auto_approve.iter().any(|t| t == tool),
             "default auto_approve must include newly added tool: {tool}"
+        );
+    }
+
+    // Write tools must NOT be auto-approved (v4→v5 migration strips these)
+    for tool in ["file_write", "edit_file"] {
+        assert!(
+            !cfg.auto_approve.iter().any(|t| t == tool),
+            "write tool {tool} must NOT be auto-approved by default"
         );
     }
 }
