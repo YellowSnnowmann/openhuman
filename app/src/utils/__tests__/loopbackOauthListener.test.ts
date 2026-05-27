@@ -122,7 +122,7 @@ describe('startLoopbackOauthListener', () => {
 
       await expect(callbackPromise).rejects.toThrow('Loopback OAuth listener timed out');
       expect(unlisten).toHaveBeenCalledTimes(1);
-      // Drain the queued microtask that calls stop().
+      // Drain the queued microtask that calls stop()
       await Promise.resolve();
       expect(mockInvoke).toHaveBeenNthCalledWith(2, 'stop_loopback_oauth_listener');
 
