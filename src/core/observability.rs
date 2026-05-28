@@ -1019,8 +1019,7 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 domain = domain,
                 operation = operation,
                 kind = "disk_full",
-                error = %message,
-                "[observability] {domain}.{operation} skipped expected disk-full error: {message}"
+                "[observability] {domain}.{operation} skipped expected disk-full error"
             );
         }
         ExpectedErrorKind::MemoryStoreBreakerOpen => {
@@ -1028,8 +1027,7 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 domain = domain,
                 operation = operation,
                 kind = "memory_store_breaker_open",
-                error = %message,
-                "[observability] {domain}.{operation} skipped expected memory-store circuit-breaker-open error: {message}"
+                "[observability] {domain}.{operation} skipped expected memory-store circuit-breaker-open error"
             );
         }
     }
