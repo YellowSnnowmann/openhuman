@@ -66,11 +66,33 @@ fn assistant_message_has_tool_calls(msg: &ChatMessage) -> bool {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&msg.content) else {
         return false;
     };
-    value
-        .get("tool_calls")
-        .and_then(|tc| tc.as_array())
-        .map(|arr| !arr.is_empty())
-        .unwrap_or(false)
+    // CodeRabbit follow-up: only treat this as the native tool_calls envelope
+    // when the full expected shape is present:
+    //   - top-level JSON object
+    //   - `content` key present (the envelope `dispatcher.rs` emits — see
+    //     `to_provider_messages`)
+    //   - non-empty `tool_calls` array whose every element carries an `id`
+    //     string, a `name` string, and an `arguments` field
+    // This stops a legitimate assistant text reply that happens to contain
+    // the literal string `tool_calls` from being misclassified and dropped at
+    // the bound-cached-transcript boundary.
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    if !obj.contains_key("content") {
+        return false;
+    }
+    let Some(tool_calls) = obj.get("tool_calls").and_then(|tc| tc.as_array()) else {
+        return false;
+    };
+    if tool_calls.is_empty() {
+        return false;
+    }
+    tool_calls.iter().all(|tc| {
+        tc.get("id").and_then(|v| v.as_str()).is_some()
+            && tc.get("name").and_then(|v| v.as_str()).is_some()
+            && tc.get("arguments").is_some()
+    })
 }
 
 /// Instruction appended (as a synthetic user turn) to the provider
