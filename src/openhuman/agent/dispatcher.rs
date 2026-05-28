@@ -477,9 +477,61 @@ impl ToolDispatcher for NativeToolDispatcher {
     }
 
     fn to_provider_messages(&self, history: &[ConversationMessage]) -> Vec<ChatMessage> {
-        history
-            .iter()
-            .flat_map(|msg| match msg {
+        // TAURI-RUST-7: providers (incl. the OpenHuman backend) reject any
+        // assistant `tool_calls` message that isn't immediately followed by
+        // `tool` messages responding to every `tool_call_id`, with
+        // `400 An assistant message with 'tool_calls' must be followed by
+        // tool messages responding to each 'tool_call_id'`. Cached transcript
+        // restores, mid-turn aborts, and history compaction can all produce a
+        // bisected tool cycle (assistant tool_calls preserved, ToolResults
+        // dropped or never persisted). Filter those out here, just before
+        // serialising to provider wire format, so a bisected pair never
+        // reaches the wire. Symmetric drop: a `ToolResults` whose preceding
+        // `AssistantToolCalls` was dropped is also stripped to keep the
+        // sequence well-formed.
+        let mut paired_indices: Vec<usize> = Vec::with_capacity(history.len());
+        for (i, msg) in history.iter().enumerate() {
+            match msg {
+                ConversationMessage::AssistantToolCalls { .. } => {
+                    if matches!(
+                        history.get(i + 1),
+                        Some(ConversationMessage::ToolResults(_))
+                    ) {
+                        paired_indices.push(i);
+                    } else {
+                        log::debug!(
+                            "[agent][dispatcher] dropping unpaired AssistantToolCalls at index \
+                             {i} of {} (no immediately following ToolResults — would trip \
+                             provider 400 'tool_calls must be followed by tool messages')",
+                            history.len()
+                        );
+                    }
+                }
+                ConversationMessage::ToolResults(_) => {
+                    let preceded_by_kept_tool_calls = i > 0
+                        && matches!(
+                            history.get(i - 1),
+                            Some(ConversationMessage::AssistantToolCalls { .. })
+                        )
+                        && paired_indices.last() == Some(&(i - 1));
+                    if preceded_by_kept_tool_calls {
+                        paired_indices.push(i);
+                    } else {
+                        log::debug!(
+                            "[agent][dispatcher] dropping orphan ToolResults at index {i} \
+                             (no preceding AssistantToolCalls in the emitted sequence)"
+                        );
+                    }
+                }
+                ConversationMessage::Chat(_) => {
+                    paired_indices.push(i);
+                }
+            }
+        }
+
+        paired_indices
+            .into_iter()
+            .flat_map(|i| match &history[i] {
                 ConversationMessage::Chat(chat) => vec![chat.clone()],
                 ConversationMessage::AssistantToolCalls { text, tool_calls } => {
                     let payload = serde_json::json!({
