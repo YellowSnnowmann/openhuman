@@ -103,10 +103,7 @@ pub const GITHUB_CURATED: &[CuratedTool] = &[
         slug: "GITHUB_CREATE_A_COMMIT",
         scope: ToolScope::Write,
     },
-    CuratedTool {
-        slug: "GITHUB_COMMIT_MULTIPLE_FILES",
-        scope: ToolScope::Write,
-    },
+    // GITHUB_COMMIT_MULTIPLE_FILES removed from Composio catalog
     CuratedTool {
         slug: "GITHUB_CREATE_A_COMMIT_COMMENT",
         scope: ToolScope::Write,
@@ -180,7 +177,7 @@ pub const GITHUB_CURATED: &[CuratedTool] = &[
         scope: ToolScope::Admin,
     },
     CuratedTool {
-        slug: "GITHUB_CANCEL_WORKFLOW_RUN",
+        slug: "GITHUB_CANCEL_A_WORKFLOW_RUN",
         scope: ToolScope::Admin,
     },
 ];
