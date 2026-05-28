@@ -1313,3 +1313,92 @@ async fn fetch_learned_context_loads_general_prefs_when_learning_enabled() {
         learned.user_profile
     );
 }
+
+// ── assistant_message_has_tool_calls — TAURI-RUST-7 envelope check ─────
+
+#[test]
+fn assistant_message_has_tool_calls_detects_native_envelope() {
+    let body = serde_json::json!({
+        "content": "calling tool",
+        "tool_calls": [{
+            "id": "tc-1",
+            "name": "shell",
+            "arguments": "{}"
+        }]
+    })
+    .to_string();
+    let msg = ChatMessage::assistant(body);
+    assert!(super::assistant_message_has_tool_calls(&msg));
+}
+
+#[test]
+fn assistant_message_has_tool_calls_rejects_non_assistant_role() {
+    let body = serde_json::json!({
+        "content": "x",
+        "tool_calls": [{ "id": "tc-1", "name": "shell", "arguments": "{}" }]
+    })
+    .to_string();
+    let msg = ChatMessage::user(body);
+    assert!(!super::assistant_message_has_tool_calls(&msg));
+}
+
+#[test]
+fn assistant_message_has_tool_calls_rejects_plain_text_reply() {
+    // Most common positive case for the previous over-broad check: a plain
+    // assistant reply whose text happens to mention `tool_calls`.
+    let msg = ChatMessage::assistant("I considered using tool_calls but chose not to.");
+    assert!(!super::assistant_message_has_tool_calls(&msg));
+}
+
+#[test]
+fn assistant_message_has_tool_calls_rejects_envelope_without_content_field() {
+    // A bare `{"tool_calls": [...]}` JSON in the content (no `content` field)
+    // is not the envelope `dispatcher.rs` emits.
+    let body = serde_json::json!({
+        "tool_calls": [{ "id": "tc-1", "name": "shell", "arguments": "{}" }]
+    })
+    .to_string();
+    let msg = ChatMessage::assistant(body);
+    assert!(!super::assistant_message_has_tool_calls(&msg));
+}
+
+#[test]
+fn assistant_message_has_tool_calls_rejects_empty_tool_calls_array() {
+    let body = serde_json::json!({
+        "content": "no tools",
+        "tool_calls": []
+    })
+    .to_string();
+    let msg = ChatMessage::assistant(body);
+    assert!(!super::assistant_message_has_tool_calls(&msg));
+}
+
+#[test]
+fn assistant_message_has_tool_calls_rejects_malformed_tool_call_items() {
+    // tool_call object missing `id` — not the native envelope shape.
+    let body_no_id = serde_json::json!({
+        "content": "x",
+        "tool_calls": [{ "name": "shell", "arguments": "{}" }]
+    })
+    .to_string();
+    assert!(!super::assistant_message_has_tool_calls(
+        &ChatMessage::assistant(body_no_id)
+    ));
+
+    // tool_call object missing `arguments` — also rejected.
+    let body_no_args = serde_json::json!({
+        "content": "x",
+        "tool_calls": [{ "id": "tc-1", "name": "shell" }]
+    })
+    .to_string();
+    assert!(!super::assistant_message_has_tool_calls(
+        &ChatMessage::assistant(body_no_args)
+    ));
+}
+
+#[test]
+fn assistant_message_has_tool_calls_rejects_non_object_root() {
+    // Content is a JSON array, not an object.
+    let msg = ChatMessage::assistant(r#"["just", "an", "array"]"#.to_string());
+    assert!(!super::assistant_message_has_tool_calls(&msg));
+}

@@ -377,3 +377,109 @@ fn to_provider_messages_handles_multiple_tool_cycles() {
         ]
     );
 }
+
+// ── tool_call_id set-pairing (CodeRabbit follow-up) ─────────────────────
+
+fn assistant_tool_calls_multi(ids: &[&str]) -> ConversationMessage {
+    ConversationMessage::AssistantToolCalls {
+        text: Some("calling tools".into()),
+        tool_calls: ids
+            .iter()
+            .map(|id| crate::openhuman::inference::provider::ToolCall {
+                id: (*id).into(),
+                name: "shell".into(),
+                arguments: "{}".into(),
+            })
+            .collect(),
+    }
+}
+
+fn tool_results_multi(ids: &[&str]) -> ConversationMessage {
+    use crate::openhuman::inference::provider::ToolResultMessage;
+    ConversationMessage::ToolResults(
+        ids.iter()
+            .map(|id| ToolResultMessage {
+                tool_call_id: (*id).into(),
+                content: "ok".into(),
+            })
+            .collect(),
+    )
+}
+
+#[test]
+fn to_provider_messages_drops_pair_when_tool_call_ids_mismatch() {
+    // Opener requests `tc-1`, but the only ToolResults entry answers `tc-x`.
+    // Backend would 400 with "insufficient tool messages following tool_calls"
+    // — drop both.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        assistant_tool_calls_multi(&["tc-1"]),
+        tool_results_multi(&["tc-x"]),
+        assistant_chat("done"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(
+        roles,
+        vec!["user", "assistant"],
+        "id-set mismatch must drop the bisected pair entirely, kept: {roles:?}"
+    );
+}
+
+#[test]
+fn to_provider_messages_drops_pair_when_results_are_partial() {
+    // Opener requests two tool_call_ids, results answer only one. Backend
+    // rejects with "insufficient tool messages". Strict set equality drops
+    // the pair.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        assistant_tool_calls_multi(&["tc-1", "tc-2"]),
+        tool_results_multi(&["tc-1"]),
+        assistant_chat("done"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(
+        roles,
+        vec!["user", "assistant"],
+        "partial tool-result coverage must drop the pair, kept: {roles:?}"
+    );
+}
+
+#[test]
+fn to_provider_messages_keeps_pair_with_full_id_coverage() {
+    // Strict set equality: opener has {tc-1, tc-2}, results cover both,
+    // even if listed in a different order. Both messages must be emitted.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        assistant_tool_calls_multi(&["tc-1", "tc-2"]),
+        tool_results_multi(&["tc-2", "tc-1"]),
+        assistant_chat("done"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(roles, vec!["user", "assistant", "tool", "tool", "assistant"]);
+}
+
+#[test]
+fn to_provider_messages_drops_pair_with_extra_unsolicited_results() {
+    // Opener requests `tc-1`; results answer `tc-1` *and* an unsolicited
+    // `tc-extra`. The id sets differ, so the pair is dropped.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        assistant_tool_calls_multi(&["tc-1"]),
+        tool_results_multi(&["tc-1", "tc-extra"]),
+        assistant_chat("done"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(
+        roles,
+        vec!["user", "assistant"],
+        "extra unsolicited tool_call_ids must invalidate the pair, kept: {roles:?}"
+    );
+}
