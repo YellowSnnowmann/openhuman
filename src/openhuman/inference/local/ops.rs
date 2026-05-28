@@ -32,6 +32,29 @@ fn prompt_guard_user_message(action: PromptEnforcementAction) -> &'static str {
     }
 }
 
+/// Normalize a `model_override` string into the `Option<String>` form the
+/// downstream config-resolution path expects.
+///
+/// `None` → `None`. `Some(non-empty-after-trim)` → `Some(trimmed)`. Anything
+/// else (`Some("")`, `Some("   ")`, `Some("\t\n")`) collapses to `None` so
+/// the existing default-model fallback applies instead of overwriting
+/// `config.default_model` with a blank string that the OpenHuman backend
+/// would reject with `400 model is required` (Sentry TAURI-RUST-RS).
+///
+/// Extracted to keep `agent_chat` and `agent_chat_simple` in lockstep —
+/// future tweaks (additional log lines, tightening the trim rules) live in
+/// exactly one place.
+fn normalize_model_override(opt: Option<String>) -> Option<String> {
+    opt.and_then(|m| {
+        let t = m.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
+        }
+    })
+}
+
 fn enforce_user_prompt_or_reject(prompt: &str, source: &'static str) -> Result<(), String> {
     let decision = enforce_prompt_input(
         prompt,
@@ -70,20 +93,9 @@ pub async fn agent_chat(
     enforce_user_prompt_or_reject(message, "local_ai.ops.agent_chat")?;
 
     // TAURI-RUST-RS: an upstream caller (frontend, JSON-RPC client) can pass
-    // `model_override: Some("")`. Without this normalization the empty string
-    // overwrites `config.default_model`, propagates through routing as a
-    // `"<slug>:"` (empty-model) form, and reaches the OpenHuman backend, which
-    // rejects it with `400 {"success":false,"error":"model is required"}`.
-    // Treat an empty / whitespace-only override the same as `None` so the
-    // existing default-resolution path applies.
-    if let Some(model) = model_override.as_ref().and_then(|m| {
-        let t = m.trim();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t.to_string())
-        }
-    }) {
+    // `model_override: Some("")`. See `normalize_model_override` for the
+    // rationale — an empty / whitespace-only override collapses to `None`.
+    if let Some(model) = normalize_model_override(model_override) {
         config.default_model = Some(model);
     }
     if let Some(temp) = temperature {
@@ -104,15 +116,8 @@ pub async fn agent_chat_simple(
     enforce_user_prompt_or_reject(message, "local_ai.ops.agent_chat_simple")?;
 
     let mut effective = config.clone();
-    // TAURI-RUST-RS: see `agent_chat` above for the same normalization.
-    if let Some(model) = model_override.as_ref().and_then(|m| {
-        let t = m.trim();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t.to_string())
-        }
-    }) {
+    // TAURI-RUST-RS: see `normalize_model_override` for the rationale.
+    if let Some(model) = normalize_model_override(model_override) {
         effective.default_model = Some(model);
     }
     if let Some(temp) = temperature {
