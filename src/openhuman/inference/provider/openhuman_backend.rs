@@ -32,7 +32,13 @@ pub const PROVIDER_LABEL: &str = "OpenHuman";
 fn resolve_model(model: &str) -> String {
     let trimmed = model.trim();
     if trimmed.is_empty() {
-        log::warn!(
+        // Debug-tier on purpose: the routing-migration path
+        // (`config/schema/load.rs:967`) can hit this on every chat turn for
+        // an affected user (~163 events / 14d on Sentry pre-fix). Warn-tier
+        // here would just move the noise from Sentry to local log dashboards.
+        // Per-process throttling via `Once` was considered — debug is simpler
+        // and gives the same diagnostic when needed (set RUST_LOG=debug).
+        log::debug!(
             "[providers][openhuman-backend] empty model passed to OpenHuman backend; \
              substituting default `{}` (TAURI-RUST-RS)",
             crate::openhuman::config::MODEL_REASONING_V1
@@ -185,6 +191,9 @@ impl Provider for OpenHumanBackendProvider {
         _temperature: f64,
         _options: StreamOptions,
     ) -> futures_util::stream::BoxStream<'static, StreamResult<StreamChunk>> {
+        // TODO(stream-support): when streaming is enabled here, route
+        // `_model` through `resolve_model` before forwarding — same blank
+        // model guard as the non-streaming methods (TAURI-RUST-RS).
         stream::once(async move {
             Ok(StreamChunk::error(
                 "streaming is not supported for OpenHuman backend provider",
