@@ -164,6 +164,12 @@ pub const GITHUB_CURATED: &[CuratedTool] = &[
         slug: "GITHUB_DELETE_A_REPOSITORY",
         scope: ToolScope::Admin,
     },
+    // DELETE_A_REFERENCE maps to DELETE /repos/{owner}/{repo}/git/refs/{ref}.
+    // The ref must be a full path (e.g. `refs/heads/branch-name` or
+    // `refs/tags/v1.0`) — passing a bare branch name deletes nothing (404).
+    // This replaces the old GITHUB_DELETE_A_BRANCH slug (Composio v3 rename);
+    // it is broader — it can delete tags too — so agents should always specify
+    // a `refs/heads/` prefix when the intent is branch deletion.
     CuratedTool {
         slug: "GITHUB_DELETE_A_REFERENCE",
         scope: ToolScope::Admin,
