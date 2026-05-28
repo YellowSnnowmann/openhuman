@@ -259,7 +259,6 @@ fn is_disk_full_message(lower: &str) -> bool {
     lower.contains("no space left on device") || lower.contains("not enough space on the disk")
 }
 
-
 fn is_embedding_backend_auth_failure(lower: &str) -> bool {
     lower.contains("embedding api error")
         && lower.contains("401")
@@ -1587,7 +1586,9 @@ mod tests {
         );
         // Embedding error without 401 must not be silenced.
         assert_eq!(
-            expected_error_kind(r#"Embedding API error 500 Internal Server Error: {"error":"invalid token signature service down"}"#),
+            expected_error_kind(
+                r#"Embedding API error 500 Internal Server Error: {"error":"invalid token signature service down"}"#
+            ),
             None
         );
     }
