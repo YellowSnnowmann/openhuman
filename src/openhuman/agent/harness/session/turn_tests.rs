@@ -1444,14 +1444,22 @@ fn bound_cached_transcript_messages_pops_trailing_tool_calls_envelope() {
         ChatMessage::assistant(tool_calls_envelope("tc-trailing")),
     ];
 
+    // With `max_history_messages = 3` and the leading `system` message,
+    // `bound_cached_transcript_messages` keeps the last 2 non-system entries
+    // — i.e. `[system, u2, trailing-envelope]`. After the envelope pop the
+    // tail is `user("u2")`, not the dropped assistant message.
     let bounded = agent.bound_cached_transcript_messages(messages);
     assert!(
         bounded
             .last()
-            .is_some_and(|m| m.role == "assistant" && !super::assistant_message_has_tool_calls(m)),
-        "trailing tool_calls envelope must be popped — got tail role={:?} content={:?}",
+            .is_some_and(|m| m.role == "user" && m.content == "u2"),
+        "trailing tool_calls envelope must be popped; expected user tail 'u2' — got tail role={:?} content={:?}",
         bounded.last().map(|m| m.role.as_str()),
         bounded.last().map(|m| m.content.as_str())
+    );
+    assert!(
+        !bounded.iter().any(super::assistant_message_has_tool_calls),
+        "no tool_calls envelope should survive the strip"
     );
 }
 
