@@ -461,7 +461,10 @@ fn to_provider_messages_keeps_pair_with_full_id_coverage() {
     ];
     let out = dispatcher.to_provider_messages(&history);
     let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
-    assert_eq!(roles, vec!["user", "assistant", "tool", "tool", "assistant"]);
+    assert_eq!(
+        roles,
+        vec!["user", "assistant", "tool", "tool", "assistant"]
+    );
 }
 
 #[test]

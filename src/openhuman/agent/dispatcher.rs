@@ -499,8 +499,7 @@ impl ToolDispatcher for NativeToolDispatcher {
         for (i, msg) in history.iter().enumerate() {
             match msg {
                 ConversationMessage::AssistantToolCalls { tool_calls, .. } => {
-                    let Some(ConversationMessage::ToolResults(results)) = history.get(i + 1)
-                    else {
+                    let Some(ConversationMessage::ToolResults(results)) = history.get(i + 1) else {
                         log::debug!(
                             "[agent][dispatcher] dropping unpaired AssistantToolCalls at index \
                              {i} of {} (no immediately following ToolResults — would trip \
