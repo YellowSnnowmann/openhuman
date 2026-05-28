@@ -245,3 +245,130 @@ fn native_format_results_keeps_tool_call_id() {
         _ => panic!("expected ToolResults variant"),
     }
 }
+
+// ── TAURI-RUST-7 regression: tool_calls / ToolResults pairing ──────────
+//
+// Providers reject any assistant `tool_calls` message that isn't immediately
+// followed by `tool` messages responding to every `tool_call_id`. Cached
+// transcript restores and mid-turn aborts can produce bisected pairs. The
+// fix in `to_provider_messages` drops unpaired AssistantToolCalls and orphan
+// ToolResults so the wire payload is always well-formed.
+
+fn assistant_tool_calls(id: &str) -> ConversationMessage {
+    ConversationMessage::AssistantToolCalls {
+        text: Some("calling tool".into()),
+        tool_calls: vec![crate::openhuman::inference::provider::ToolCall {
+            id: id.into(),
+            name: "shell".into(),
+            arguments: "{}".into(),
+        }],
+    }
+}
+
+fn tool_results(id: &str) -> ConversationMessage {
+    use crate::openhuman::inference::provider::ToolResultMessage;
+    ConversationMessage::ToolResults(vec![ToolResultMessage {
+        tool_call_id: id.into(),
+        content: "ok".into(),
+    }])
+}
+
+fn user_chat(text: &str) -> ConversationMessage {
+    ConversationMessage::Chat(crate::openhuman::inference::provider::ChatMessage::user(
+        text,
+    ))
+}
+
+fn assistant_chat(text: &str) -> ConversationMessage {
+    ConversationMessage::Chat(
+        crate::openhuman::inference::provider::ChatMessage::assistant(text),
+    )
+}
+
+#[test]
+fn to_provider_messages_keeps_paired_tool_cycle() {
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        assistant_tool_calls("tc-1"),
+        tool_results("tc-1"),
+        assistant_chat("done"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(roles, vec!["user", "assistant", "tool", "assistant"]);
+}
+
+#[test]
+fn to_provider_messages_drops_trailing_unpaired_tool_calls() {
+    // The assistant emitted tool_calls but the run was aborted before the
+    // ToolResults were persisted. The trailing tool_calls must not reach
+    // the wire.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        assistant_chat("ok"),
+        user_chat("again"),
+        assistant_tool_calls("tc-2"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(
+        roles,
+        vec!["user", "assistant", "user"],
+        "trailing unpaired AssistantToolCalls must be stripped"
+    );
+}
+
+#[test]
+fn to_provider_messages_drops_mid_history_unpaired_tool_calls() {
+    // History with a bisected pair in the middle: tool_calls followed
+    // directly by a Chat (not ToolResults). Drop the tool_calls; keep
+    // everything else.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        assistant_tool_calls("tc-3"), // bisected — no following ToolResults
+        user_chat("nevermind"),
+        assistant_chat("ok"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(roles, vec!["user", "user", "assistant"]);
+}
+
+#[test]
+fn to_provider_messages_drops_orphan_tool_results() {
+    // Symmetric drop: ToolResults whose preceding AssistantToolCalls was
+    // never emitted (either never persisted or already dropped above)
+    // must not appear in the wire payload.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("hi"),
+        tool_results("tc-4"), // orphan — no preceding AssistantToolCalls
+        assistant_chat("ok"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(roles, vec!["user", "assistant"]);
+}
+
+#[test]
+fn to_provider_messages_handles_multiple_tool_cycles() {
+    // Two paired cycles in a row — both must survive.
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![
+        user_chat("a"),
+        assistant_tool_calls("tc-5"),
+        tool_results("tc-5"),
+        assistant_tool_calls("tc-6"),
+        tool_results("tc-6"),
+        assistant_chat("final"),
+    ];
+    let out = dispatcher.to_provider_messages(&history);
+    let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(
+        roles,
+        vec!["user", "assistant", "tool", "assistant", "tool", "assistant"]
+    );
+}
