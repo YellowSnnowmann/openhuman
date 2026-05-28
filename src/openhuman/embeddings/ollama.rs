@@ -161,10 +161,7 @@ impl OllamaEmbedding {
     ///
     /// Used by [`Self::embed_per_text_fallback`] to recover a batch that
     /// failed wholesale on NaN — see TAURI-RUST-AZ.
-    async fn embed_one_with_nan_recovery(
-        &self,
-        text: &str,
-    ) -> anyhow::Result<Option<Vec<f32>>> {
+    async fn embed_one_with_nan_recovery(&self, text: &str) -> anyhow::Result<Option<Vec<f32>>> {
         let resp = self
             .http_client()
             .post(self.embed_url()?)
