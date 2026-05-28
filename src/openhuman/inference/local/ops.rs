@@ -69,7 +69,21 @@ pub async fn agent_chat(
 ) -> Result<RpcOutcome<String>, String> {
     enforce_user_prompt_or_reject(message, "local_ai.ops.agent_chat")?;
 
-    if let Some(model) = model_override {
+    // TAURI-RUST-RS: an upstream caller (frontend, JSON-RPC client) can pass
+    // `model_override: Some("")`. Without this normalization the empty string
+    // overwrites `config.default_model`, propagates through routing as a
+    // `"<slug>:"` (empty-model) form, and reaches the OpenHuman backend, which
+    // rejects it with `400 {"success":false,"error":"model is required"}`.
+    // Treat an empty / whitespace-only override the same as `None` so the
+    // existing default-resolution path applies.
+    if let Some(model) = model_override.as_ref().and_then(|m| {
+        let t = m.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
+        }
+    }) {
         config.default_model = Some(model);
     }
     if let Some(temp) = temperature {
@@ -90,7 +104,15 @@ pub async fn agent_chat_simple(
     enforce_user_prompt_or_reject(message, "local_ai.ops.agent_chat_simple")?;
 
     let mut effective = config.clone();
-    if let Some(model) = model_override {
+    // TAURI-RUST-RS: see `agent_chat` above for the same normalization.
+    if let Some(model) = model_override.as_ref().and_then(|m| {
+        let t = m.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
+        }
+    }) {
         effective.default_model = Some(model);
     }
     if let Some(temp) = temperature {
