@@ -280,9 +280,7 @@ fn user_chat(text: &str) -> ConversationMessage {
 }
 
 fn assistant_chat(text: &str) -> ConversationMessage {
-    ConversationMessage::Chat(
-        crate::openhuman::inference::provider::ChatMessage::assistant(text),
-    )
+    ConversationMessage::Chat(crate::openhuman::inference::provider::ChatMessage::assistant(text))
 }
 
 #[test]
@@ -369,6 +367,13 @@ fn to_provider_messages_handles_multiple_tool_cycles() {
     let roles: Vec<&str> = out.iter().map(|m| m.role.as_str()).collect();
     assert_eq!(
         roles,
-        vec!["user", "assistant", "tool", "assistant", "tool", "assistant"]
+        vec![
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+            "tool",
+            "assistant"
+        ]
     );
 }
