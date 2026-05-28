@@ -130,10 +130,12 @@ async fn list_configured_models_from_config(
     // wrong-path endpoint. Read the body as text first, then parse, and
     // surface a sanitized + truncated snippet so the failure is diagnosable
     // from the error string alone.
-    let raw_body = response
-        .text()
-        .await
-        .map_err(|e| format!("[providers][list_models] failed to read response body: {}", e))?;
+    let raw_body = response.text().await.map_err(|e| {
+        format!(
+            "[providers][list_models] failed to read response body: {}",
+            e
+        )
+    })?;
     let body: serde_json::Value = serde_json::from_str(&raw_body).map_err(|e| {
         let sanitized = sanitize_api_error(&raw_body);
         let snippet = crate::openhuman::util::truncate_with_ellipsis(&sanitized, 300);
