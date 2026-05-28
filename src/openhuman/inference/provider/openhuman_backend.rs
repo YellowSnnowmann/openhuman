@@ -152,9 +152,7 @@ impl Provider for OpenHumanBackendProvider {
         let token = self.resolve_bearer()?;
         let inner = self.inner(&token)?;
         let model = resolve_model(model);
-        inner
-            .chat_with_history(messages, &model, temperature)
-            .await
+        inner.chat_with_history(messages, &model, temperature).await
     }
 
     async fn chat(
