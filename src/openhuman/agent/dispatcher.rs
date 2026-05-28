@@ -489,21 +489,39 @@ impl ToolDispatcher for NativeToolDispatcher {
         // reaches the wire. Symmetric drop: a `ToolResults` whose preceding
         // `AssistantToolCalls` was dropped is also stripped to keep the
         // sequence well-formed.
+        // CodeRabbit follow-up: backend's 400 says "insufficient tool messages
+        // following tool_calls", which fires on either (a) zero following tool
+        // messages, or (b) a tool message set whose `tool_call_id`s don't
+        // cover every `tool_calls[].id` on the opener. Adjacency alone is
+        // not sufficient — require the full set of opener ids to equal the
+        // set of follower `tool_call_id`s.
         let mut paired_indices: Vec<usize> = Vec::with_capacity(history.len());
         for (i, msg) in history.iter().enumerate() {
             match msg {
-                ConversationMessage::AssistantToolCalls { .. } => {
-                    if matches!(
-                        history.get(i + 1),
-                        Some(ConversationMessage::ToolResults(_))
-                    ) {
-                        paired_indices.push(i);
-                    } else {
+                ConversationMessage::AssistantToolCalls { tool_calls, .. } => {
+                    let Some(ConversationMessage::ToolResults(results)) = history.get(i + 1)
+                    else {
                         log::debug!(
                             "[agent][dispatcher] dropping unpaired AssistantToolCalls at index \
                              {i} of {} (no immediately following ToolResults — would trip \
                              provider 400 'tool_calls must be followed by tool messages')",
                             history.len()
+                        );
+                        continue;
+                    };
+                    let opener_ids: std::collections::BTreeSet<&str> =
+                        tool_calls.iter().map(|tc| tc.id.as_str()).collect();
+                    let result_ids: std::collections::BTreeSet<&str> =
+                        results.iter().map(|r| r.tool_call_id.as_str()).collect();
+                    if !opener_ids.is_empty() && opener_ids == result_ids {
+                        paired_indices.push(i);
+                    } else {
+                        log::debug!(
+                            "[agent][dispatcher] dropping AssistantToolCalls at index {i}: \
+                             tool_call_id set mismatch between opener ({:?}) and ToolResults \
+                             ({:?})",
+                            opener_ids,
+                            result_ids
                         );
                     }
                 }
