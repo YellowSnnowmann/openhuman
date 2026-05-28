@@ -1402,3 +1402,93 @@ fn assistant_message_has_tool_calls_rejects_non_object_root() {
     let msg = ChatMessage::assistant(r#"["just", "an", "array"]"#.to_string());
     assert!(!super::assistant_message_has_tool_calls(&msg));
 }
+
+#[test]
+fn assistant_message_has_tool_calls_rejects_non_json_content() {
+    // Plain prose that doesn't parse as JSON at all — early-returns false via
+    // the `let Ok(value) = serde_json::from_str(...)` arm. Keeps the message
+    // when the trailing-strip uses this helper.
+    let msg = ChatMessage::assistant("Just a normal text reply, no JSON here.");
+    assert!(!super::assistant_message_has_tool_calls(&msg));
+}
+
+// ── bound_cached_transcript_messages — TAURI-RUST-7 trailing-strip ─────
+//
+// `bound_cached_transcript_messages` operates on a `Vec<ChatMessage>` (the
+// dispatcher-serialised wire format), so its detection runs through
+// `assistant_message_has_tool_calls`. Verify the symmetric trailing-strip
+// pops unpaired tool_calls envelopes while leaving plain assistant replies
+// untouched.
+
+fn tool_calls_envelope(id: &str) -> String {
+    serde_json::json!({
+        "content": "calling tool",
+        "tool_calls": [{
+            "id": id,
+            "name": "shell",
+            "arguments": "{}"
+        }]
+    })
+    .to_string()
+}
+
+#[test]
+fn bound_cached_transcript_messages_pops_trailing_tool_calls_envelope() {
+    let agent = make_agent(None); // max_history_messages = 3
+                                  // Need > max so the bound runs (early-returns when len <= max).
+    let messages = vec![
+        ChatMessage::system("sys"),
+        ChatMessage::user("u1"),
+        ChatMessage::assistant("a1"),
+        ChatMessage::user("u2"),
+        ChatMessage::assistant(tool_calls_envelope("tc-trailing")),
+    ];
+
+    let bounded = agent.bound_cached_transcript_messages(messages);
+    assert!(
+        bounded
+            .last()
+            .is_some_and(|m| m.role == "assistant" && !super::assistant_message_has_tool_calls(m)),
+        "trailing tool_calls envelope must be popped — got tail role={:?} content={:?}",
+        bounded.last().map(|m| m.role.as_str()),
+        bounded.last().map(|m| m.content.as_str())
+    );
+}
+
+#[test]
+fn bound_cached_transcript_messages_leaves_plain_assistant_tail_intact() {
+    let agent = make_agent(None); // max_history_messages = 3
+    let messages = vec![
+        ChatMessage::system("sys"),
+        ChatMessage::user("u1"),
+        ChatMessage::assistant("a1"),
+        ChatMessage::user("u2"),
+        ChatMessage::assistant("plain text reply, no tool_calls"),
+    ];
+
+    let bounded = agent.bound_cached_transcript_messages(messages);
+    let tail = bounded.last().expect("bounded transcript is non-empty");
+    assert_eq!(tail.role, "assistant");
+    assert_eq!(tail.content, "plain text reply, no tool_calls");
+}
+
+#[test]
+fn bound_cached_transcript_messages_strips_multiple_trailing_envelopes() {
+    // Defence-in-depth: if the cached transcript ends on multiple consecutive
+    // unpaired tool_calls envelopes (e.g. two abortive turns), pop them all.
+    let agent = make_agent(None);
+    let messages = vec![
+        ChatMessage::system("sys"),
+        ChatMessage::user("u1"),
+        ChatMessage::assistant("a1"),
+        ChatMessage::assistant(tool_calls_envelope("tc-1")),
+        ChatMessage::assistant(tool_calls_envelope("tc-2")),
+    ];
+
+    let bounded = agent.bound_cached_transcript_messages(messages);
+    let any_envelope = bounded.iter().any(super::assistant_message_has_tool_calls);
+    assert!(
+        !any_envelope,
+        "all trailing tool_calls envelopes must be stripped"
+    );
+}
