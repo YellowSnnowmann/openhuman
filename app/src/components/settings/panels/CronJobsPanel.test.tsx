@@ -2,9 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Mock i18n ───────────────────────────────────────────────────────────
-vi.mock('../../../lib/i18n/I18nContext', () => ({
-  useT: () => ({ t: (k: string) => k }),
-}));
+vi.mock('../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
 
 // ── Mock navigation ─────────────────────────────────────────────────────
 vi.mock('../hooks/useSettingsNavigation', () => ({
@@ -13,9 +11,7 @@ vi.mock('../hooks/useSettingsNavigation', () => ({
 
 // ── Mock SettingsHeader ─────────────────────────────────────────────────
 vi.mock('../components/SettingsHeader', () => ({
-  default: ({ title }: { title: string }) => (
-    <div data-testid="settings-header">{title}</div>
-  ),
+  default: ({ title }: { title: string }) => <div data-testid="settings-header">{title}</div>,
 }));
 
 // ── Mock CronJobFormModal ───────────────────────────────────────────────
@@ -132,7 +128,11 @@ describe('<CronJobsPanel />', () => {
     await waitFor(() => expect(screen.getByTestId('cron-form-modal-create')).toBeInTheDocument());
 
     // Invoke create via captured mock callback
-    const params = { schedule: { kind: 'cron', expr: '0 9 * * *' }, job_type: 'agent', prompt: 'hi' };
+    const params = {
+      schedule: { kind: 'cron', expr: '0 9 * * *' },
+      job_type: 'agent',
+      prompt: 'hi',
+    };
     await mockModalOnCreate(params);
 
     await waitFor(() => expect(cronAddMock).toHaveBeenCalledWith(params));
@@ -151,9 +151,7 @@ describe('<CronJobsPanel />', () => {
     const editBtn = await screen.findByTestId('cron-job-edit-job-1');
     fireEvent.click(editBtn);
 
-    await waitFor(() =>
-      expect(screen.getByTestId('cron-form-modal-edit')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId('cron-form-modal-edit')).toBeInTheDocument());
     expect(screen.getByTestId('modal-job-id')).toHaveTextContent('job-1');
   });
 

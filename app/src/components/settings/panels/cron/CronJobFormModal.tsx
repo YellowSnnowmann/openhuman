@@ -7,9 +7,9 @@
 import createDebug from 'debug';
 import { useEffect, useState } from 'react';
 
-import { useT } from '../../../../lib/i18n/I18nContext';
 import { cronToHuman } from '../../../../lib/cron/cronToHuman';
-import { SCHEDULE_PRESETS, SCHEDULE_PRESET_VALUES } from '../../../../lib/cron/schedulePresets';
+import { SCHEDULE_PRESET_VALUES, SCHEDULE_PRESETS } from '../../../../lib/cron/schedulePresets';
+import { useT } from '../../../../lib/i18n/I18nContext';
 import type {
   CoreCronJob,
   CoreCronSchedule,
@@ -193,7 +193,12 @@ const CronJobFormModal = ({
     setError(null);
     setSaving(true);
 
-    log('[CronJobFormModal] submit mode=%s, jobType=%s, scheduleKind=%s', mode, jobType, scheduleKind);
+    log(
+      '[CronJobFormModal] submit mode=%s, jobType=%s, scheduleKind=%s',
+      mode,
+      jobType,
+      scheduleKind
+    );
 
     try {
       if (mode === 'create') {
@@ -239,9 +244,8 @@ const CronJobFormModal = ({
   if (!open) return null;
 
   // ── Render ──────────────────────────────────────────────────────────
-  const title = mode === 'create'
-    ? t('settings.cron.jobs.createJob')
-    : t('settings.cron.jobs.editJob');
+  const title =
+    mode === 'create' ? t('settings.cron.jobs.createJob') : t('settings.cron.jobs.editJob');
 
   const submitLabel = saving
     ? t('settings.cron.jobs.formSaving')
@@ -267,9 +271,7 @@ const CronJobFormModal = ({
       <div className="relative z-10 w-full max-w-lg bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-stone-200 dark:border-neutral-800 flex flex-col max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-200 dark:border-neutral-800 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-stone-900 dark:text-neutral-100">
-            {title}
-          </h2>
+          <h2 className="text-base font-semibold text-stone-900 dark:text-neutral-100">{title}</h2>
           <button
             type="button"
             data-testid="cron-form-cancel"
@@ -443,7 +445,10 @@ const CronJobFormModal = ({
                 <p
                   data-testid="cron-form-cron-preview"
                   className="text-xs text-stone-500 dark:text-neutral-400">
-                  {t('settings.cron.jobs.formCronPreview').replace('{{preview}}', cronToHuman(cronExpr))}
+                  {t('settings.cron.jobs.formCronPreview').replace(
+                    '{{preview}}',
+                    cronToHuman(cronExpr)
+                  )}
                 </p>
               )}
             </div>

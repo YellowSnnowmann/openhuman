@@ -2,6 +2,7 @@ import createDebug from 'debug';
 import { useCallback, useEffect, useState } from 'react';
 
 import { execute as composioExecute, listConnections } from '../../../lib/composio/composioApi';
+import { SCHEDULE_PRESETS } from '../../../lib/cron/schedulePresets';
 import { useT } from '../../../lib/i18n/I18nContext';
 import {
   CoreCronJob,
@@ -41,8 +42,6 @@ interface ForkInfo {
 interface GhBranch {
   name: string;
 }
-
-import { SCHEDULE_PRESETS } from '../../../lib/cron/schedulePresets';
 
 // ── Component ──────────────────────────────────────────────────────────
 

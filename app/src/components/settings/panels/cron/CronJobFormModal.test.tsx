@@ -204,11 +204,7 @@ describe('<CronJobFormModal />', () => {
   // ── Edit mode prefill ──────────────────────────────────────────────────
 
   it('prefills fields from job prop in edit mode', () => {
-    render(
-      <CronJobFormModal
-        {...makeProps({ mode: 'edit', job: sampleJob })}
-      />
-    );
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: sampleJob })} />);
 
     expect(screen.getByText('Edit Scheduled Job')).toBeInTheDocument();
     expect(screen.getByTestId('cron-form-name')).toHaveValue('Test Job');
@@ -216,11 +212,7 @@ describe('<CronJobFormModal />', () => {
   });
 
   it('disables job type radio in edit mode', () => {
-    render(
-      <CronJobFormModal
-        {...makeProps({ mode: 'edit', job: sampleJob })}
-      />
-    );
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: sampleJob })} />);
 
     expect(screen.getByTestId('cron-form-job-type-agent')).toBeDisabled();
     expect(screen.getByTestId('cron-form-job-type-shell')).toBeDisabled();
@@ -230,16 +222,10 @@ describe('<CronJobFormModal />', () => {
 
   it('calls onUpdate with job.id and patch on edit submit', async () => {
     const onUpdate = vi.fn().mockResolvedValue(undefined);
-    render(
-      <CronJobFormModal
-        {...makeProps({ mode: 'edit', job: sampleJob, onUpdate })}
-      />
-    );
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: sampleJob, onUpdate })} />);
 
     // Change the name
-    fireEvent.change(screen.getByTestId('cron-form-name'), {
-      target: { value: 'Updated Name' },
-    });
+    fireEvent.change(screen.getByTestId('cron-form-name'), { target: { value: 'Updated Name' } });
 
     fireEvent.click(screen.getByTestId('cron-form-submit'));
 
@@ -269,9 +255,7 @@ describe('<CronJobFormModal />', () => {
     render(<CronJobFormModal {...makeProps({ onCreate })} />);
 
     // Fill prompt so submit is enabled
-    fireEvent.change(screen.getByTestId('cron-form-prompt'), {
-      target: { value: 'Some prompt' },
-    });
+    fireEvent.change(screen.getByTestId('cron-form-prompt'), { target: { value: 'Some prompt' } });
 
     fireEvent.click(screen.getByTestId('cron-form-submit'));
 

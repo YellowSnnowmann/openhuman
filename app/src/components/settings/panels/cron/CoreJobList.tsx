@@ -35,7 +35,9 @@ const CoreJobList = ({
     if (coreBusyKey === `core-toggle:${job.id}`) {
       return t('settings.cron.jobs.saving') || 'Saving...';
     }
-    return job.enabled ? t('settings.cron.jobs.pause') || 'Pause' : t('settings.cron.jobs.resume') || 'Resume';
+    return job.enabled
+      ? t('settings.cron.jobs.pause') || 'Pause'
+      : t('settings.cron.jobs.resume') || 'Resume';
   };
 
   const runButtonLabel = (jobId: string) =>
