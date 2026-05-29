@@ -34,10 +34,15 @@ pub fn estimate_conversation_message_tokens(msg: &ConversationMessage) -> usize 
     match msg {
         ConversationMessage::Chat(chat) => estimate_chat_message_tokens(chat),
         ConversationMessage::AssistantToolCalls {
-            text, tool_calls, ..
+            text,
+            tool_calls,
+            reasoning_content,
         } => {
             let body = text.as_deref().unwrap_or_default();
             let mut total = estimate_tokens(body);
+            if let Some(reasoning) = reasoning_content.as_deref() {
+                total = total.saturating_add(estimate_tokens(reasoning));
+            }
             for call in tool_calls {
                 total = total.saturating_add(estimate_tokens(&call.name));
                 total = total.saturating_add(estimate_tokens(&call.arguments));
