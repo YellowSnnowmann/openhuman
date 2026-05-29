@@ -63,6 +63,7 @@ pub mod memory_conversations;
 pub mod memory_entities;
 pub mod memory_graph;
 pub mod memory_queue;
+pub mod memory_sources;
 pub mod memory_store;
 pub mod memory_sync;
 pub mod memory_tools;
@@ -87,6 +88,7 @@ pub mod skills;
 pub mod socket;
 pub mod startup;
 pub mod subconscious;
+pub mod task_sources;
 pub mod team;
 #[cfg(feature = "e2e-test-support")]
 pub mod test_support;

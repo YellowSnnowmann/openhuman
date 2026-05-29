@@ -253,6 +253,13 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if lower.contains("local ai is disabled") {
         return Some(ExpectedErrorKind::LocalAiDisabled);
     }
+    // `_api_key is not configured` catches backend-reported environment variable
+    // phrases like `VOYAGE_API_KEY is not configured` and
+    // `COHERE_API_KEY is not configured` returned by the embeddings backend
+    // when the relevant env var is absent (TAURI-RUST-2H5, ~5 K events).
+    // The `_api_key` anchor (lower-cased suffix of an env-var name) keeps
+    // generic "X is not configured" prose from being silenced — only
+    // ALL_CAPS_API_KEY-style names match.
     if lower.contains("api key not set")
         || lower.contains("missing api key")
         || lower.contains("_api_key is not configured")
@@ -576,6 +583,18 @@ fn is_memory_store_breaker_open(lower: &str) -> bool {
 ///   `"session JWT required"` — local pre-flight guards that fire when the
 ///   stored profile is empty (`#1465`-ish onboarding spam) or has been
 ///   cleared by a previous 401 cycle. Both shapes are OpenHuman-specific.
+/// - `"backend rejected session token on GET /payments/stripe/currentPlan"` and
+///   all analogous `"{METHOD} {path}"` variants — the `BackendApiError::Unauthorized`
+///   typed error surfaced by `api::rest::BackendOAuthClient::authed_json` when any
+///   OpenHuman REST endpoint returns HTTP 401. The `get_authed_value` wrapper in
+///   `billing::ops` stringifies this via `.to_string()`, producing the
+///   `"backend rejected session token on …"` prefix. This is uniquely scoped to
+///   the `BackendApiError::Unauthorized` variant (the phrase does not appear in
+///   any third-party provider error path) so it is safe to classify as session
+///   expiry without the conjunctive-anchor guard pattern needed for `"Invalid
+///   token"`. Targets TAURI-RUST-E (~1 437 events from
+///   `openhuman.billing_get_current_plan` polling on every background billing
+///   refresh cycle after the user's JWT lapses).
 ///
 /// At the JSON-RPC dispatch boundary the same strict match controls
 /// `DomainEvent::SessionExpired` publication, so downstream/provider 401s stay
@@ -588,6 +607,45 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || msg.contains("SESSION_EXPIRED")
         || (msg.contains("OpenHuman API error (401") && msg.contains("\"error\":\"Invalid token\""))
         || (msg.contains("Embedding API error (401") && msg.contains("\"error\":\"Invalid token\""))
+        // TAURI-RUST-E — billing endpoint 401s via `BackendApiError::Unauthorized`
+        // stringified by `billing::ops::get_authed_value(..).map_err(|e| e.to_string())`.
+        // The display form is `"backend rejected session token on {METHOD} {path}"`;
+        // the phrase is uniquely scoped to `BackendApiError::Unauthorized` so no
+        // conjunctive guard is needed. Covers all billing RPC methods
+        // (billing_get_current_plan, billing_get_balance, etc.) and any other
+        // `authed_json` caller that stringifies via `.to_string()`.
+        || lower.contains("backend rejected session token")
+        // OPENHUMAN-TAURI-4P0 — OpenHuman backend's "Invalid token" 401
+        // envelope. Both anchors must be present: the OpenHuman-scoped
+        // `"OpenHuman API error (401"` prefix (so a third-party provider's
+        // `"OpenAI API error (401 Unauthorized): invalid_api_key"` cannot
+        // match), AND the envelope-shaped `"\"error\":\"Invalid token\""`
+        // (so bare prose mentions of "invalid token" — Discord OAuth
+        // failures, generic upstream errors covered by #2286 — stay
+        // actionable in Sentry).
+        || (msg.contains("OpenHuman API error (401")
+            && msg.contains("\"error\":\"Invalid token\""))
+        // TAURI-RUST-4K5 — same OpenHuman backend "Invalid token" envelope
+        // wrapped by `src/openhuman/embeddings/openai.rs:139` with the
+        // `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
+        // Same conjunctive-anchor pattern as 4P0: the embedding-scoped
+        // prefix gates the match so a third-party BYO-key embedding 401
+        // (e.g. OpenAI/Voyage/Cohere rejecting the user's own API key)
+        // stays actionable — guarded by
+        // `does_not_classify_embedding_byo_key_401_as_session_expired`.
+        || (msg.contains("Embedding API error (401")
+            && msg.contains("\"error\":\"Invalid token\""))
+        // TAURI-RUST-1EE — same OpenHuman backend "Invalid token" envelope
+        // wrapped by the streaming-chat path at
+        // `inference/provider/compatible.rs:949` with the
+        // `"OpenHuman streaming API error"` prefix. The `streaming` token
+        // between `OpenHuman` and `API error` means the 4P0 anchor
+        // (`"OpenHuman API error (401"`) does not match it, so the
+        // streaming path needs its own prefix arm. Same conjunctive-anchor
+        // pattern keeps third-party BYO-key streaming 401s
+        // (`"OpenAI streaming API error (401): invalid_api_key"`)
+        // escalating — guarded by
+        // `does_not_classify_streaming_byo_key_401_as_session_expired`.
         || (msg.contains("OpenHuman streaming API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
 }
@@ -1060,8 +1118,28 @@ fn is_provider_user_state_message(lower: &str) -> bool {
     //
     // Drops Sentry TAURI-RUST-X9 (~15.7 k events / ~22 h, single user,
     // release openhuman@0.54.0+c25fc8e5fd3e).
+    //
+    // TAURI-RUST-322 (#2929): same direct-mode path but the Composio v3
+    // `/connected_accounts` API returns HTTP 403 instead of 401. This
+    // happens when the BYO API key exists and is syntactically valid but
+    // does not carry the `connected_accounts:read` permission (e.g. a
+    // scoped or legacy key). Wire shape:
+    //
+    //   `[composio-direct] list_connections failed: Composio v3
+    //    connected_accounts failed: HTTP 403`
+    //
+    // 403 from Composio v3 is a user-state condition (key permissions),
+    // not a bug in openhuman_core. Sentry has no remediation path — the
+    // user must regenerate their key with the correct scopes on
+    // app.composio.dev. The polling layer retries every 5 s and the UI
+    // already surfaces the error; flooding Sentry with 1,000+ events per
+    // user adds no signal.
+    //
+    // Drops Sentry TAURI-RUST-322 (1,021 events, multi-release).
     if lower.contains("[composio-direct]")
-        && (lower.contains("http 401") || lower.contains("invalid api key"))
+        && (lower.contains("http 401")
+            || lower.contains("http 403")
+            || lower.contains("invalid api key"))
     {
         return true;
     }
@@ -1963,6 +2041,44 @@ pub fn is_budget_event(event: &sentry::protocol::Event<'_>) -> bool {
     event_contains_budget_exhausted_message(event)
 }
 
+/// Defense-in-depth `before_send` filter for Sentry event CORE-RUST-EK
+/// (~827 events): every call to the cloud embedding API (OpenAI
+/// `text-embedding-3-large` or Voyage) that returns HTTP 401 fires a Sentry
+/// error event via `report_error_or_expected` in
+/// `src/openhuman/embeddings/openai.rs`.
+///
+/// 401 on the embedding call path means the configured API key is stale or
+/// invalid. This is the same class of condition as the VOYAGE_API_KEY-missing
+/// error (PR #2915) and the billing-expired 401 (PR #2924): the user's LLM
+/// session was interrupted by an auth failure that the core will retry on the
+/// next turn, but the Sentry volume-per-key ratio yields zero actionable signal.
+///
+/// Match criteria (all required):
+/// - tag `domain == "embeddings"` — pins the filter to the embeddings call
+///   path and avoids silencing unrelated 401s from provider chat, billing, or
+///   the backend RPC layer
+/// - tag `failure == "non_2xx"` — the marker set by `embeddings::openai::embed`
+///   at the non-2xx path
+/// - tag `status == "401"` — narrows to auth-rejection failures (429 / 500
+///   are handled by the existing rate-limit filter)
+///
+/// The primary suppression for the OpenHuman-backend "Invalid token" shape
+/// already lives in `expected_error_kind` / `is_session_expired_message`. This
+/// filter is defense-in-depth: it catches any third-party provider 401 that
+/// doesn't carry the OpenHuman-backend body (e.g. OpenAI's
+/// `{"error":{"code":"invalid_api_key",...}}`), ensuring CORE-RUST-EK stays
+/// off Sentry regardless of which embedding provider is configured.
+pub fn is_embeddings_api_key_401_event(event: &sentry::protocol::Event<'_>) -> bool {
+    let tags = &event.tags;
+    if tags.get("domain").map(String::as_str) != Some("embeddings") {
+        return false;
+    }
+    if tags.get("failure").map(String::as_str) != Some("non_2xx") {
+        return false;
+    }
+    tags.get("status").map(String::as_str) == Some("401")
+}
+
 /// 404 on PATCH/DELETE to a channel-message path is an expected backend state
 /// (user deleted the message provider-side, backend GC'd the relay row). The
 /// primary suppression lives in `authed_json` via `parse_message_path` +
@@ -2067,8 +2183,57 @@ mod tests {
         );
     }
 
+    /// Task B (issue #2898): prove the canonical 429 error message produced by
+    /// the embedding clients is already classified as `TransientUpstreamHttp`
+    /// so Sentry events are suppressed even without backoff.
+    ///
+    /// The `is_transient_upstream_http_message` matcher checks for
+    /// `"api error (429 "` (case-insensitive), which is present in both the
+    /// OpenAI and Cohere canonical error shapes.
+    #[test]
+    fn embedding_429_classifies_as_transient_upstream_http() {
+        // OpenAI/Voyage canonical shape (openai.rs emit site).
+        let msg = "Embedding API error (429 Too Many Requests): Rate limit exceeded.";
+        assert_eq!(
+            expected_error_kind(msg),
+            Some(ExpectedErrorKind::TransientUpstreamHttp),
+            "OpenAI 429 must classify as TransientUpstreamHttp: {msg}"
+        );
+
+        // Cohere canonical shape (cohere.rs emit site).
+        let cohere_msg = "Cohere embed API error (429 Too Many Requests): rate limit exceeded.";
+        assert_eq!(
+            expected_error_kind(cohere_msg),
+            Some(ExpectedErrorKind::TransientUpstreamHttp),
+            "Cohere 429 must classify as TransientUpstreamHttp: {cohere_msg}"
+        );
+
+        // After-cap bail shape from the retry loop (openai.rs).
+        let cap_msg =
+            "Embedding API error (429 Too Many Requests): rate limit exceeded after 3 retries";
+        assert_eq!(
+            expected_error_kind(cap_msg),
+            Some(ExpectedErrorKind::TransientUpstreamHttp),
+            "retry-cap bail message must classify as TransientUpstreamHttp: {cap_msg}"
+        );
+
+        // After-cap bail shape from the retry loop (cohere.rs).
+        let cohere_cap_msg =
+            "Cohere embed API error (429 Too Many Requests): rate limit exceeded after 3 retries";
+        assert_eq!(
+            expected_error_kind(cohere_cap_msg),
+            Some(ExpectedErrorKind::TransientUpstreamHttp),
+            "Cohere retry-cap bail message must classify as TransientUpstreamHttp: {cohere_cap_msg}"
+        );
+    }
+
     #[test]
     fn classifies_backend_env_api_key_not_configured() {
+        // TAURI-RUST-2H5 (~5 K events): backend embedding endpoint returns a
+        // 400 with `{"success":false,"error":"VOYAGE_API_KEY is not configured"}`
+        // whenever the backend env var is absent. This is a known server-side
+        // config state, not an app error — silence it the same way we silence
+        // other `ApiKeyMissing` variants.
         for raw in [
             r#"Embedding API error (400 Bad Request): {"success":false,"error":"VOYAGE_API_KEY is not configured"}"#,
             r#"Embedding API error 400 Bad Request: {"success":false,"error":"VOYAGE_API_KEY is not configured"}"#,
@@ -2090,6 +2255,10 @@ mod tests {
         // should match.
         assert_eq!(
             expected_error_kind("workspace path is not configured for this user"),
+            None
+        );
+        assert_eq!(
+            expected_error_kind("embedding model is not configured"),
             None
         );
         assert_eq!(
@@ -3793,6 +3962,84 @@ mod tests {
         );
     }
 
+    // ── TAURI-RUST-322 (#2929): composio-direct 403 (key missing perms) ─
+
+    #[test]
+    fn classifies_composio_direct_403_as_provider_user_state() {
+        // Canonical Sentry TAURI-RUST-322 wire shape — the verbatim
+        // title body from the issue (1,021 events, multi-release). The
+        // Composio v3 `/connected_accounts` endpoint returns HTTP 403
+        // when the BYO API key exists but lacks `connected_accounts:read`
+        // permission. This is a user-state condition; Sentry has no
+        // remediation path.
+        let msg = "[composio-direct] list_connections failed: \
+                   Composio v3 connected_accounts failed: HTTP 403";
+        assert_eq!(
+            expected_error_kind(msg),
+            Some(ExpectedErrorKind::ProviderUserState),
+            "composio-direct HTTP 403 must demote to ProviderUserState (TAURI-RUST-322)"
+        );
+    }
+
+    #[test]
+    fn classifies_composio_direct_403_for_other_ops() {
+        // The `[composio-direct]` + `HTTP 403` arm must cover every op
+        // that can hit a 403 from the Composio v3 tenant (list_tools
+        // prefetch, authorize, etc.) — not just list_connections.
+        let shapes = [
+            // list_tools prefetch of connections hits the 403 wall
+            "[composio-direct] list_tools: prefetch connections failed: \
+             Composio v3 connected_accounts failed: HTTP 403",
+            // list_connections itself (the primary source of the leak)
+            "[composio-direct] list_connections (direct) failed: \
+             Composio v3 connected_accounts failed: HTTP 403",
+            // any future direct-mode op that hits a 403
+            "[composio-direct] composio_list_connections (direct) failed: \
+             Composio v3 connected_accounts failed: HTTP 403",
+        ];
+        for msg in shapes {
+            assert_eq!(
+                expected_error_kind(msg),
+                Some(ExpectedErrorKind::ProviderUserState),
+                "every [composio-direct] op with HTTP 403 must demote to ProviderUserState: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_http_403_as_composio_direct_user_state() {
+        // Discrimination test: a 403 that does NOT carry the
+        // `[composio-direct]` prefix must NOT match this arm. Backend-mode
+        // composio 403s and unrelated 403s must remain visible in Sentry.
+        let backend_403 = "[composio] list_connections failed: \
+                           Backend returned 403 Forbidden for GET \
+                           https://api.tinyhumans.ai/agent-integrations/composio/connections";
+        // The backend-mode shape passes through `is_backend_user_error_message`
+        // (4xx matcher), not this arm. Verify it does NOT match this arm.
+        assert!(
+            !lower_contains_composio_direct_auth_wall(backend_403),
+            "backend-mode 403 must NOT match the composio-direct arm"
+        );
+
+        let unrelated_403 = "GitHub API error: HTTP 403: rate limit exceeded";
+        assert_ne!(
+            expected_error_kind(unrelated_403),
+            Some(ExpectedErrorKind::ProviderUserState),
+            "unrelated 403 (no [composio-direct] anchor) must NOT match the composio-direct arm"
+        );
+    }
+
+    // Helper used only in the discrimination test above — mirrors the
+    // exact condition in `is_provider_user_state_message` without
+    // requiring access to the private function.
+    fn lower_contains_composio_direct_auth_wall(msg: &str) -> bool {
+        let lower = msg.to_ascii_lowercase();
+        lower.contains("[composio-direct]")
+            && (lower.contains("http 401")
+                || lower.contains("http 403")
+                || lower.contains("invalid api key"))
+    }
+
     // ── TAURI-RUST-34H: backend-wrapped Cloudflare anti-bot interstitial ─
 
     #[test]
@@ -4280,6 +4527,83 @@ mod tests {
         assert_eq!(expected_error_kind("session_expired lowercase"), None);
     }
 
+    /// TAURI-RUST-E (~1 437 events): billing poll fires `report_error_or_expected`
+    /// on every refresh cycle once the user's JWT lapses because the
+    /// `BackendApiError::Unauthorized` typed error was stringified to
+    /// `"backend rejected session token on GET /payments/stripe/currentPlan"` by
+    /// `billing::ops::get_authed_value(..).map_err(|e| e.to_string())` before the
+    /// phrase was added to `is_session_expired_message`.
+    ///
+    /// The phrase `"backend rejected session token"` is uniquely produced by
+    /// `BackendApiError::Unauthorized`'s `Display` impl in `api::rest` — no
+    /// third-party provider path emits it — so no conjunctive guard is needed.
+    #[test]
+    fn classifies_billing_401_as_session_expired() {
+        // Exact wire shape from `billing_get_current_plan` — the most common
+        // event in TAURI-RUST-E.
+        assert_eq!(
+            expected_error_kind(
+                "backend rejected session token on GET /payments/stripe/currentPlan"
+            ),
+            Some(ExpectedErrorKind::SessionExpired),
+            "TAURI-RUST-E: billing_get_current_plan 401 must classify as SessionExpired"
+        );
+
+        // Other billing methods share the same `BackendApiError::Unauthorized`
+        // display shape — pin them so a wording change in `rest.rs` would catch
+        // every billing call site.
+        for path in [
+            "/payments/credits/balance",
+            "/payments/credits/transactions?limit=20&offset=0",
+            "/payments/credits/auto-recharge",
+            "/payments/credits/auto-recharge/cards",
+            "/payments/stripe/purchasePlan",
+            "/payments/stripe/portal",
+            "/coupons/me",
+        ] {
+            let msg = format!("backend rejected session token on GET {path}");
+            assert_eq!(
+                expected_error_kind(&msg),
+                Some(ExpectedErrorKind::SessionExpired),
+                "billing 401 must classify as SessionExpired: {msg}"
+            );
+        }
+
+        // POST / PATCH / DELETE variants are also produced by `authed_json`.
+        for raw in [
+            "backend rejected session token on POST /payments/credits/top-up",
+            "backend rejected session token on PATCH /payments/credits/auto-recharge",
+            "backend rejected session token on DELETE /payments/credits/auto-recharge/cards/pm_123",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::SessionExpired),
+                "TAURI-RUST-E variant must classify as SessionExpired: {raw}"
+            );
+        }
+    }
+
+    /// `"backend rejected session token"` is scoped to `BackendApiError::Unauthorized`
+    /// in `api::rest`. Ensure unrelated messages containing the individual
+    /// words don't accidentally match.
+    #[test]
+    fn does_not_classify_unrelated_rejected_messages_as_session_expired() {
+        // Third-party provider errors that mention a token being rejected but
+        // do not contain the exact OpenHuman `BackendApiError::Unauthorized`
+        // display phrase.
+        for raw in [
+            "Discord API error: token rejected by upstream",
+            "Stripe webhook signature rejected — bad secret",
+            "API token rejected: please regenerate",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "unrelated token-rejected message must NOT suppress Sentry: {raw}"
+            );
+        }
+    }
+
     #[test]
     fn report_error_does_not_panic_with_many_tags() {
         let err = anyhow::anyhow!("multi-tag");
@@ -4752,6 +5076,101 @@ mod tests {
             let event = event_with_tags_and_message(&tags, message);
             assert!(!is_budget_event(&event));
         }
+    }
+
+    /// CORE-RUST-EK (~827 events): every 401 from the embeddings call path
+    /// (`domain=embeddings`, `failure=non_2xx`, `status=401`) must be filtered
+    /// before it reaches Sentry. Covers both the OpenHuman-backend "Invalid
+    /// token" shape (already handled by the primary `is_session_expired_message`
+    /// classifier) and third-party provider body shapes (OpenAI
+    /// `invalid_api_key`, plain `Unauthorized`) that fall through the string
+    /// classifier.
+    #[test]
+    fn embeddings_401_filter_drops_domain_embeddings_status_401() {
+        // Canonical CORE-RUST-EK wire shape: OpenAI `text-embedding-3-large`
+        // key is stale. `report_error_or_expected` sets
+        // domain=embeddings / operation=openai_embed / failure=non_2xx /
+        // status=401 / model=text-embedding-3-large.
+        let event = event_with_tags_and_message(
+            &[
+                ("domain", "embeddings"),
+                ("operation", "openai_embed"),
+                ("failure", "non_2xx"),
+                ("status", "401"),
+                ("model", "text-embedding-3-large"),
+            ],
+            r#"Embedding API error (401 Unauthorized): {"error":{"message":"Incorrect API key provided. You can find your API key at https://platform.openai.com/account/api-keys.","type":"invalid_request_error","param":null,"code":"invalid_api_key"}}"#,
+        );
+        assert!(
+            is_embeddings_api_key_401_event(&event),
+            "CORE-RUST-EK: domain=embeddings status=401 must be filtered"
+        );
+    }
+
+    /// Any other embedding status (e.g. 429 rate-limit, 500 server error)
+    /// must not be filtered by the embeddings-401 guard — those have their
+    /// own handlers (rate-limit filter, general error reporting).
+    #[test]
+    fn embeddings_401_filter_passes_other_statuses() {
+        for status in ["429", "500", "400"] {
+            let event = event_with_tags_and_message(
+                &[
+                    ("domain", "embeddings"),
+                    ("failure", "non_2xx"),
+                    ("status", status),
+                ],
+                "Embedding API error",
+            );
+            assert!(
+                !is_embeddings_api_key_401_event(&event),
+                "domain=embeddings status={status} must NOT be filtered by the 401 guard"
+            );
+        }
+    }
+
+    /// Non-embeddings domains must not be filtered even if status=401 — the
+    /// guard is scoped specifically to `domain=embeddings` so that provider-chat
+    /// and backend-API 401s remain subject to their own classifiers.
+    #[test]
+    fn embeddings_401_filter_passes_non_embeddings_domains() {
+        for domain in ["llm_provider", "backend_api", "rpc", "composio"] {
+            let event = event_with_tags_and_message(
+                &[
+                    ("domain", domain),
+                    ("failure", "non_2xx"),
+                    ("status", "401"),
+                ],
+                "API error (401 Unauthorized): some body",
+            );
+            assert!(
+                !is_embeddings_api_key_401_event(&event),
+                "domain={domain} status=401 must NOT be swallowed by the embeddings-401 guard"
+            );
+        }
+    }
+
+    /// The guard requires both `failure=non_2xx` and `status=401` to be
+    /// present; missing either tag must cause the filter to pass the event
+    /// through.
+    #[test]
+    fn embeddings_401_filter_requires_failure_and_status_tags() {
+        let no_failure_tag = event_with_tags_and_message(
+            &[("domain", "embeddings"), ("status", "401")],
+            "Embedding API error (401 Unauthorized): unauthorized",
+        );
+        assert!(
+            !is_embeddings_api_key_401_event(&no_failure_tag),
+            "missing failure tag must not trigger the guard"
+        );
+
+        let no_status_tag = event_with_tags_and_message(
+            &[("domain", "embeddings"), ("failure", "non_2xx")],
+            "Embedding API error (401 Unauthorized): unauthorized",
+        );
+        assert!(
+            !is_embeddings_api_key_401_event(&no_status_tag),
+            "missing status tag must not trigger the guard"
+        );
     }
 
     #[test]
