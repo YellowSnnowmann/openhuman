@@ -51,7 +51,7 @@ const pt5: TranslationMap = {
   'settings.cron.jobs.formCronCustom': 'Custom expression',
   'settings.cron.jobs.formCronCustomPlaceholder': 'e.g. */30 * * * *',
   'settings.cron.jobs.formCronPreset': 'Preset',
-  'settings.cron.jobs.formCronPreview': 'Runs: {{preview}}',
+  'settings.cron.jobs.formCronPreview': 'Runs: {preview}',
   'settings.cron.jobs.formDelivery': 'Delivery mode',
   'settings.cron.jobs.formDeliveryNone': 'None (output only)',
   'settings.cron.jobs.formDeliveryProactive': 'Proactive (push notification)',
