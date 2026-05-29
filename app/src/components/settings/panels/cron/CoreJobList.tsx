@@ -33,27 +33,23 @@ const CoreJobList = ({
 
   const toggleButtonLabel = (job: CoreCronJob) => {
     if (coreBusyKey === `core-toggle:${job.id}`) {
-      return t('settings.cron.jobs.saving') || 'Saving...';
+      return t('settings.cron.jobs.saving');
     }
-    return job.enabled
-      ? t('settings.cron.jobs.pause') || 'Pause'
-      : t('settings.cron.jobs.resume') || 'Resume';
+    return job.enabled ? t('settings.cron.jobs.pause') : t('settings.cron.jobs.resume');
   };
 
   const runButtonLabel = (jobId: string) =>
     coreBusyKey === `core-run:${jobId}`
-      ? t('settings.cron.jobs.runningNow') || 'Running now...'
-      : t('subconscious.runNow') || 'Run now';
+      ? t('settings.cron.jobs.runningNow')
+      : t('subconscious.runNow');
 
   const viewRunsButtonLabel = (jobId: string) =>
     coreBusyKey === `core-runs:${jobId}`
-      ? t('settings.cron.jobs.loadingRuns') || 'Loading runs...'
-      : t('settings.cron.jobs.viewRuns') || 'View runs';
+      ? t('settings.cron.jobs.loadingRuns')
+      : t('settings.cron.jobs.viewRuns');
 
   const removeButtonLabel = (jobId: string) =>
-    coreBusyKey === `core-remove:${jobId}`
-      ? t('settings.cron.jobs.removing') || 'Removing...'
-      : t('common.remove') || 'Remove';
+    coreBusyKey === `core-remove:${jobId}` ? t('settings.cron.jobs.removing') : t('common.remove');
 
   return (
     <section className="rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
@@ -161,7 +157,7 @@ const CoreJobList = ({
                     data-testid={`cron-job-edit-${job.id}`}
                     className={neutralButtonClassName}
                     onClick={() => onEditCoreJob(job)}>
-                    {t('settings.cron.jobs.edit') || 'Edit'}
+                    {t('settings.cron.jobs.edit')}
                   </button>
                 )}
                 <button

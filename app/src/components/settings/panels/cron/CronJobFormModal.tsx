@@ -5,7 +5,7 @@
  * or the "Edit" button per job row (edit).
  */
 import createDebug from 'debug';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { cronToHuman } from '../../../../lib/cron/cronToHuman';
 import { SCHEDULE_PRESET_VALUES, SCHEDULE_PRESETS } from '../../../../lib/cron/schedulePresets';
@@ -90,6 +90,60 @@ function getInitialDelivery(job: CoreCronJob): DeliveryMode {
   return job.delivery.mode === 'proactive' ? 'proactive' : 'none';
 }
 
+interface CronJobFormInitialState {
+  name: string;
+  jobType: JobType;
+  scheduleKind: ScheduleKind;
+  cronPreset: string;
+  cronCustom: string;
+  atValue: string;
+  everyMs: string;
+  prompt: string;
+  command: string;
+  sessionTarget: SessionTarget;
+  delivery: DeliveryMode;
+  deleteAfterRun: boolean;
+}
+
+function getInitialFormState(mode: 'create' | 'edit', job?: CoreCronJob): CronJobFormInitialState {
+  if (mode === 'edit' && job) {
+    const scheduleKind = getInitialScheduleKind(job);
+    const cronExpr = getInitialCronExpr(job);
+    const hasPresetCron = scheduleKind === 'cron' && SCHEDULE_PRESET_VALUES.has(cronExpr);
+
+    return {
+      name: job.name ?? '',
+      jobType: job.job_type === 'shell' ? 'shell' : 'agent',
+      scheduleKind,
+      cronPreset:
+        scheduleKind === 'cron' ? (hasPresetCron ? cronExpr : '') : SCHEDULE_PRESETS[0].value,
+      cronCustom: scheduleKind === 'cron' && !hasPresetCron ? cronExpr : '',
+      atValue: scheduleKind === 'at' ? getInitialAtValue(job) : '',
+      everyMs: scheduleKind === 'every' ? getInitialEveryMs(job) : '',
+      prompt: job.prompt ?? '',
+      command: job.command ?? '',
+      sessionTarget: job.session_target === 'main' ? 'main' : 'isolated',
+      delivery: getInitialDelivery(job),
+      deleteAfterRun: job.delete_after_run,
+    };
+  }
+
+  return {
+    name: '',
+    jobType: 'agent',
+    scheduleKind: 'cron',
+    cronPreset: SCHEDULE_PRESETS[0].value,
+    cronCustom: '',
+    atValue: '',
+    everyMs: '',
+    prompt: '',
+    command: '',
+    sessionTarget: 'isolated',
+    delivery: 'proactive',
+    deleteAfterRun: false,
+  };
+}
+
 // ── Component ──────────────────────────────────────────────────────────
 
 const CronJobFormModal = ({
@@ -101,21 +155,22 @@ const CronJobFormModal = ({
   onUpdate,
 }: CronJobFormModalProps) => {
   const { t } = useT();
+  const initialState = getInitialFormState(mode, job);
 
   // ── Form state ─────────────────────────────────────────────────────
 
-  const [name, setName] = useState('');
-  const [jobType, setJobType] = useState<JobType>('agent');
-  const [scheduleKind, setScheduleKind] = useState<ScheduleKind>('cron');
-  const [cronPreset, setCronPreset] = useState<string>(SCHEDULE_PRESETS[0].value);
-  const [cronCustom, setCronCustom] = useState('');
-  const [atValue, setAtValue] = useState('');
-  const [everyMs, setEveryMs] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [command, setCommand] = useState('');
-  const [sessionTarget, setSessionTarget] = useState<SessionTarget>('isolated');
-  const [delivery, setDelivery] = useState<DeliveryMode>('proactive');
-  const [deleteAfterRun, setDeleteAfterRun] = useState(false);
+  const [name, setName] = useState(initialState.name);
+  const [jobType, setJobType] = useState<JobType>(initialState.jobType);
+  const [scheduleKind, setScheduleKind] = useState<ScheduleKind>(initialState.scheduleKind);
+  const [cronPreset, setCronPreset] = useState<string>(initialState.cronPreset);
+  const [cronCustom, setCronCustom] = useState(initialState.cronCustom);
+  const [atValue, setAtValue] = useState(initialState.atValue);
+  const [everyMs, setEveryMs] = useState(initialState.everyMs);
+  const [prompt, setPrompt] = useState(initialState.prompt);
+  const [command, setCommand] = useState(initialState.command);
+  const [sessionTarget, setSessionTarget] = useState<SessionTarget>(initialState.sessionTarget);
+  const [delivery, setDelivery] = useState<DeliveryMode>(initialState.delivery);
+  const [deleteAfterRun, setDeleteAfterRun] = useState(initialState.deleteAfterRun);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,62 +178,14 @@ const CronJobFormModal = ({
   // Effective cron expression: if preset is selected use its value, else custom
   const cronExpr = SCHEDULE_PRESET_VALUES.has(cronPreset) ? cronPreset : cronCustom.trim();
 
-  // ── Prefill in edit mode ────────────────────────────────────────────
-  useEffect(() => {
-    if (!open) return;
-
-    if (mode === 'edit' && job) {
-      log('[CronJobFormModal] prefilling from job %s', job.id);
-      setName(job.name ?? '');
-      setJobType(job.job_type === 'shell' ? 'shell' : 'agent');
-      const sk = getInitialScheduleKind(job);
-      setScheduleKind(sk);
-      if (sk === 'cron') {
-        const expr = getInitialCronExpr(job);
-        if (SCHEDULE_PRESET_VALUES.has(expr)) {
-          setCronPreset(expr);
-          setCronCustom('');
-        } else {
-          setCronPreset('');
-          setCronCustom(expr);
-        }
-      } else if (sk === 'at') {
-        setAtValue(getInitialAtValue(job));
-      } else if (sk === 'every') {
-        setEveryMs(getInitialEveryMs(job));
-      }
-      setPrompt(job.prompt ?? '');
-      setCommand(job.command ?? '');
-      setSessionTarget(job.session_target === 'main' ? 'main' : 'isolated');
-      setDelivery(getInitialDelivery(job));
-      setDeleteAfterRun(job.delete_after_run);
-    } else {
-      log('[CronJobFormModal] resetting form for create mode');
-      setName('');
-      setJobType('agent');
-      setScheduleKind('cron');
-      setCronPreset(SCHEDULE_PRESETS[0].value);
-      setCronCustom('');
-      setAtValue('');
-      setEveryMs('');
-      setPrompt('');
-      setCommand('');
-      setSessionTarget('isolated');
-      setDelivery('proactive');
-      setDeleteAfterRun(false);
-    }
-    setError(null);
-    setSaving(false);
-  }, [open, mode, job]);
-
-  // Auto-set deleteAfterRun default when schedule kind switches to 'at'
-  useEffect(() => {
-    if (scheduleKind === 'at') {
+  const handleScheduleKindChange = (nextKind: ScheduleKind) => {
+    setScheduleKind(nextKind);
+    if (nextKind === 'at') {
       setDeleteAfterRun(true);
     } else if (mode === 'create') {
       setDeleteAfterRun(false);
     }
-  }, [scheduleKind, mode]);
+  };
 
   // ── Validation ──────────────────────────────────────────────────────
   const schedule = buildSchedule(scheduleKind, cronExpr, atValue, everyMs);
@@ -214,7 +221,14 @@ const CronJobFormModal = ({
             : { delivery: { mode: 'none', best_effort: false } }),
           delete_after_run: deleteAfterRun,
         };
-        log('[CronJobFormModal] calling onCreate with params: %o', params);
+        log('[CronJobFormModal] calling onCreate metadata=%o', {
+          mode: 'create',
+          jobType: params.job_type,
+          scheduleKind: params.schedule.kind,
+          hasName: Boolean(params.name),
+          hasSessionTarget: Boolean(params.session_target),
+          deleteAfterRun: params.delete_after_run,
+        });
         await onCreate(params);
       } else {
         if (!job) return;
@@ -229,7 +243,15 @@ const CronJobFormModal = ({
             : { delivery: { mode: 'none', best_effort: false } }),
           delete_after_run: deleteAfterRun,
         };
-        log('[CronJobFormModal] calling onUpdate for job %s with patch: %o', job.id, patch);
+        const patchSchedule = patch.schedule as { kind?: string } | undefined;
+        log('[CronJobFormModal] calling onUpdate metadata=%o', {
+          mode: 'edit',
+          jobId: job.id,
+          scheduleKind: patchSchedule?.kind ?? 'unknown',
+          hasName: patch.name !== null,
+          hasSessionTarget: 'session_target' in patch,
+          deleteAfterRun: patch.delete_after_run,
+        });
         await onUpdate(job.id, patch);
       }
     } catch (err) {
@@ -347,7 +369,7 @@ const CronJobFormModal = ({
                   name="cron-schedule-kind"
                   value="cron"
                   checked={scheduleKind === 'cron'}
-                  onChange={() => setScheduleKind('cron')}
+                  onChange={() => handleScheduleKindChange('cron')}
                   disabled={saving}
                   className="accent-primary-600"
                 />
@@ -360,7 +382,7 @@ const CronJobFormModal = ({
                   name="cron-schedule-kind"
                   value="at"
                   checked={scheduleKind === 'at'}
-                  onChange={() => setScheduleKind('at')}
+                  onChange={() => handleScheduleKindChange('at')}
                   disabled={saving}
                   className="accent-primary-600"
                 />
@@ -373,7 +395,7 @@ const CronJobFormModal = ({
                   name="cron-schedule-kind"
                   value="every"
                   checked={scheduleKind === 'every'}
-                  onChange={() => setScheduleKind('every')}
+                  onChange={() => handleScheduleKindChange('every')}
                   disabled={saving}
                   className="accent-primary-600"
                 />
@@ -446,7 +468,7 @@ const CronJobFormModal = ({
                   data-testid="cron-form-cron-preview"
                   className="text-xs text-stone-500 dark:text-neutral-400">
                   {t('settings.cron.jobs.formCronPreview').replace(
-                    '{{preview}}',
+                    '{preview}',
                     cronToHuman(cronExpr)
                   )}
                 </p>
@@ -484,7 +506,7 @@ const CronJobFormModal = ({
                 value={everyMs}
                 onChange={e => setEveryMs(e.target.value)}
                 disabled={saving}
-                placeholder="e.g. 3600000"
+                placeholder={t('settings.cron.jobs.formEveryPlaceholder')}
                 className="w-full rounded-md border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50"
               />
             </div>

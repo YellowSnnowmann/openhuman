@@ -23,6 +23,10 @@ const loadCronJobsLog = createDebug('app:settings:CronJobsPanel:loadCronSkills')
 const CronJobsPanel = () => {
   const { t } = useT();
   const { navigateBack, breadcrumbs } = useSettingsNavigation();
+  const formatCronError = useCallback(
+    (key: string, message: string) => t(key).replace('{message}', message),
+    [t]
+  );
 
   const [loading, setLoading] = useState(true);
   const [coreError, setCoreError] = useState<string | null>(null);
@@ -56,11 +60,11 @@ const CronJobsPanel = () => {
     } catch (err) {
       loadCronJobsLog('failure', err);
       const message = err instanceof Error ? err.message : String(err);
-      setCoreError(`Failed to load core cron jobs: ${message}`);
+      setCoreError(formatCronError('settings.cron.jobs.errorLoadList', message));
     } finally {
       setLoading(false);
     }
-  }, [loadCoreCronJobs]);
+  }, [formatCronError, loadCoreCronJobs]);
 
   useEffect(() => {
     void loadCoreCronJobsOnly();
@@ -76,7 +80,7 @@ const CronJobsPanel = () => {
       setCoreJobs(prev => prev.map(item => (item.id === updated.id ? updated : item)));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setCoreError(`Failed to update core cron job: ${message}`);
+      setCoreError(formatCronError('settings.cron.jobs.errorToggle', message));
     } finally {
       setCoreBusyKey(null);
     }
@@ -94,7 +98,7 @@ const CronJobsPanel = () => {
       await loadCoreCronJobs();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setCoreError(`Failed to run core cron job: ${message}`);
+      setCoreError(formatCronError('settings.cron.jobs.errorRun', message));
     } finally {
       setCoreBusyKey(null);
     }
@@ -110,14 +114,20 @@ const CronJobsPanel = () => {
       setCoreRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setCoreError(`Failed to load run history: ${message}`);
+      setCoreError(formatCronError('settings.cron.jobs.errorLoadRuns', message));
     } finally {
       setCoreBusyKey(null);
     }
   };
 
   const handleCreate = async (params: CronAddParams) => {
-    loadCronJobsLog('handleCreate params=%o', params);
+    loadCronJobsLog('handleCreate metadata=%o', {
+      jobType: params.job_type,
+      scheduleKind: params.schedule.kind,
+      hasName: Boolean(params.name),
+      hasSessionTarget: Boolean(params.session_target),
+      deleteAfterRun: params.delete_after_run,
+    });
     try {
       await openhumanCronAdd(params);
       await loadCoreCronJobs();
@@ -126,13 +136,20 @@ const CronJobsPanel = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       loadCronJobsLog('handleCreate error: %s', message);
-      setCoreError(`Failed to create cron job: ${message}`);
+      setCoreError(formatCronError('settings.cron.jobs.errorCreate', message));
       throw err; // Re-throw so modal can surface inline error
     }
   };
 
   const handleUpdate = async (jobId: string, patch: Record<string, unknown>) => {
-    loadCronJobsLog('handleUpdate jobId=%s patch=%o', jobId, patch);
+    const patchSchedule = patch.schedule as { kind?: string } | undefined;
+    loadCronJobsLog('handleUpdate metadata=%o', {
+      jobId,
+      scheduleKind: patchSchedule?.kind ?? 'unknown',
+      hasName: patch.name !== null,
+      hasSessionTarget: 'session_target' in patch,
+      deleteAfterRun: patch.delete_after_run,
+    });
     try {
       await openhumanCronUpdate(jobId, patch);
       await loadCoreCronJobs();
@@ -141,7 +158,7 @@ const CronJobsPanel = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       loadCronJobsLog('handleUpdate error: %s', message);
-      setCoreError(`Failed to update cron job: ${message}`);
+      setCoreError(formatCronError('settings.cron.jobs.errorUpdate', message));
       throw err; // Re-throw so modal can surface inline error
     }
   };
@@ -161,7 +178,7 @@ const CronJobsPanel = () => {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setCoreError(`Failed to remove core cron job: ${message}`);
+      setCoreError(formatCronError('settings.cron.jobs.errorRemove', message));
     } finally {
       setCoreBusyKey(null);
     }
@@ -227,23 +244,29 @@ const CronJobsPanel = () => {
       </div>
 
       {/* Create modal */}
-      <CronJobFormModal
-        mode="create"
-        open={formOpen && editingJob === null}
-        onClose={() => setFormOpen(false)}
-        onCreate={params => handleCreate(params)}
-        onUpdate={handleUpdate}
-      />
+      {formOpen && editingJob === null && (
+        <CronJobFormModal
+          key="cron-form-create"
+          mode="create"
+          open={true}
+          onClose={() => setFormOpen(false)}
+          onCreate={params => handleCreate(params)}
+          onUpdate={handleUpdate}
+        />
+      )}
 
       {/* Edit modal */}
-      <CronJobFormModal
-        mode="edit"
-        job={editingJob ?? undefined}
-        open={editingJob !== null}
-        onClose={() => setEditingJob(null)}
-        onCreate={handleCreate}
-        onUpdate={handleUpdate}
-      />
+      {editingJob !== null && (
+        <CronJobFormModal
+          key={`cron-form-edit-${editingJob.id}`}
+          mode="edit"
+          job={editingJob}
+          open={true}
+          onClose={() => setEditingJob(null)}
+          onCreate={handleCreate}
+          onUpdate={handleUpdate}
+        />
+      )}
     </div>
   );
 };
