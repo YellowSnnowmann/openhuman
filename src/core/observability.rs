@@ -62,18 +62,6 @@ const UPDATER_TRANSIENT_HTTP_STATUSES: &[u16] = &[403, 500, 502, 503, 504];
 /// Keep these updater-specific so unrelated GitHub or generic transport
 /// failures still reach Sentry.
 ///
-/// The last entry is `tauri-plugin-updater`'s own non-success log line
-/// (`updater.rs`: `log::error!("update endpoint did not respond with a
-/// successful status code")`). The plugin emits it on *any* non-2xx
-/// response and **discards the status code**, so the Sentry event carries
-/// no `domain`/`status` tag and no actionable detail — it can only be
-/// matched by this message string. It is distinctive to the updater
-/// (literally names "update endpoint"), so matching it domain-agnostically
-/// is safe. A genuinely-broken update manifest still surfaces with full
-/// structured context (status + url) through the core's `domain=update`
-/// `check_releases` path, which keeps non-transient statuses visible — see
-/// `UPDATER_TRANSIENT_HTTP_STATUSES` (404 deliberately omitted there).
-/// Drops TAURI-RUST-CD (~151 events / 9 days, Windows background checks).
 const UPDATER_TRANSIENT_MESSAGE_PHRASES: &[&str] = &[
     "failed to check for updates: error sending request",
     "github api error: 403",
@@ -140,39 +128,8 @@ pub enum ExpectedErrorKind {
     ///   demoted breadcrumb can stay sparse (debug level, metadata-only
     ///   fields) instead of warn-level with the full body included.
     ///
-    /// Drops OPENHUMAN-TAURI-R5 (~2.5k events) and OPENHUMAN-TAURI-R6
-    /// (~2.5k events) — both are the same `127.0.0.1:18474` connect-refused
-    /// shape, one at the `integrations.get` emit site and one re-wrapped by
-    /// `rpc.invoke_method`. See [`is_loopback_unavailable`] for the exact
-    /// body shapes matched.
     LoopbackUnavailable,
-    /// A user prompt was rejected by the in-process prompt-injection guard
-    /// before it reached the model. Both enforcement actions that produce a
-    /// user-visible error — `Blocked` (score ≥ 0.70) and `ReviewBlocked`
-    /// (score ≥ 0.55) — are expected, user-input conditions: the detector
-    /// fired on the user's own message and the UI already surfaces an
-    /// actionable "please rephrase" message. Sentry has no remediation path
-    /// and the volume is high (OPENHUMAN-TAURI-140: ~1 480 events in 2 days,
-    /// ~56 events/hour, all from `openhuman.agent_chat` via
-    /// `local_ai.ops.agent_chat`).
     PromptInjectionBlocked,
-    /// The request exceeded the model's context window — the
-    /// conversation/prompt is too long for the configured model. A
-    /// deterministic user-state / usage condition; the remediation is
-    /// "start a new chat, trim the conversation, or pick a larger-context
-    /// model", which the UI surfaces. Sentry has no signal to act on.
-    ///
-    /// The provider HTTP layer (`providers::ops::api_error`) suppresses its
-    /// own per-attempt event for this condition, and
-    /// `providers::reliable` marks it non-retryable. This arm catches the
-    /// **re-report** when the same error is raised again by
-    /// `agent.run_single` / `web_channel.run_chat_task` under a different
-    /// `domain` tag (same two-emit-site shape as the empty-response and
-    /// session-expired fixes). Delegates to the single-source matcher
-    /// [`crate::openhuman::inference::provider::is_context_window_exceeded_message`]
-    /// so the retry classifier, the api_error cascade, and this arm can't
-    /// drift. Drops Sentry TAURI-RUST-501
-    /// (`Context size has been exceeded`, custom-provider 500).
     ContextWindowExceeded,
     /// The memory-store chunk DB's per-path circuit breaker is currently open
     /// because too many consecutive SQLite init attempts failed. This is the
@@ -183,14 +140,6 @@ pub enum ExpectedErrorKind {
     /// reset window elapses and a subsequent init succeeds.
     ///
     MemoryStoreBreakerOpen,
-    /// Host disk is full — the filesystem returned `ENOSPC` to a write,
-    /// `mkdir`, or `open` syscall. The user cannot recover from this without
-    /// freeing space on their machine, and Sentry has no remediation path
-    /// because the failing path is bound to the user's local FS. Surfaces
-    /// from many call sites once the disk fills up (auth profile lock
-    /// creation, SQLite WAL grows, log rotation, `tokio::fs::write` for
-    /// state snapshots) — every one of them emits the same canonical errno
-    /// rendering.
     DiskFull,
     /// A user-supplied filesystem path failed an RPC-level validation
     /// check — e.g. `openhuman.vault_create` was called with a
@@ -277,6 +226,7 @@ pub enum ExpectedErrorKind {
     /// (~815 events Chinese-Windows variant) where the English-only
     /// `is_network_unreachable_message` anchors miss the inner OS message.
     ChannelSupervisorRestart,
+    ConfigLoadTimedOut,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -388,6 +338,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_disk_full_message(&lower) {
         return Some(ExpectedErrorKind::DiskFull);
     }
+    if is_config_load_timed_out_message(&lower) {
+        return Some(ExpectedErrorKind::ConfigLoadTimedOut);
+    }
     if is_memory_store_pii_rejection(&lower) {
         return Some(ExpectedErrorKind::MemoryStorePiiRejection);
     }
@@ -423,6 +376,15 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
 ///   The text anchor already covers it.
 fn is_disk_full_message(lower: &str) -> bool {
     lower.contains("no space left on device") || lower.contains("not enough space on the disk")
+}
+
+/// Detect the literal `"Config loading timed out"` string produced by
+/// [`crate::openhuman::config::ops::load_config_with_timeout`] /
+/// [`crate::openhuman::config::ops::reload_config_snapshot_with_timeout`]
+/// when `tokio::time::timeout` elapses around `Config::load_or_init` /
+/// `Config::load_from_config_path`.
+fn is_config_load_timed_out_message(lower: &str) -> bool {
+    lower.contains("config loading timed out")
 }
 
 fn is_embedding_backend_auth_failure(lower: &str) -> bool {
@@ -509,37 +471,10 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || lower.contains("no backend session token")
         || lower.contains("session jwt required")
         || msg.contains("SESSION_EXPIRED")
-        // OPENHUMAN-TAURI-4P0 — OpenHuman backend's "Invalid token" 401
-        // envelope. Both anchors must be present: the OpenHuman-scoped
-        // `"OpenHuman API error (401"` prefix (so a third-party provider's
-        // `"OpenAI API error (401 Unauthorized): invalid_api_key"` cannot
-        // match), AND the envelope-shaped `"\"error\":\"Invalid token\""`
-        // (so bare prose mentions of "invalid token" — Discord OAuth
-        // failures, generic upstream errors covered by #2286 — stay
-        // actionable in Sentry).
         || (msg.contains("OpenHuman API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
-        // TAURI-RUST-4K5 — same OpenHuman backend "Invalid token" envelope
-        // wrapped by `src/openhuman/embeddings/openai.rs:139` with the
-        // `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
-        // Same conjunctive-anchor pattern as 4P0: the embedding-scoped
-        // prefix gates the match so a third-party BYO-key embedding 401
-        // (e.g. OpenAI/Voyage/Cohere rejecting the user's own API key)
-        // stays actionable — guarded by
-        // `does_not_classify_embedding_byo_key_401_as_session_expired`.
         || (msg.contains("Embedding API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
-        // TAURI-RUST-1EE — same OpenHuman backend "Invalid token" envelope
-        // wrapped by the streaming-chat path at
-        // `inference/provider/compatible.rs:949` with the
-        // `"OpenHuman streaming API error"` prefix. The `streaming` token
-        // between `OpenHuman` and `API error` means the 4P0 anchor
-        // (`"OpenHuman API error (401"`) does not match it, so the
-        // streaming path needs its own prefix arm. Same conjunctive-anchor
-        // pattern keeps third-party BYO-key streaming 401s
-        // (`"OpenAI streaming API error (401): invalid_api_key"`)
-        // escalating — guarded by
-        // `does_not_classify_streaming_byo_key_401_as_session_expired`.
         || (msg.contains("OpenHuman streaming API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
 }
@@ -1538,6 +1473,15 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 "[observability] {domain}.{operation} skipped expected channel-supervisor restart: {message}"
             );
         }
+        ExpectedErrorKind::ConfigLoadTimedOut => {
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "config_load_timed_out",
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected config-load timeout: {message}"
+            );
+        }
     }
 }
 
@@ -2486,6 +2430,47 @@ mod tests {
         assert_eq!(
             expected_error_kind("not enough memory to allocate buffer"),
             None
+        );
+    }
+
+    #[test]
+    fn classifies_config_load_timed_out() {
+        // Canonical wire string emitted by `load_config_with_timeout` and
+        // `reload_config_snapshot_with_timeout` in
+        // `src/openhuman/config/ops.rs`. Drops TAURI-RUST-5X.
+        assert_eq!(
+            expected_error_kind("Config loading timed out"),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+        // Same shape after the RPC dispatch wraps it for display — the
+        // matcher is substring-anchored, so a context prefix does not
+        // break it.
+        assert_eq!(
+            expected_error_kind(
+                "rpc.invoke_method failed: Config loading timed out"
+            ),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_timeouts_as_config_load_timed_out() {
+        // Network / HTTP timeouts go to `NetworkUnreachable` /
+        // `TransientUpstreamHttp`, not the config-load bucket. The
+        // anchor is the full literal phrase, so a bare "timed out" or
+        // "operation timed out" body cannot trip this matcher.
+        assert_ne!(
+            expected_error_kind("Channel discord error: IO error: Operation timed out (os error 60); restarting"),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+        assert_ne!(
+            expected_error_kind("OpenHuman API error (504 Gateway Timeout): error code: 504"),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+        // Bare "timed out" without the config-load phrase must not match.
+        assert_eq!(
+            expected_error_kind("cron job timed out after 30s"),
+            None,
         );
     }
 
