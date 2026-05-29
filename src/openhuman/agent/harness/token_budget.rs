@@ -33,7 +33,9 @@ pub fn estimate_chat_message_tokens(msg: &ChatMessage) -> usize {
 pub fn estimate_conversation_message_tokens(msg: &ConversationMessage) -> usize {
     match msg {
         ConversationMessage::Chat(chat) => estimate_chat_message_tokens(chat),
-        ConversationMessage::AssistantToolCalls { text, tool_calls } => {
+        ConversationMessage::AssistantToolCalls {
+            text, tool_calls, ..
+        } => {
             let body = text.as_deref().unwrap_or_default();
             let mut total = estimate_tokens(body);
             for call in tool_calls {
@@ -240,6 +242,7 @@ mod tests {
                 name: "echo".into(),
                 arguments: "{\"value\":\"x\"}".into(),
             }],
+            reasoning_content: None,
         };
         assert!(estimate_conversation_message_tokens(&msg) > 0);
     }
