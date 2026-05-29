@@ -108,6 +108,48 @@ Do not attempt another tool call. Instead, write a short progress checkpoint for
 2. **Next steps** — exactly what you plan to do next.\n\
 Write it so you can pick up seamlessly where you left off when the user replies. Be concise.";
 
+/// Built-in direct tools that the orchestrator should call by name, not via
+/// `run_skill`.
+const DIRECT_TOOL_NAMES: &[&str] = &[
+    "cron_add",
+    "cron_list",
+    "cron_remove",
+    "cron_update",
+    "cron_run",
+    "cron_runs",
+    "current_time",
+];
+
+/// Recovery shim for legacy/wrong-model calls of the form:
+/// `run_skill({skill_id: "<built-in tool>", inputs: {...}})`.
+///
+/// When this pattern appears, rewrite it into a direct tool call so the turn
+/// can proceed without a manual retry.
+fn normalize_tool_call(call: &ParsedToolCall) -> ParsedToolCall {
+    if call.name != "run_skill" {
+        return call.clone();
+    }
+    let Some(skill_id) = call.arguments.get("skill_id").and_then(|v| v.as_str()) else {
+        return call.clone();
+    };
+    if !DIRECT_TOOL_NAMES.contains(&skill_id) {
+        return call.clone();
+    }
+    let Some(inputs) = call.arguments.get("inputs").and_then(|v| v.as_object()) else {
+        return call.clone();
+    };
+
+    log::warn!(
+        "[agent_loop] rewrote legacy run_skill->{} call into direct tool invocation",
+        skill_id
+    );
+    ParsedToolCall {
+        name: skill_id.to_string(),
+        arguments: serde_json::Value::Object(inputs.clone()),
+        tool_call_id: call.tool_call_id.clone(),
+    }
+}
+
 /// Build a deterministic checkpoint summary from this turn's tool-call
 /// records. Used only as a safety net when the model-written checkpoint
 /// call fails or returns empty, so a capped turn can never be left without
@@ -1339,6 +1381,8 @@ impl Agent {
         call: &ParsedToolCall,
         iteration: usize,
     ) -> (ToolExecutionResult, ToolCallRecord) {
+        let normalized_call = normalize_tool_call(call);
+        let call = &normalized_call;
         let started = std::time::Instant::now();
         publish_global(DomainEvent::ToolExecutionStarted {
             tool_name: call.name.clone(),
