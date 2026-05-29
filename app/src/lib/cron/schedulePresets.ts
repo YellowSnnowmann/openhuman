@@ -11,7 +11,7 @@
  */
 
 export interface SchedulePreset {
-  /** i18n key — panel-specific (e.g. 'settings.devWorkflow.schedule.every30min'). */
+  /** i18n key from the shared cron namespace (e.g. 'settings.cron.schedule.every30min'). */
   labelKey: string;
   /** 5-field cron expression. */
   value: string;

@@ -48,6 +48,7 @@ use crate::openhuman::agent::harness::token_budget::{
     trim_chat_messages_to_budget, trim_conversation_history_to_budget,
 };
 use anyhow::Result;
+use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -125,29 +126,29 @@ const DIRECT_TOOL_NAMES: &[&str] = &[
 ///
 /// When this pattern appears, rewrite it into a direct tool call so the turn
 /// can proceed without a manual retry.
-fn normalize_tool_call(call: &ParsedToolCall) -> ParsedToolCall {
+fn normalize_tool_call<'a>(call: &'a ParsedToolCall) -> Cow<'a, ParsedToolCall> {
     if call.name != "run_skill" {
-        return call.clone();
+        return Cow::Borrowed(call);
     }
     let Some(skill_id) = call.arguments.get("skill_id").and_then(|v| v.as_str()) else {
-        return call.clone();
+        return Cow::Borrowed(call);
     };
     if !DIRECT_TOOL_NAMES.contains(&skill_id) {
-        return call.clone();
+        return Cow::Borrowed(call);
     }
     let Some(inputs) = call.arguments.get("inputs").and_then(|v| v.as_object()) else {
-        return call.clone();
+        return Cow::Borrowed(call);
     };
 
     log::warn!(
         "[agent_loop] rewrote legacy run_skill->{} call into direct tool invocation",
         skill_id
     );
-    ParsedToolCall {
+    Cow::Owned(ParsedToolCall {
         name: skill_id.to_string(),
         arguments: serde_json::Value::Object(inputs.clone()),
         tool_call_id: call.tool_call_id.clone(),
-    }
+    })
 }
 
 /// Build a deterministic checkpoint summary from this turn's tool-call
