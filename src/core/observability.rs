@@ -471,10 +471,8 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || lower.contains("no backend session token")
         || lower.contains("session jwt required")
         || msg.contains("SESSION_EXPIRED")
-        || (msg.contains("OpenHuman API error (401")
-            && msg.contains("\"error\":\"Invalid token\""))
-        || (msg.contains("Embedding API error (401")
-            && msg.contains("\"error\":\"Invalid token\""))
+        || (msg.contains("OpenHuman API error (401") && msg.contains("\"error\":\"Invalid token\""))
+        || (msg.contains("Embedding API error (401") && msg.contains("\"error\":\"Invalid token\""))
         || (msg.contains("OpenHuman streaming API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
 }
@@ -2446,9 +2444,7 @@ mod tests {
         // matcher is substring-anchored, so a context prefix does not
         // break it.
         assert_eq!(
-            expected_error_kind(
-                "rpc.invoke_method failed: Config loading timed out"
-            ),
+            expected_error_kind("rpc.invoke_method failed: Config loading timed out"),
             Some(ExpectedErrorKind::ConfigLoadTimedOut),
         );
     }
@@ -2460,7 +2456,9 @@ mod tests {
         // anchor is the full literal phrase, so a bare "timed out" or
         // "operation timed out" body cannot trip this matcher.
         assert_ne!(
-            expected_error_kind("Channel discord error: IO error: Operation timed out (os error 60); restarting"),
+            expected_error_kind(
+                "Channel discord error: IO error: Operation timed out (os error 60); restarting"
+            ),
             Some(ExpectedErrorKind::ConfigLoadTimedOut),
         );
         assert_ne!(
@@ -2468,10 +2466,7 @@ mod tests {
             Some(ExpectedErrorKind::ConfigLoadTimedOut),
         );
         // Bare "timed out" without the config-load phrase must not match.
-        assert_eq!(
-            expected_error_kind("cron job timed out after 30s"),
-            None,
-        );
+        assert_eq!(expected_error_kind("cron job timed out after 30s"), None,);
     }
 
     #[test]
