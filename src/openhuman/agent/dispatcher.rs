@@ -555,11 +555,13 @@ impl ToolDispatcher for NativeToolDispatcher {
                     tool_calls,
                     reasoning_content,
                 } => {
-                    let payload = serde_json::json!({
+                    let mut payload = serde_json::json!({
                         "content": text,
                         "tool_calls": tool_calls,
-                        "reasoning_content": reasoning_content,
                     });
+                    if let Some(rc) = reasoning_content {
+                        payload["reasoning_content"] = serde_json::Value::String(rc.clone());
+                    }
                     vec![ChatMessage::assistant(payload.to_string())]
                 }
                 ConversationMessage::ToolResults(results) => results

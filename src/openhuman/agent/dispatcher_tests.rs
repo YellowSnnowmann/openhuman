@@ -433,6 +433,23 @@ fn native_dispatcher_serializes_reasoning_content_for_tool_call_turns() {
     );
 }
 
+#[test]
+fn native_dispatcher_omits_reasoning_content_when_absent() {
+    let dispatcher = NativeToolDispatcher;
+    let history = vec![assistant_tool_calls("tc-1"), tool_results("tc-1")];
+
+    let out = dispatcher.to_provider_messages(&history);
+    assert_eq!(out.len(), 2);
+    assert_eq!(out[0].role, "assistant");
+
+    let payload: serde_json::Value =
+        serde_json::from_str(&out[0].content).expect("assistant payload should be valid JSON");
+    assert!(
+        payload.get("reasoning_content").is_none(),
+        "reasoning_content should be omitted when absent"
+    );
+}
+
 fn tool_results_multi(ids: &[&str]) -> ConversationMessage {
     use crate::openhuman::inference::provider::ToolResultMessage;
     ConversationMessage::ToolResults(
