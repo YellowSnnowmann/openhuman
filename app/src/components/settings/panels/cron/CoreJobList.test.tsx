@@ -16,6 +16,7 @@ vi.mock('../../../../lib/i18n/I18nContext', () => ({
         'settings.cron.jobs.nextRun': 'Next run',
         'settings.cron.jobs.pause': 'Pause',
         'settings.cron.jobs.recentRuns': 'Recent runs',
+        'settings.cron.jobs.saving': 'Saving…',
         'settings.cron.jobs.schedule': 'Schedule',
         'settings.cron.jobs.title': 'Scheduled Jobs',
         'settings.cron.jobs.viewRuns': 'View Runs',
@@ -105,5 +106,21 @@ describe('CoreJobList stable test hooks', () => {
     fireEvent.click(editBtn);
     expect(onEditCoreJob).toHaveBeenCalledOnce();
     expect(onEditCoreJob).toHaveBeenCalledWith(job);
+  });
+
+  test('toggle button shows saving label when coreBusyKey targets the toggle', () => {
+    render(
+      <CoreJobList
+        loading={false}
+        coreJobs={[job]}
+        coreRunsByJob={{}}
+        coreBusyKey={`core-toggle:${job.id}`}
+        onToggleCoreJob={vi.fn()}
+        onRunCoreJob={vi.fn()}
+        onLoadCoreRuns={vi.fn()}
+        onRemoveCoreJob={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId(`cron-job-toggle-${job.id}`)).toHaveTextContent('Saving…');
   });
 });

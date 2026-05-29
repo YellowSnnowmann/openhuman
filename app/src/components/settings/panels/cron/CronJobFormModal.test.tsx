@@ -266,4 +266,173 @@ describe('<CronJobFormModal />', () => {
 
     expect(screen.getByTestId('cron-form-error')).toHaveTextContent('Failed to save job');
   });
+
+  // ── Create: "at" schedule ───────────────────────────────────────────
+  it('submits with at-schedule, isoifies datetime input', async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<CronJobFormModal {...makeProps({ onCreate })} />);
+
+    fireEvent.click(screen.getByTestId('cron-form-schedule-at'));
+    fireEvent.change(screen.getByTestId('cron-form-at'), { target: { value: '2030-01-01T09:00' } });
+    fireEvent.change(screen.getByTestId('cron-form-prompt'), { target: { value: 'go' } });
+
+    expect(screen.getByTestId('cron-form-submit')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('cron-form-submit'));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    const [params] = onCreate.mock.calls[0];
+    expect(params.schedule.kind).toBe('at');
+    expect(params.schedule.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(params.delete_after_run).toBe(true);
+  });
+
+  it('submits with every-schedule using parsed ms', async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<CronJobFormModal {...makeProps({ onCreate })} />);
+
+    fireEvent.click(screen.getByTestId('cron-form-schedule-every'));
+    fireEvent.change(screen.getByTestId('cron-form-every'), { target: { value: '60000' } });
+    fireEvent.change(screen.getByTestId('cron-form-prompt'), { target: { value: 'tick' } });
+
+    expect(screen.getByTestId('cron-form-submit')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('cron-form-submit'));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    const [params] = onCreate.mock.calls[0];
+    expect(params.schedule).toEqual({ kind: 'every', every_ms: 60000 });
+  });
+
+  it('submit disabled when every ms is empty or non-positive', () => {
+    render(<CronJobFormModal {...makeProps()} />);
+    fireEvent.click(screen.getByTestId('cron-form-schedule-every'));
+    fireEvent.change(screen.getByTestId('cron-form-prompt'), { target: { value: 'x' } });
+    expect(screen.getByTestId('cron-form-submit')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('cron-form-every'), { target: { value: '0' } });
+    expect(screen.getByTestId('cron-form-submit')).toBeDisabled();
+  });
+
+  // ── Cron custom expression ──────────────────────────────────────────
+  it('typing a custom cron expression clears preset and renders preview', () => {
+    render(<CronJobFormModal {...makeProps()} />);
+    const preset = screen.getByTestId('cron-form-cron-preset') as HTMLSelectElement;
+    // Select empty/custom option
+    fireEvent.change(preset, { target: { value: '' } });
+    const custom = screen.getByTestId('cron-form-cron-custom');
+    fireEvent.change(custom, { target: { value: '*/15 * * * *' } });
+    expect(screen.getByTestId('cron-form-cron-preview')).toHaveTextContent('*/15 * * * *');
+  });
+
+  it('typing a value that matches a preset sets cronPreset', () => {
+    render(<CronJobFormModal {...makeProps()} />);
+    fireEvent.change(screen.getByTestId('cron-form-cron-preset'), { target: { value: '' } });
+    const custom = screen.getByTestId('cron-form-cron-custom');
+    // value matches a preset
+    fireEvent.change(custom, { target: { value: '0 9 * * *' } });
+    // Preview rendered for that expression
+    expect(screen.getByTestId('cron-form-cron-preview')).toHaveTextContent('0 9 * * *');
+  });
+
+  // ── Session target / delivery / deleteAfterRun ──────────────────────
+  it('changes session_target and delivery mode in the submitted params', async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<CronJobFormModal {...makeProps({ onCreate })} />);
+    fireEvent.change(screen.getByTestId('cron-form-prompt'), { target: { value: 'p' } });
+    fireEvent.change(screen.getByTestId('cron-form-session-target'), { target: { value: 'main' } });
+    fireEvent.change(screen.getByTestId('cron-form-delivery'), { target: { value: 'none' } });
+    fireEvent.click(screen.getByTestId('cron-form-delete-after-run'));
+
+    fireEvent.click(screen.getByTestId('cron-form-submit'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    const [params] = onCreate.mock.calls[0];
+    expect(params.session_target).toBe('main');
+    expect(params.delivery).toMatchObject({ mode: 'none' });
+    expect(params.delete_after_run).toBe(true);
+  });
+
+  // ── Edit mode: at and every prefill ─────────────────────────────────
+  it('edit mode prefills "at" schedule and converts ISO to datetime-local', () => {
+    const atJob: CoreCronJob = {
+      ...sampleJob,
+      schedule: { kind: 'at', at: '2030-01-01T09:00:00.000Z' },
+    };
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: atJob })} />);
+    const atInput = screen.getByTestId('cron-form-at') as HTMLInputElement;
+    expect(atInput.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  });
+
+  it('edit mode prefills "every" schedule with every_ms as string', () => {
+    const everyJob: CoreCronJob = { ...sampleJob, schedule: { kind: 'every', every_ms: 120000 } };
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: everyJob })} />);
+    expect(screen.getByTestId('cron-form-every')).toHaveValue(120000);
+  });
+
+  it('edit mode with a non-preset custom cron expression shows the custom input', () => {
+    const job: CoreCronJob = { ...sampleJob, schedule: { kind: 'cron', expr: '*/7 * * * *' } };
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job })} />);
+    expect(screen.getByTestId('cron-form-cron-custom')).toHaveValue('*/7 * * * *');
+  });
+
+  it('edit mode handleSubmit builds patch with all fields and clears name to null when blank', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: sampleJob, onUpdate })} />);
+    fireEvent.change(screen.getByTestId('cron-form-name'), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('cron-form-submit'));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledOnce());
+    const [, patch] = onUpdate.mock.calls[0];
+    expect(patch.name).toBeNull();
+    expect(patch.session_target).toBe('isolated');
+    expect(patch.delivery).toMatchObject({ mode: 'proactive' });
+  });
+
+  it('edit mode with shell job patches command not prompt', async () => {
+    const shellJob: CoreCronJob = {
+      ...sampleJob,
+      job_type: 'shell',
+      command: 'echo hi',
+      prompt: '',
+    };
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: shellJob, onUpdate })} />);
+    fireEvent.click(screen.getByTestId('cron-form-submit'));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledOnce());
+    const [, patch] = onUpdate.mock.calls[0];
+    expect(patch.command).toBe('echo hi');
+    expect(patch).not.toHaveProperty('prompt');
+    expect(patch).not.toHaveProperty('session_target');
+  });
+
+  // ── Schedule kind switching back to cron resets delete flag ─────────
+  it('switching from "at" back to "cron" in create mode clears deleteAfterRun', () => {
+    render(<CronJobFormModal {...makeProps()} />);
+    fireEvent.click(screen.getByTestId('cron-form-schedule-at'));
+    expect(screen.getByTestId('cron-form-delete-after-run')).toBeChecked();
+    fireEvent.click(screen.getByTestId('cron-form-schedule-cron'));
+    expect(screen.getByTestId('cron-form-delete-after-run')).not.toBeChecked();
+  });
+
+  it('edit mode with an unparseable "at" ISO falls back to empty input', () => {
+    const badAtJob: CoreCronJob = { ...sampleJob, schedule: { kind: 'at', at: 'not-a-real-date' } };
+    render(<CronJobFormModal {...makeProps({ mode: 'edit', job: badAtJob })} />);
+    // The input stays empty when ISO can't be parsed.
+    expect(screen.getByTestId('cron-form-at')).toHaveValue('');
+  });
+
+  it('changing preset dropdown to a different preset updates the expression and clears custom', () => {
+    render(<CronJobFormModal {...makeProps()} />);
+    // Initially first preset is selected. Pick a different preset value.
+    fireEvent.change(screen.getByTestId('cron-form-cron-preset'), {
+      target: { value: '0 9 * * *' },
+    });
+    // Preview should reflect the newly-picked preset
+    expect(screen.getByTestId('cron-form-cron-preview')).toHaveTextContent('0 9 * * *');
+  });
+
+  // ── Toggle job type back to agent ───────────────────────────────────
+  it('toggling back to agent job type restores the prompt field', () => {
+    render(<CronJobFormModal {...makeProps()} />);
+    fireEvent.click(screen.getByTestId('cron-form-job-type-shell'));
+    expect(screen.queryByTestId('cron-form-prompt')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('cron-form-job-type-agent'));
+    expect(screen.getByTestId('cron-form-prompt')).toBeInTheDocument();
+  });
 });
