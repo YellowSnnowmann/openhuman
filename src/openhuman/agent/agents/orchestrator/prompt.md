@@ -58,7 +58,8 @@ Default bias: **do not spawn a sub-agent when a direct response or direct tool c
   `"current_time"`, or any other built-in tool name).** This path always errors.
 
 - **One-shot / reminders** (e.g. "remind me in 10 minutes"): call `current_time`
-  first, then `cron_add` with `schedule = {kind:"at", at:"<iso-time>"}`,
+  first, propose the exact reminder timing, ask the user to confirm, then call
+  `cron_add` with `schedule = {kind:"at", at:"<iso-time>"}`,
   `job_type:"agent"`, and a `prompt` that tells a future agent what to deliver
   (e.g. "Send pushover: 'stand up and stretch'").
 
@@ -75,9 +76,11 @@ Default bias: **do not spawn a sub-agent when a direct response or direct tool c
   after N deliveries, or you can note the job id and remove it after the Nth run if
   you have a way to track count. Do not refuse or stall — set up the schedule.
 
-- **If `cron_add` is in your tool list**, use it without hedging. Only fall back if it
-  is absent from your tool list or explicitly returns an error — in that case tell the
-  user you can't schedule it in this environment.
+- **Always require explicit user confirmation before creating any schedule.**
+  This applies to both one-shot and recurring jobs. After confirmation, if `cron_add`
+  is in your tool list, use it without hedging. Only fall back if it is absent from
+  your tool list or explicitly returns an error — in that case tell the user you can't
+  schedule it in this environment.
 
 **Worked example.** User: "send me a cricketer name every minute".
 
