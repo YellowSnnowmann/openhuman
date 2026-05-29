@@ -140,6 +140,25 @@ pub enum ExpectedErrorKind {
     /// reset window elapses and a subsequent init succeeds.
     ///
     MemoryStoreBreakerOpen,
+    /// WhatsApp structured-ingest write hit a transient SQLite file lock
+    /// (`SQLITE_BUSY` / `SQLITE_LOCKED`) after exhausting the local retry
+    /// budget. This is an expected local-contention condition (typically on
+    /// Windows when another process briefly holds a file lock) and the
+    /// scanner retries on the next tick, so Sentry has no immediate
+    /// remediation path.
+    ///
+    /// Anchored narrowly to the whatsapp ingest failure envelope plus the
+    /// SQLite lock text, so unrelated DB lock errors in other domains still
+    /// reach Sentry.
+    WhatsAppDataSqliteBusy,
+    /// Host disk is full — the filesystem returned `ENOSPC` to a write,
+    /// `mkdir`, or `open` syscall. The user cannot recover from this without
+    /// freeing space on their machine, and Sentry has no remediation path
+    /// because the failing path is bound to the user's local FS. Surfaces
+    /// from many call sites once the disk fills up (auth profile lock
+    /// creation, SQLite WAL grows, log rotation, `tokio::fs::write` for
+    /// state snapshots) — every one of them emits the same canonical errno
+    /// rendering.
     DiskFull,
     /// A user-supplied filesystem path failed an RPC-level validation
     /// check — e.g. `openhuman.vault_create` was called with a
@@ -335,6 +354,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_memory_store_breaker_open(&lower) {
         return Some(ExpectedErrorKind::MemoryStoreBreakerOpen);
     }
+    if is_whatsapp_data_sqlite_busy_message(&lower) {
+        return Some(ExpectedErrorKind::WhatsAppDataSqliteBusy);
+    }
     if is_disk_full_message(&lower) {
         return Some(ExpectedErrorKind::DiskFull);
     }
@@ -360,7 +382,84 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_filesystem_user_path_invalid_message(&lower) {
         return Some(ExpectedErrorKind::FilesystemUserPathInvalid);
     }
+    // Upstream rate-limit responses — provider throttles the account (429) or
+    // wraps the 429 inside an HTTP 500 (`"429 rate limit exceeded"` in the
+    // body). In both cases the reliable-provider layer already retries with
+    // backoff, and the embeddings path has a proactive token-bucket limiter
+    // (`embeddings::rate_limit`). The upstream quota is an account-capacity
+    // signal, not a code bug — Sentry has no remediation path and the
+    // per-attempt events generate pure noise (OPENHUMAN-TAURI-S: ~6 984
+    // events from HTTP 500 wrapping a "429 rate limit exceeded" body;
+    // OPENHUMAN-TAURI-6Y: ~19 849 events from direct 429s; OPENHUMAN-TAURI-2E:
+    // ~1 482 events carrying a `"rate_limit_error"` type in the JSON body;
+    // OPENHUMAN-TAURI-RQ: ~741 events from the embeddings path).
+    //
+    // Checked LAST inside `expected_error_kind` — transient HTTP status matches
+    // (`is_transient_upstream_http_message`) are already caught by the earlier
+    // arm, so this arm only adds coverage for the 500-wrapping-429 body shape
+    // and provider JSON envelopes that name the error type explicitly.
+    if is_upstream_rate_limit_message(&lower) {
+        return Some(ExpectedErrorKind::TransientUpstreamHttp);
+    }
     None
+}
+
+/// Detect upstream rate-limit error bodies that bubble up from any provider
+/// or embedding API call site.
+///
+/// Covers three observed wire shapes:
+///
+/// 1. **OpenAI / Anthropic JSON body** — `"rate_limit_error"` is the `"type"`
+///    field in the structured error object:
+///    `{"error":{"message":"Rate limit exceeded.","type":"rate_limit_error"}}`
+///    (OPENHUMAN-TAURI-2E / -RQ).
+///
+/// 2. **OpenHuman backend wrapping upstream** — `"Upstream rate limit exceeded
+///    for model 'summarization-v1'. Please retry shortly."` embedded in a 500
+///    response body (OPENHUMAN-TAURI-6Y / -7H).
+///
+/// 3. **Plain phrase** — `"429 rate limit exceeded, please try again later"` /
+///    `"rate limit exceeded"` from any other upstream (OPENHUMAN-TAURI-S).
+///
+/// The match is against the full lowercased error string (including any
+/// caller wrapping prefix), so it survives `agent.run_single` / `rpc.invoke_method`
+/// re-reports as well as the original call-site emit.
+///
+/// **Polarity contract**: this predicate is *inclusive* — it returns `true`
+/// only for messages that are unambiguously rate-limit throttle signals. It
+/// must NOT match unrelated errors that incidentally mention "limit" or "rate"
+/// (e.g. action-budget `"Rate limit exceeded: action budget exhausted"`
+/// from `security::policy` — distinguished by the `"action budget"` anchor).
+pub fn is_upstream_rate_limit_message(lower: &str) -> bool {
+    // `"rate_limit_error"` is the structured error type from OpenAI / Anthropic
+    // compatible APIs. Tight anchor — colons and underscores don't appear in
+    // ordinary log text.
+    if lower.contains("rate_limit_error") {
+        return true;
+    }
+    // `"upstream rate limit exceeded"` is the OpenHuman backend's own phrase
+    // when it wraps an upstream provider 429 as an HTTP 500.
+    if lower.contains("upstream rate limit exceeded") {
+        return true;
+    }
+    // `"429 rate limit exceeded"` is the numeric-prefix form emitted by some
+    // backends (e.g. OPENHUMAN-TAURI-S: `"error":"429 rate limit exceeded"`).
+    // Anchored on the `"429 rate limit"` substring so a plain `"rate limit
+    // exceeded"` mention (which could appear in the `security::policy` action-
+    // budget message) is NOT matched here — the next arm handles clean phrase
+    // matches only when scoped by a provider API error prefix.
+    if lower.contains("429 rate limit") {
+        return true;
+    }
+    // `"rate limit exceeded"` on its own is matched ONLY when it appears inside
+    // a canonical provider API error envelope (`"api error ("` prefix from
+    // `ops::api_error` / `embeddings::openai`). This keeps the security::policy
+    // `"Rate limit exceeded: action budget exhausted"` message from being
+    // silently swallowed — that phrase does not carry an API error prefix.
+    if lower.contains("api error (") && lower.contains("rate limit exceeded") {
+        return true;
+    }
+    false
 }
 
 /// Detect filesystem-out-of-space errors that bubble up from any syscall
@@ -385,6 +484,22 @@ fn is_disk_full_message(lower: &str) -> bool {
 /// `Config::load_from_config_path`.
 fn is_config_load_timed_out_message(lower: &str) -> bool {
     lower.contains("config loading timed out")
+}
+
+/// Match whatsapp structured-ingest failures caused by transient SQLite lock
+/// contention. Keep this matcher scoped to the whatsapp ingest envelope so we
+/// don't demote unrelated database failures in other domains.
+fn is_whatsapp_data_sqlite_busy_message(lower: &str) -> bool {
+    if !lower.contains("[whatsapp_data] ingest failed:") {
+        return false;
+    }
+    if !lower.contains("upsert wa_message") {
+        return false;
+    }
+    lower.contains("database is locked")
+        || lower.contains("database table is locked")
+        || lower.contains("database file is locked")
+        || lower.contains("error code 5")
 }
 
 fn is_embedding_backend_auth_failure(lower: &str) -> bool {
@@ -1384,6 +1499,14 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 operation = operation,
                 kind = "memory_store_breaker_open",
                 "[observability] {domain}.{operation} skipped expected memory-store circuit-breaker-open error"
+            );
+        }
+        ExpectedErrorKind::WhatsAppDataSqliteBusy => {
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "whatsapp_data_sqlite_busy",
+                "[observability] {domain}.{operation} skipped expected whatsapp_data sqlite busy/locked error"
             );
         }
         ExpectedErrorKind::FilesystemUserPathInvalid => {
@@ -2469,6 +2592,34 @@ mod tests {
         assert_eq!(expected_error_kind("cron job timed out after 30s"), None,);
     }
 
+    fn classifies_whatsapp_data_sqlite_busy_errors() {
+        for raw in [
+            r#"[whatsapp_data] ingest failed: upsert wa_message chat=120363402402350155@g.us msg=false_120363402402350155@g.us_3A357F28AE74548B1507_207897942335683@lid: database is locked: Error code 5: The database file is locked"#,
+            r#"rpc.invoke_method failed: [whatsapp_data] ingest failed: upsert wa_message [email] msg=false_120363402402350155@g.us_3A357F28AE74548B1507_207897942335683@lid: database is locked: Error code 5: The database file is locked"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::WhatsAppDataSqliteBusy),
+                "should classify whatsapp_data sqlite busy/locked: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_sqlite_lock_messages_as_whatsapp_busy() {
+        for raw in [
+            "failed to run subconscious schema DDL: database is locked",
+            "memory queue write failed: database table is locked",
+            "[whatsapp_data] list_messages failed: database is locked",
+        ] {
+            assert_ne!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::WhatsAppDataSqliteBusy),
+                "must not classify as whatsapp_data sqlite busy: {raw}"
+            );
+        }
+    }
+
     #[test]
     fn does_not_classify_unrelated_messages_as_memory_pii_rejection() {
         // A generic "personal identifiers" mention without the "cannot contain"
@@ -2502,6 +2653,132 @@ mod tests {
             expected_error_kind("[memory_tree] failed to run schema DDL: disk full"),
             None
         );
+    }
+
+    // ── Upstream rate-limit suppression (OPENHUMAN-TAURI-S / -6Y / -2E / -RQ) ─
+
+    /// Canonical Anthropic / OpenAI body with a structured `"rate_limit_error"`
+    /// type — OPENHUMAN-TAURI-2E (~1 482 events) and -RQ (~741 events).
+    #[test]
+    fn classifies_rate_limit_error_type_as_transient() {
+        for raw in [
+            // Direct 429 from the embeddings path (OPENHUMAN-TAURI-RQ):
+            r#"Embedding API error (429 Too Many Requests): {"error":{"message":"Rate limit exceeded. Please retry after a brief wait.","type":"rate_limit_error"}}"#,
+            // Via llm_provider.api_error (OPENHUMAN-TAURI-2E):
+            r#"[observability] llm_provider.api_error failed: OpenHuman API error (429 Too Many Requests): {"error":{"message":"Rate limit exceeded. Please retry after a brief wait.","type":"rate_limit_error"}}"#,
+            // Re-reported by agent.run_single:
+            r#"run_chat_task failed client_id=abc thread_id=t1 request_id=r1 error=OpenHuman API error (429 Too Many Requests): {"error":{"message":"Rate limit exceeded.","type":"rate_limit_error"}}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify rate_limit_error body as transient: {raw}"
+            );
+        }
+    }
+
+    /// OpenHuman backend wrapping an upstream 429 as HTTP 500 with a
+    /// `"upstream rate limit exceeded"` body — OPENHUMAN-TAURI-6Y (~19 849
+    /// events).
+    #[test]
+    fn classifies_upstream_rate_limit_in_500_body_as_transient() {
+        for raw in [
+            r#"OpenHuman API error (500 Internal Server Error): {"success":false,"error":"Upstream rate limit exceeded for model 'summarization-v1'. Please retry shortly."}"#,
+            r#"[observability] llm_provider.api_error failed: OpenHuman API error (500 Internal Server Error): {"success":false,"error":"Upstream rate limit exceeded for model 'summarization-v1'. Please retry shortly.","details":{"provider":"gmi","upstreamModel":"deepseek-ai/DeepSeek-V3-0324"}}"#,
+            // Re-wrapped by rpc.invoke_method:
+            r#"rpc.invoke_method failed: LLM summarisation failed: OpenHuman API error (500 Internal Server Error): {"success":false,"error":"Upstream rate limit exceeded for model 'summarization-v1'."}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify upstream-rate-limit-in-500 as transient: {raw}"
+            );
+        }
+    }
+
+    /// Backend returning HTTP 500 with a numeric `"429 rate limit exceeded"`
+    /// body — OPENHUMAN-TAURI-S (~6 984 events).
+    #[test]
+    fn classifies_429_rate_limit_in_500_body_as_transient() {
+        for raw in [
+            r#"OpenHuman API error (500 Internal Server Error): {"success":false,"error":"429 rate limit exceeded, please try again later"}"#,
+            r#"[observability] llm_provider.api_error failed: OpenHuman API error (500 Internal Server Error): {"success":false,"error":"429 rate limit exceeded, please try again later"}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify 429-in-500-body as transient: {raw}"
+            );
+        }
+    }
+
+    /// The security::policy `"Rate limit exceeded: action budget exhausted"`
+    /// must NOT be silenced — it's a user-facing hard stop, not a transient
+    /// upstream quota hit.
+    #[test]
+    fn does_not_classify_security_policy_rate_limit_as_transient() {
+        let msg = "Rate limit exceeded: action budget exhausted (0 actions/hour). \
+                   Increase the limit in Settings -> Advanced -> Agent autonomy";
+        assert_eq!(
+            expected_error_kind(msg),
+            None,
+            "security policy action-budget error must reach Sentry: {msg}"
+        );
+        // Wrapped by rpc.invoke_method — the prefix must not accidentally
+        // trigger the `api error (` anchor.
+        assert_eq!(
+            expected_error_kind(&format!("rpc.invoke_method failed: {msg}")),
+            None,
+            "wrapped security policy action-budget error must reach Sentry"
+        );
+    }
+
+    /// Standalone `"rate limit exceeded"` without the `"api error ("` anchor
+    /// must NOT be silenced — keeps loose phrases from accidentally demoting
+    /// unrelated errors.
+    #[test]
+    fn does_not_classify_bare_rate_limit_exceeded_as_transient() {
+        assert_eq!(
+            expected_error_kind("rate limit exceeded"),
+            None,
+            "bare 'rate limit exceeded' without API error anchor must reach Sentry"
+        );
+    }
+
+    /// `is_upstream_rate_limit_message` predicate unit tests — verifies the
+    /// polarity contract independently of `expected_error_kind`.
+    #[test]
+    fn upstream_rate_limit_predicate_matches_expected_shapes() {
+        for lower in [
+            r#"{"error":{"message":"rate limit exceeded.","type":"rate_limit_error"}}"#,
+            "upstream rate limit exceeded for model 'summarization-v1'",
+            "429 rate limit exceeded, please try again later",
+            r#"openai api error (429 too many requests): {"error":{"message":"rate limit exceeded.","type":"rate_limit_error"}}"#,
+        ] {
+            assert!(
+                is_upstream_rate_limit_message(lower),
+                "should match: {lower}"
+            );
+        }
+    }
+
+    #[test]
+    fn upstream_rate_limit_predicate_does_not_match_unrelated() {
+        for lower in [
+            // security::policy budget message — must not be swallowed
+            "rate limit exceeded: action budget exhausted (0 actions/hour)",
+            // bare phrase without anchor
+            "rate limit exceeded",
+            // unrelated 500 body
+            r#"{"success":false,"error":"internal server error"}"#,
+            // budget exhausted — different concept
+            "budget exhausted, add credits to continue",
+        ] {
+            assert!(
+                !is_upstream_rate_limit_message(lower),
+                "should not match: {lower}"
+            );
+        }
     }
 
     #[test]
