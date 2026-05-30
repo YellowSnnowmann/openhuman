@@ -5,9 +5,9 @@
  * local SCHEDULE_PRESETS arrays with identical expressions. This module
  * consolidates them into a single authoritative source.
  *
- * Note: the `labelKey` values deliberately use *separate* namespaced keys
- * so each panel can keep its own translated labels — this module provides
- * the canonical cron expressions and a shared lookup set.
+ * Note: the `labelKey` values are *shared* keys from the `settings.cron.schedule.*`
+ * namespace so every panel renders the same translated labels — this module
+ * provides the canonical cron expressions, their shared labels, and a lookup set.
  */
 
 export interface SchedulePreset {
