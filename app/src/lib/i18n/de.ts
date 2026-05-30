@@ -316,6 +316,29 @@ const messages: TranslationMap = {
   'graphCentrality.bridgeTitle':
     'Connector – einflussreicher als die Anzahl der Links vermuten lässt',
   'graphCentrality.degreeTitle': '{in} rein · {out} raus',
+  'memory.tab.freshness': 'Freshness',
+  'memoryFreshness.title': 'Knowledge Freshness',
+  'memoryFreshness.intro':
+    'Facts the assistant has not reconfirmed lately decay along a forgetting curve. This surfaces what is going stale and worth re-checking, so old facts are not treated as still-certain.',
+  'memoryFreshness.loading': 'Scoring freshness…',
+  'memoryFreshness.errorPrefix': 'Could not load the graph:',
+  'memoryFreshness.retry': 'Retry',
+  'memoryFreshness.empty': 'No knowledge graph yet.',
+  'memoryFreshness.emptyHint':
+    'As the assistant records facts about you, their freshness will be tracked here.',
+  'memoryFreshness.namespaceLabel': 'Namespace',
+  'memoryFreshness.namespaceAll': 'All namespaces',
+  'memoryFreshness.metricFresh': 'Fresh',
+  'memoryFreshness.metricFading': 'Fading',
+  'memoryFreshness.metricStale': 'Stale',
+  'memoryFreshness.recallCaption': 'Average recall {recall}% across {total} facts',
+  'memoryFreshness.queueHeading': 'Re-confirm queue',
+  'memoryFreshness.queueTruncated': 'Showing {shown} of {total} — address these first.',
+  'memoryFreshness.allFresh': 'Every fact is still fresh — nothing to re-confirm.',
+  'memoryFreshness.statusFading': 'fading',
+  'memoryFreshness.statusStale': 'stale',
+  'memoryFreshness.ageLabel': '{days}d old',
+  'memoryFreshness.recallTitle': '{recall}% recall · half-life {halfLife}d',
   'memoryTree.status.title': 'Speicherbaum',
   'memoryTree.status.autoSyncLabel': 'Auto Sync',
   'memoryTree.status.autoSyncDescription':
@@ -2739,6 +2762,10 @@ const messages: TranslationMap = {
   'settings.ai.endpointProtocolRequired': 'Endpunkt muss mit http:// oder https://. beginnen.',
   'settings.ai.connectProviderDialog': 'Verbinden Sie {label}',
   'settings.ai.or': 'Oder',
+  'settings.ai.codexOauthMissingAuthUrl':
+    'Codex OAuth hat keine Autorisierungs-URL zurückgegeben. Versuchen Sie, sich erneut anzumelden.',
+  'settings.ai.codexOauthMissingCallbackUrl':
+    'Fügen Sie nach der Anmeldung die Weiterleitungs-URL aus Ihrem Browser ein.',
   'settings.ai.openRouterOauthDescription':
     'Melden Sie sich mit OpenRouter an und importieren Sie einen benutzergesteuerten API-Schlüssel mit PKCE.',
   'settings.ai.connecting': 'Verbindung wird hergestellt...',
