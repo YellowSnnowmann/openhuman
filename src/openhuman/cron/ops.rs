@@ -266,6 +266,10 @@ pub async fn cron_run(
             "[cron_run] background task finished"
         );
 
+        // Remove the "queued" placeholder before inserting the real result
+        // so we don't leave orphaned rows in the run history.
+        let _ = cron::delete_queued_runs(&config_owned, &job.id);
+
         let _ = cron::record_run(
             &config_owned,
             &job.id,
