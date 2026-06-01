@@ -332,8 +332,7 @@ pub(crate) fn format_email_local_time(date_str: &str) -> Option<String> {
     let utc: chrono::DateTime<chrono::Utc> = date_str
         .parse::<chrono::DateTime<chrono::Utc>>()
         .or_else(|_| {
-            chrono::DateTime::parse_from_rfc2822(date_str)
-                .map(|d| d.with_timezone(&chrono::Utc))
+            chrono::DateTime::parse_from_rfc2822(date_str).map(|d| d.with_timezone(&chrono::Utc))
         })
         .ok()?;
 

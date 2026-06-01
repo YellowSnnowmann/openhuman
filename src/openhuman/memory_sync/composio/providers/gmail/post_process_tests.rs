@@ -326,7 +326,10 @@ fn format_email_local_time_accepts_rfc2822() {
     // Either returns a formatted local string or None (UTC host, no-op).
     // The important thing is that it does NOT panic.
     if let Some(local) = result {
-        assert!(local.contains("2026"), "formatted date should include year: {local}");
+        assert!(
+            local.contains("2026"),
+            "formatted date should include year: {local}"
+        );
     }
 }
 
