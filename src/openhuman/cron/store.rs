@@ -233,20 +233,21 @@ pub fn dedup_named_jobs(config: &Config) -> Result<usize> {
             return Ok(0);
         }
 
+        let mut canonical_stmt = conn.prepare(
+            "SELECT j.id \
+             FROM cron_jobs j \
+             LEFT JOIN cron_runs r ON r.job_id = j.id \
+             WHERE j.name = ?1 \
+             GROUP BY j.id \
+             ORDER BY COUNT(r.id) DESC, j.created_at ASC, j.id ASC \
+             LIMIT 1",
+        )?;
+
         let mut total_removed = 0usize;
         for name in &duplicated_names {
             // 2. Find the canonical id: most run history, tie-break earliest created_at.
             let canonical_id: Option<String> = {
-                let mut stmt = conn.prepare(
-                    "SELECT j.id \
-                     FROM cron_jobs j \
-                     LEFT JOIN cron_runs r ON r.job_id = j.id \
-                     WHERE j.name = ?1 \
-                     GROUP BY j.id \
-                     ORDER BY COUNT(r.id) DESC, j.created_at ASC, j.id ASC \
-                     LIMIT 1",
-                )?;
-                let mut rows = stmt.query(params![name])?;
+                let mut rows = canonical_stmt.query(params![name])?;
                 rows.next()?.map(|r| r.get::<_, String>(0)).transpose()?
             };
 
