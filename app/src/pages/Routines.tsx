@@ -80,10 +80,31 @@ const Routines = () => {
     addBusy(key);
     setError(null);
     try {
-      await openhumanCronRun(jobId);
-      const runs = await openhumanCronRuns(jobId, 10);
-      setRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
-      // Refresh job list to update last_status
+      const runResponse = await openhumanCronRun(jobId);
+
+      if (runResponse.result.status === 'queued') {
+        // Job was enqueued asynchronously — poll until a new run record appears.
+        const previousCount = (runsByJob[jobId] ?? []).length;
+        const POLL_INTERVAL_MS = 2000;
+        const MAX_WAIT_MS = 120_000;
+        let elapsed = 0;
+
+        while (elapsed < MAX_WAIT_MS) {
+          await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+          elapsed += POLL_INTERVAL_MS;
+          const runs = await openhumanCronRuns(jobId, 10);
+          setRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
+          if (runs.result.length > previousCount) {
+            break;
+          }
+        }
+      } else {
+        // Synchronous response (legacy path — kept for backward compatibility).
+        const runs = await openhumanCronRuns(jobId, 10);
+        setRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
+      }
+
+      // Refresh job list to update last_status regardless of path.
       const response = await openhumanCronList();
       setJobs(
         [...response.result].sort(
