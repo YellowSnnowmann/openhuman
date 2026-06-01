@@ -84,7 +84,9 @@ const Routines = () => {
 
       if (runResponse.result.status === 'queued') {
         // Job was enqueued asynchronously — poll until a new run record appears.
-        const previousCount = (runsByJob[jobId] ?? []).length;
+        // Compare by the latest run's id (not list length) so this works correctly
+        // when the job already has >= 10 runs and the list stays at the fetch limit.
+        const previousLatestId = (runsByJob[jobId] ?? [])[0]?.id;
         const POLL_INTERVAL_MS = 2000;
         const MAX_WAIT_MS = 120_000;
         let elapsed = 0;
@@ -94,7 +96,7 @@ const Routines = () => {
           elapsed += POLL_INTERVAL_MS;
           const runs = await openhumanCronRuns(jobId, 10);
           setRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
-          if (runs.result.length > previousCount) {
+          if (runs.result[0]?.id !== undefined && runs.result[0].id !== previousLatestId) {
             break;
           }
         }

@@ -14,6 +14,22 @@ use std::sync::Mutex;
 /// Entries are inserted before spawning and removed when the task completes.
 static ACTIVE_RUNS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
+/// RAII guard that removes a job ID from `ACTIVE_RUNS` when dropped.
+///
+/// Ensures cleanup runs on normal completion, panic, or future cancellation —
+/// so a hung or aborted background task can never permanently lock a job_id.
+struct ActiveRunGuard {
+    job_id: String,
+}
+
+impl Drop for ActiveRunGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = ACTIVE_RUNS.lock() {
+            active.remove(&self.job_id);
+        }
+    }
+}
+
 pub fn add_once(config: &Config, delay: &str, command: &str) -> Result<CronJob> {
     let duration = parse_human_delay(delay)?;
     let at = chrono::Utc::now() + duration;
@@ -199,6 +215,7 @@ pub async fn cron_run(
             .lock()
             .map_err(|_| "ACTIVE_RUNS lock poisoned".to_string())?;
         if active.contains(job_id) {
+            tracing::debug!(job_id, "[cron_run] rejected duplicate concurrent execution");
             return Err(format!("cron job '{job_id}' is already running"));
         }
         active.insert(job_id.to_string());
@@ -214,17 +231,40 @@ pub async fn cron_run(
         }
     };
 
+    // Insert a "queued" placeholder run record immediately so the frontend
+    // poller can observe the run as soon as the RPC returns — otherwise the
+    // run list stays unchanged until execute_job_now finishes.
+    let queued_at = chrono::Utc::now();
+    let _ = cron::record_run(config, &job.id, queued_at, queued_at, "queued", None, 0);
+
     let config_owned = config.clone();
     let job_id_owned = job_id.to_string();
+
+    tracing::debug!(job_id, "[cron_run] enqueuing background execution");
 
     // Spawn the execution as a background task so the RPC handler returns
     // immediately instead of blocking for the full job duration.
     tokio::spawn(async move {
+        // Drop guard ensures job_id is removed from ACTIVE_RUNS even on panic
+        // or future cancellation, not just on the normal completion path.
+        let _guard = ActiveRunGuard {
+            job_id: job_id_owned.clone(),
+        };
+
+        tracing::debug!(job_id = %job_id_owned, "[cron_run] background task started");
+
         let started_at = chrono::Utc::now();
         let (success, output) = cron::scheduler::execute_job_now(&config_owned, &job).await;
         let finished_at = chrono::Utc::now();
         let duration_ms = (finished_at - started_at).num_milliseconds();
         let status = if success { "ok" } else { "error" };
+
+        tracing::debug!(
+            job_id = %job_id_owned,
+            status,
+            duration_ms,
+            "[cron_run] background task finished"
+        );
 
         let _ = cron::record_run(
             &config_owned,
@@ -240,10 +280,6 @@ pub async fn cron_run(
         // Deliver via the same path as the scheduler loop so proactive
         // messages and alerts are sent on "Run Now" too.
         cron::scheduler::deliver_job(&config_owned, &job, &output).await;
-
-        if let Ok(mut active) = ACTIVE_RUNS.lock() {
-            active.remove(&job_id_owned);
-        }
     });
 
     Ok(RpcOutcome::new(

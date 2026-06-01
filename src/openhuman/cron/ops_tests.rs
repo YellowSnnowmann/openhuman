@@ -460,25 +460,14 @@ async fn cron_run_returns_queued_immediately_for_valid_job() {
 async fn cron_run_rejects_duplicate_concurrent_execution() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
-    // Use a long-running shell job so it stays in ACTIVE_RUNS during the test.
-    let job = add_shell_job(
-        &config,
-        None,
-        Schedule::Cron {
-            expr: "*/5 * * * *".into(),
-            tz: None,
-            active_hours: None,
-        },
-        "sleep 60",
-    )
-    .unwrap();
+    let job = make_job(&config, "*/5 * * * *", None, "echo hello");
 
-    // First call enqueues successfully.
-    let first = cron_run(&config, &job.id).await.unwrap();
-    assert_eq!(first.value["status"], json!("queued"));
-
-    // Second call with the same job_id must be rejected while it is in ACTIVE_RUNS.
+    // Seed ACTIVE_RUNS directly to simulate an in-flight execution without
+    // spawning a real long-running subprocess (deterministic, no timing dependency).
+    ACTIVE_RUNS.lock().unwrap().insert(job.id.clone());
     let err = cron_run(&config, &job.id).await.unwrap_err();
+    ACTIVE_RUNS.lock().unwrap().remove(&job.id);
+
     assert!(
         err.contains("already running"),
         "expected 'already running', got: {err}"
