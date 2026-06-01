@@ -243,7 +243,7 @@ pub fn dedup_named_jobs(config: &Config) -> Result<usize> {
                      LEFT JOIN cron_runs r ON r.job_id = j.id \
                      WHERE j.name = ?1 \
                      GROUP BY j.id \
-                     ORDER BY COUNT(r.id) DESC, j.created_at ASC \
+                     ORDER BY COUNT(r.id) DESC, j.created_at ASC, j.id ASC \
                      LIMIT 1",
                 )?;
                 let mut rows = stmt.query(params![name])?;
