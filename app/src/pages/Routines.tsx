@@ -1,5 +1,5 @@
 import createDebug from 'debug';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import RoutineCard from '../components/routines/RoutineCard';
@@ -24,6 +24,14 @@ const Routines = () => {
   const [jobs, setJobs] = useState<CoreCronJob[]>([]);
   const [runsByJob, setRunsByJob] = useState<Record<string, CoreCronRun[]>>({});
   const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const addBusy = (key: string) => setBusyKeys(prev => new Set(prev).add(key));
   const removeBusy = (key: string) =>
@@ -93,12 +101,22 @@ const Routines = () => {
 
         while (elapsed < MAX_WAIT_MS) {
           await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+          if (!isMountedRef.current) return;
           elapsed += POLL_INTERVAL_MS;
           const runs = await openhumanCronRuns(jobId, 10);
+          if (!isMountedRef.current) return;
           setRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
-          if (runs.result[0]?.id !== undefined && runs.result[0].id !== previousLatestId) {
+          const latest = runs.result[0];
+          if (
+            latest?.id !== undefined &&
+            latest.id !== previousLatestId &&
+            latest.status !== 'queued'
+          ) {
             break;
           }
+        }
+        if (elapsed >= MAX_WAIT_MS && isMountedRef.current) {
+          setError(t('routines.runNowTimedOut'));
         }
       } else {
         // Synchronous response (legacy path — kept for backward compatibility).
