@@ -337,11 +337,11 @@ pub(crate) fn format_email_local_time(date_str: &str) -> Option<String> {
         .ok()?;
 
     let local_dt = chrono::Local.from_utc_datetime(&utc.naive_utc());
-    let formatted = local_dt.format("%Y-%m-%d %I:%M %p %z").to_string();
+    let formatted = local_dt.format("%Y-%m-%d %I:%M %p %:z").to_string();
 
     // Skip when local timezone renders identically to UTC (e.g. UTC host),
     // to avoid redundant noise.
-    let utc_formatted = utc.format("%Y-%m-%d %I:%M %p %z").to_string();
+    let utc_formatted = utc.format("%Y-%m-%d %I:%M %p %:z").to_string();
     if formatted == utc_formatted {
         return None;
     }
