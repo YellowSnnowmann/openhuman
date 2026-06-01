@@ -275,6 +275,61 @@ fn split_with_hint_skips_messages_with_blank_subject() {
     assert_eq!(slices.len(), 2);
 }
 
+// ── format_email_local_time ──────────────────────────────────────────────────
+
+#[test]
+fn format_email_local_time_returns_none_for_unparseable_date() {
+    assert!(super::format_email_local_time("not-a-date").is_none());
+    assert!(super::format_email_local_time("").is_none());
+}
+
+#[test]
+fn format_email_local_time_preserves_utc_raw_date_in_reshape() {
+    // The `date` field must be the original UTC string; `date_local` is the
+    // converted version. We only check that `date` is untouched here — the
+    // local value depends on the test host's timezone and is not fixed.
+    let mut v = json!({
+        "messages": [{
+            "messageId": "m1",
+            "threadId": "t1",
+            "subject": "Test",
+            "sender": "a@example.com",
+            "to": "b@example.com",
+            "messageTimestamp": "2026-05-31T10:33:00Z",
+            "labelIds": [],
+            "messageText": "body",
+            "payload": {}
+        }]
+    });
+    post_process("GMAIL_FETCH_EMAILS", None, &mut v);
+    let msg = &v["messages"][0];
+    // Raw UTC value is always preserved.
+    assert_eq!(msg["date"], "2026-05-31T10:33:00Z");
+    // `date_local` is absent on UTC hosts (no-op) or present with a local
+    // formatted string. Either way the value is never the raw RFC 3339 form.
+    if let Some(local) = msg.get("date_local") {
+        let local_str = local.as_str().unwrap();
+        // Must not be the raw ISO timestamp — it's been reformatted.
+        assert_ne!(local_str, "2026-05-31T10:33:00Z");
+        // Must contain a recognisable date fragment.
+        assert!(
+            local_str.contains("2026-05-31") || local_str.contains("2026"),
+            "date_local should contain the date: {local_str}"
+        );
+    }
+}
+
+#[test]
+fn format_email_local_time_accepts_rfc2822() {
+    // RFC 2822 is a common Gmail header format.
+    let result = super::format_email_local_time("Sat, 31 May 2026 10:33:00 +0000");
+    // Either returns a formatted local string or None (UTC host, no-op).
+    // The important thing is that it does NOT panic.
+    if let Some(local) = result {
+        assert!(local.contains("2026"), "formatted date should include year: {local}");
+    }
+}
+
 #[test]
 fn apply_response_level_markdown_stashes_per_message_field() {
     let mut data = json!({

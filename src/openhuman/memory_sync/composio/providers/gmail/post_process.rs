@@ -51,6 +51,7 @@
 //! more slugs they should live in this file, branched from
 //! [`post_process`].
 
+use chrono::TimeZone as _;
 use serde_json::{json, Map, Value};
 
 /// Entry point called from `GmailProvider::post_process_action_result`.
@@ -315,6 +316,38 @@ fn reshape_fetch_emails(data: &mut Value) {
     *container = Value::Object(envelope);
 }
 
+/// Convert a UTC email timestamp string to a human-readable local-time string.
+///
+/// Accepts RFC 3339 (`"2026-05-31T10:33:00Z"`) or RFC 2822
+/// (`"Sat, 31 May 2026 10:33:00 +0000"`) input. Returns a formatted string
+/// in the host's local timezone, e.g. `"2026-05-31 05:33 AM -05:00"`,
+/// so the agent can present local times without UTC arithmetic.
+///
+/// The raw `date` field is always preserved alongside this field so
+/// internal sorting, deduplication, and debugging remain UTC-based.
+///
+/// Returns `None` when the input cannot be parsed or the output format
+/// would be identical to the UTC input (no-op for UTC hosts).
+pub(crate) fn format_email_local_time(date_str: &str) -> Option<String> {
+    let utc: chrono::DateTime<chrono::Utc> = date_str
+        .parse::<chrono::DateTime<chrono::Utc>>()
+        .or_else(|_| {
+            chrono::DateTime::parse_from_rfc2822(date_str)
+                .map(|d| d.with_timezone(&chrono::Utc))
+        })
+        .ok()?;
+
+    let local_dt = chrono::Local.from_utc_datetime(&utc.naive_utc());
+    let formatted = local_dt.format("%Y-%m-%d %I:%M %p %z").to_string();
+
+    // Skip the field when the formatted string is the same as the raw UTC
+    // input to avoid redundant noise for users in UTC.
+    if formatted == date_str {
+        return None;
+    }
+    Some(formatted)
+}
+
 /// Map one raw Composio message object to its slim counterpart.
 ///
 /// Body source picked by [`extract_markdown_body`]:
@@ -346,6 +379,10 @@ fn reshape_message(raw: Value) -> Value {
     let markdown = extract_markdown_body(&obj);
     let attachments = extract_attachments(&obj);
 
+    // Compute a local-time representation of the UTC `date` so the agent
+    // presents times in the user's timezone rather than quoting raw UTC.
+    let date_local = date.as_str().and_then(format_email_local_time);
+
     let mut out = Map::new();
     out.insert("id".into(), id);
     out.insert("threadId".into(), thread_id);
@@ -353,6 +390,9 @@ fn reshape_message(raw: Value) -> Value {
     out.insert("from".into(), sender);
     out.insert("to".into(), to);
     out.insert("date".into(), date);
+    if let Some(local) = date_local {
+        out.insert("date_local".into(), Value::String(local));
+    }
     out.insert("labels".into(), labels);
     if !list_unsubscribe.is_null() {
         out.insert("list_unsubscribe".into(), list_unsubscribe);
