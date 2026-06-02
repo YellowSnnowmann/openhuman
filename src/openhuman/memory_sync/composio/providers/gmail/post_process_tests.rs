@@ -285,9 +285,6 @@ fn format_email_local_time_returns_none_for_unparseable_date() {
 
 #[test]
 fn format_email_local_time_preserves_utc_raw_date_in_reshape() {
-    // The `date` field must be the original UTC string; `date_local` is the
-    // converted version. We only check that `date` is untouched here — the
-    // local value depends on the test host's timezone and is not fixed.
     let mut v = json!({
         "messages": [{
             "messageId": "m1",
@@ -303,34 +300,36 @@ fn format_email_local_time_preserves_utc_raw_date_in_reshape() {
     });
     post_process("GMAIL_FETCH_EMAILS", None, &mut v);
     let msg = &v["messages"][0];
-    // Raw UTC value is always preserved.
     assert_eq!(msg["date"], "2026-05-31T10:33:00Z");
-    // `date_local` is absent on UTC hosts (no-op) or present with a local
-    // formatted string. Either way the value is never the raw RFC 3339 form.
-    if let Some(local) = msg.get("date_local") {
-        let local_str = local.as_str().unwrap();
-        // Must not be the raw ISO timestamp — it's been reformatted.
-        assert_ne!(local_str, "2026-05-31T10:33:00Z");
-        // Must contain a recognisable date fragment.
-        assert!(
-            local_str.contains("2026-05-31") || local_str.contains("2026"),
-            "date_local should contain the date: {local_str}"
-        );
-    }
 }
 
 #[test]
-fn format_email_local_time_accepts_rfc2822() {
-    // RFC 2822 is a common Gmail header format.
-    let result = super::format_email_local_time("Sat, 31 May 2026 10:33:00 +0000");
-    // Either returns a formatted local string or None (UTC host, no-op).
-    // The important thing is that it does NOT panic.
-    if let Some(local) = result {
-        assert!(
-            local.contains("2026"),
-            "formatted date should include year: {local}"
-        );
-    }
+fn parse_email_date_accepts_rfc3339_and_rfc2822() {
+    assert!(super::parse_email_date("2026-05-31T10:33:00Z").is_some());
+    assert!(super::parse_email_date("Sun, 31 May 2026 10:33:00 +0000").is_some());
+    assert!(super::parse_email_date("not-a-date").is_none());
+}
+
+#[test]
+fn format_at_tz_deterministic_with_fixed_offset() {
+    use chrono::FixedOffset;
+
+    let utc = super::parse_email_date("2026-05-31T10:33:00Z").unwrap();
+
+    let est = FixedOffset::west_opt(5 * 3600).unwrap();
+    let result = super::format_at_tz(utc, &est).unwrap();
+    assert_eq!(result, "2026-05-31 05:33 AM -05:00");
+
+    let ist = FixedOffset::east_opt(5 * 3600 + 1800).unwrap();
+    let result = super::format_at_tz(utc, &ist).unwrap();
+    assert_eq!(result, "2026-05-31 04:03 PM +05:30");
+}
+
+#[test]
+fn format_at_tz_returns_none_for_utc() {
+    let utc = super::parse_email_date("2026-05-31T10:33:00Z").unwrap();
+    let utc_tz = chrono::FixedOffset::east_opt(0).unwrap();
+    assert!(super::format_at_tz(utc, &utc_tz).is_none());
 }
 
 #[test]
