@@ -124,18 +124,22 @@ const Routines = () => {
         setRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
       }
 
+      if (!isMountedRef.current) return;
+
       // Refresh job list to update last_status regardless of path.
       const response = await openhumanCronList();
+      if (!isMountedRef.current) return;
       setJobs(
         [...response.result].sort(
           (a, b) => new Date(a.next_run).getTime() - new Date(b.next_run).getTime()
         )
       );
     } catch (err) {
+      if (!isMountedRef.current) return;
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
     } finally {
-      removeBusy(key);
+      if (isMountedRef.current) removeBusy(key);
     }
   };
 
