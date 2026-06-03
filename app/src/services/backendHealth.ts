@@ -55,6 +55,7 @@ export async function checkBackendHealthy(
       cache: 'no-store',
       credentials: 'omit',
       signal: controller.signal,
+      headers: { 'ngrok-skip-browser-warning': '1' },
     });
     const latencyMs = Date.now() - start;
 

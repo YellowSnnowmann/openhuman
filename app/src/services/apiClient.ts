@@ -42,6 +42,7 @@ class ApiClient {
     const versionHeaders = await getClientVersionHeaders();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': '1',
       ...options.headers,
       ...versionHeaders,
     };
