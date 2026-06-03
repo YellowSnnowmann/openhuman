@@ -14,13 +14,9 @@ vi.mock('react-router-dom', async importOriginal => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
-vi.mock('../../../utils/localSession', () => ({
-  isLocalSessionToken: isLocalSessionTokenMock,
-}));
+vi.mock('../../../utils/localSession', () => ({ isLocalSessionToken: isLocalSessionTokenMock }));
 
-vi.mock('../../../services/analytics', () => ({
-  trackEvent: vi.fn(),
-}));
+vi.mock('../../../services/analytics', () => ({ trackEvent: vi.fn() }));
 
 vi.mock('../OnboardingContext', () => ({
   useOnboardingContext: () => ({ setDraft: setDraftMock, completeAndExit: completeAndExitMock }),
