@@ -231,19 +231,17 @@ export async function sendHarnessResponse(result: string): Promise<void> {
 }
 
 /**
- * Backend-driven meet bot join (PR tinyhumansai/backend#773).
+ * Direct backend-driven meet bot join.
  *
  * Hits `POST /mascots/join-meeting` which:
  *  - gates free users with a 429 (SERVER_OVERLOADED) — surfaced verbatim
  *    so callers can show the user-facing capacity message;
- *  - launches the Camoufox mascot bot for `gmeet`;
- *  - 400s on `zoom` / `teams` with "not yet supported".
+ *  - launches the Recall.ai mascot bot for supported meeting platforms.
  *
- * Distinct from `joinMeetCall` (which opens a CEF webview locally) —
- * this is a fire-and-forget request that runs the mascot bot in the
- * backend and streams events over Socket.IO.
+ * The app normally uses `joinMeetViaBackendBot`, which routes through the
+ * core Socket.IO bridge so backend bot events can be handled locally too.
  */
-export type MascotMeetPlatform = 'gmeet' | 'zoom' | 'teams';
+export type MascotMeetPlatform = 'gmeet' | 'zoom' | 'teams' | 'webex';
 
 export interface MascotJoinMeetingInput {
   platform: MascotMeetPlatform;

@@ -1,23 +1,19 @@
 // Meeting bots entry point on the Skills "Integrations" section.
 //
-// Surfaces as a compact, fun banner: clicking opens a modal that opens
-// a dedicated CEF webview pointed at the Meet URL. The bot's outbound
-// camera is the mascot canvas (`meet_video::camera_bridge`) and its
-// outbound audio is the synthesized speech pump (`meet_audio`). Zoom
-// and Teams are shown as "coming soon" — only Google Meet has the CEF
-// bridge pipeline today.
+// Surfaces as a compact banner: clicking opens a modal that asks the
+// backend to send a Recall.ai-hosted mascot bot into the meeting. The
+// backend streams replies, harness requests, and the final transcript
+// back through the core Socket.IO bridge.
 
 import { useCallback, useEffect, useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import {
-  joinMeetCall,
+  joinMeetViaBackendBot,
   listMeetCalls,
   type MascotMeetPlatform,
   type MeetCallRecord,
 } from '../../services/meetCallService';
-import { useAppSelector } from '../../store/hooks';
-import { selectPersonaDisplayName } from '../../store/personaSlice';
 
 type Toast = { type: 'success' | 'error' | 'info'; title: string; message?: string };
 
@@ -127,23 +123,6 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const [platform, setPlatform] = useState<MascotMeetPlatform>('gmeet');
   const [meetUrl, setMeetUrl] = useState('');
   const [displayName, setDisplayName] = useState('OpenHuman');
-  // Privacy lock: the bot will only react to the wake word when this
-  // exact name is the speaker in Meet's captions. Anyone else who
-  // says "hey openhuman …" is silently ignored — preventing a
-  // remote participant from issuing tool calls in the owner's
-  // name. Empty fails closed; the submit handler will surface an
-  // explicit error before opening the CEF window.
-  //
-  // Effective value = Persona display name (Settings → Persona) until
-  // the user types into the field — the "name prompt" UX complaint in
-  // #2945, so repeat callers don't retype the same value every meeting.
-  // Once the user edits the field, the dirty flag latches and the
-  // input becomes fully controlled — Persona changes no longer
-  // overwrite their input, and clearing the field stays empty.
-  const personaDisplayName = useAppSelector(selectPersonaDisplayName);
-  const [ownerDisplayNameDraft, setOwnerDisplayNameDraft] = useState('');
-  const [isOwnerNameEdited, setIsOwnerNameEdited] = useState(false);
-  const ownerDisplayName = isOwnerNameEdited ? ownerDisplayNameDraft : personaDisplayName;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Recent-calls history loaded from core when the modal opens.
@@ -194,18 +173,12 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
     }
     setSubmitting(true);
     try {
-      // Flow A: local CEF webview with mascot canvas + synthesized audio.
-      // joinMeetCall opens an off-screen CEF window per request_id,
-      // installs the audio/video bridges via CDP, then meet_scanner
-      // drives the join automatically. Returns once the window has
-      // been created — meet_audio + meet_scanner take it from there.
-      //
-      // ownerDisplayName is the privacy lock: the wake-word gate in
-      // the core only accepts captions whose speaker matches this
-      // value (case-insensitive, "(host)" / "(you)" suffix stripped).
-      // Anyone else in the room saying the wake phrase is dropped
-      // without dispatching a tool turn.
-      await joinMeetCall({ meetUrl, displayName, ownerDisplayName });
+      await joinMeetViaBackendBot({
+        meetUrl,
+        displayName,
+        platform,
+        agentName: displayName,
+      });
       onToast?.({
         type: 'success',
         title: t('skills.meetingBots.joiningTitle'),
@@ -310,32 +283,6 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               />
             </label>
 
-            <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
-                Your name in the call
-              </span>
-              <input
-                type="text"
-                value={ownerDisplayName}
-                onChange={e => {
-                  setOwnerDisplayNameDraft(e.target.value);
-                  setIsOwnerNameEdited(true);
-                }}
-                maxLength={64}
-                placeholder="As shown in Google Meet (e.g. Nikhil Bajaj)"
-                disabled={isComingSoon || submitting}
-                aria-describedby="meeting-bots-owner-hint"
-                required
-                className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
-              />
-              <p
-                id="meeting-bots-owner-hint"
-                className="mt-1 text-[10px] leading-relaxed text-stone-500 dark:text-neutral-400">
-                Privacy lock. OpenHuman will only respond to the wake word when this exact name
-                is speaking — anyone else in the call cannot trigger tool calls in your name.
-              </p>
-            </label>
-
             {error && (
               <div
                 role="alert"
@@ -354,7 +301,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               <button
                 type="submit"
                 disabled={
-                  submitting || isComingSoon || !meetUrl.trim() || !ownerDisplayName.trim()
+                  submitting || isComingSoon || !meetUrl.trim()
                 }
                 className="rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-stone-200 dark:disabled:bg-neutral-700 disabled:text-stone-400 dark:disabled:text-neutral-500">
                 {isComingSoon

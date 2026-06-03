@@ -332,7 +332,21 @@ pub(super) fn handle_sio_event(
                 turns.len(),
                 duration_ms
             );
-            publish_global(DomainEvent::BackendMeetTranscript { turns, duration_ms });
+            publish_global(DomainEvent::BackendMeetTranscript {
+                turns: turns.clone(),
+                duration_ms,
+            });
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::openhuman::agent_meetings::ops::ingest_backend_meeting_transcript(
+                        turns,
+                        duration_ms,
+                    )
+                    .await
+                {
+                    log::warn!("[socket] bot:transcript memory ingest failed: {e}");
+                }
+            });
         }
         "bot:error" => {
             let error = data

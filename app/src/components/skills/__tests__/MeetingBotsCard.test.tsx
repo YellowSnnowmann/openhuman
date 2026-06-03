@@ -14,11 +14,7 @@ vi.mock('../../../services/meetCallService', async () => {
   );
   return {
     ...actual,
-    // Flow A: the modal submit calls joinMeetCall (CEF webview), not the
-    // Flow B backend joinMeetingViaMascotBot. Switched in the
-    // mascot-meet-flowA revival commits — kept the mock variable name
-    // `joinMock` to keep the diff focused on the call site swap.
-    joinMeetCall: (...args: unknown[]) => joinMock(...args),
+    joinMeetViaBackendBot: (...args: unknown[]) => joinMock(...args),
     listMeetCalls: (...args: unknown[]) => listMock(...args),
   };
 });
@@ -58,8 +54,11 @@ describe('MeetingBotsCard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('submits to joinMeetCall and fires a success toast', async () => {
-    joinMock.mockResolvedValueOnce({ requestId: 'req-1' });
+  it('submits to joinMeetViaBackendBot and fires a success toast', async () => {
+    joinMock.mockResolvedValueOnce({
+      meetUrl: 'https://meet.google.com/abc-defg-hij',
+      platform: 'gmeet',
+    });
     const onToast = vi.fn();
     renderWithProviders(<MeetingBotsCard onToast={onToast} />);
 
@@ -67,25 +66,16 @@ describe('MeetingBotsCard', () => {
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/abc-defg-hij' },
     });
-    // Owner display name is now required — the wake-word gate refuses
-    // every caption when this is empty (privacy lock), so the submit
-    // button stays disabled and the test would hang on form submit
-    // without typing a value here.
-    fireEvent.change(screen.getByLabelText(/your name in the call/i), {
-      target: { value: 'Alice' },
-    });
     const form = screen.getByRole('dialog').querySelector('form')!;
     fireEvent.submit(form);
 
-    // Flow A's joinMeetCall takes { meetUrl, displayName, ownerDisplayName }.
-    // Assert on the owner name (the new privacy-lock contract) and meetUrl;
-    // the bot displayName is a UI-supplied default and not contract-load-
-    // bearing for this assertion.
     await vi.waitFor(() => {
       expect(joinMock).toHaveBeenCalledWith(
         expect.objectContaining({
           meetUrl: 'https://meet.google.com/abc-defg-hij',
-          ownerDisplayName: 'Alice',
+          displayName: 'OpenHuman',
+          platform: 'gmeet',
+          agentName: 'OpenHuman',
         })
       );
     });
@@ -100,9 +90,6 @@ describe('MeetingBotsCard', () => {
     });
   });
 
-  // Flow A's joinMeetCall has no capacity-gated concept — any throw maps
-  // to the single "could not start" toast + inline alert with the error
-  // message. Two error cases collapsed into one in the Flow A model.
   it('surfaces a join error inline + as an error toast', async () => {
     joinMock.mockRejectedValueOnce(new Error('Bad URL'));
     const onToast = vi.fn();
@@ -111,9 +98,6 @@ describe('MeetingBotsCard', () => {
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/x' },
-    });
-    fireEvent.change(screen.getByLabelText(/your name in the call/i), {
-      target: { value: 'Alice' },
     });
     fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
 
@@ -134,48 +118,10 @@ describe('MeetingBotsCard', () => {
     expect(submit).toBeDisabled();
   });
 
-  // Issue #2945: users were being asked to retype "your name in the call"
-  // every meeting. When the Persona display name (Settings → Persona) is
-  // set, the owner-name field pre-fills from it so the user can submit
-  // without retyping.
-  it('pre-fills the owner display name from the Persona slice', () => {
-    const { store } = renderWithProviders(<MeetingBotsCard />, {
-      preloadedState: { persona: { displayName: 'Hemanth', description: '' } },
-    });
-    fireEvent.click(screen.getByTestId('meeting-bots-banner'));
-    const ownerInput = screen.getByLabelText(/your name in the call/i) as HTMLInputElement;
-    expect(ownerInput.value).toBe('Hemanth');
-    // Sanity: the slice is wired so the assertion above isn't a no-op.
-    expect(store.getState().persona.displayName).toBe('Hemanth');
-  });
-
-  it('leaves the owner display name empty when no Persona name is set', () => {
-    // Default preloadedState — persona slice initial state is
-    // { displayName: '', description: '' } (see personaSlice.ts).
+  it('does not require the old owner-name field for backend Recall joins', () => {
     renderWithProviders(<MeetingBotsCard />);
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
-    const ownerInput = screen.getByLabelText(/your name in the call/i) as HTMLInputElement;
-    expect(ownerInput.value).toBe('');
-  });
-
-  // Dirty-flag contract: once the user has typed into the field, a
-  // subsequent Persona update from the slice must NOT overwrite their
-  // input. The pre-edit case is covered by the "pre-fills" test above.
-  it('does not overwrite user-typed owner name when Persona slice updates later', () => {
-    const { store } = renderWithProviders(<MeetingBotsCard />, {
-      preloadedState: { persona: { displayName: 'Hemanth', description: '' } },
-    });
-    fireEvent.click(screen.getByTestId('meeting-bots-banner'));
-    const ownerInput = screen.getByLabelText(/your name in the call/i) as HTMLInputElement;
-    // Sanity: pre-fill landed.
-    expect(ownerInput.value).toBe('Hemanth');
-    // User types over it.
-    fireEvent.change(ownerInput, { target: { value: 'Alice' } });
-    expect(ownerInput.value).toBe('Alice');
-    // Persona name changes underneath (e.g. user edits Settings in another window).
-    store.dispatch({ type: 'persona/setPersonaDisplayName', payload: 'Nova' });
-    // User's typed value wins — does NOT flip to 'Nova'.
-    expect(ownerInput.value).toBe('Alice');
+    expect(screen.queryByLabelText(/your name in the call/i)).not.toBeInTheDocument();
   });
 });
 

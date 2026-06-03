@@ -72,6 +72,24 @@ fn schema_join() -> ControllerSchema {
                 comment: "Platform: gmeet, zoom, teams, or webex. Auto-detected from URL if omitted.",
                 required: false,
             },
+            FieldSchema {
+                name: "agent_name",
+                ty: TypeSchema::String,
+                comment: "Optional AI agent display/name hint forwarded to the backend bot.",
+                required: false,
+            },
+            FieldSchema {
+                name: "system_prompt",
+                ty: TypeSchema::String,
+                comment: "Optional custom meeting system prompt forwarded to the backend bot.",
+                required: false,
+            },
+            FieldSchema {
+                name: "rive_colors",
+                ty: TypeSchema::Json,
+                comment: "Optional Rive mascot color overrides forwarded to the backend bot.",
+                required: false,
+            },
         ],
         outputs: vec![
             FieldSchema {

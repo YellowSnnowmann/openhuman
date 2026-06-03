@@ -6,7 +6,10 @@
 
 use serde_json::{json, Map, Value};
 
+use crate::core::event_bus::BackendMeetTurn;
 use crate::openhuman::meet::ops::validate_display_name;
+use crate::openhuman::memory::ingest_pipeline;
+use crate::openhuman::memory_sync::canonicalize::chat::{ChatBatch, ChatMessage};
 use crate::openhuman::socket::global_socket_manager;
 use crate::rpc::RpcOutcome;
 
@@ -21,6 +24,69 @@ const ALLOWED_HOSTS: &[(&str, &str)] = &[
     ("teams.microsoft.com", "teams"),
     ("webex.com", "webex"),
 ];
+
+fn transcript_turns_to_chat_batch(
+    turns: &[BackendMeetTurn],
+    duration_ms: u64,
+) -> Option<ChatBatch> {
+    let base = chrono::Utc::now()
+        - chrono::Duration::milliseconds(i64::try_from(duration_ms).unwrap_or(i64::MAX));
+    let mut messages = Vec::new();
+
+    for (idx, turn) in turns.iter().enumerate() {
+        let text = turn.content.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let author = if turn.role.eq_ignore_ascii_case("assistant") {
+            "OpenHuman"
+        } else {
+            "Meeting participant"
+        };
+        messages.push(ChatMessage {
+            author: author.to_string(),
+            timestamp: base + chrono::Duration::milliseconds(idx as i64),
+            text: text.to_string(),
+            source_ref: Some(format!("backend-meet://turn/{idx}")),
+        });
+    }
+
+    if messages.is_empty() {
+        None
+    } else {
+        Some(ChatBatch {
+            platform: "backend_meet".to_string(),
+            channel_label: "Recall AI meeting".to_string(),
+            messages,
+        })
+    }
+}
+
+pub async fn ingest_backend_meeting_transcript(
+    turns: Vec<BackendMeetTurn>,
+    duration_ms: u64,
+) -> Result<(), String> {
+    let Some(batch) = transcript_turns_to_chat_batch(&turns, duration_ms) else {
+        tracing::debug!("[agent_meetings] transcript had no ingestible turns");
+        return Ok(());
+    };
+
+    let config = crate::openhuman::config::Config::load_or_init()
+        .await
+        .map_err(|e| format!("[agent_meetings] config load failed: {e}"))?;
+    let source_id = format!("meet:recall:{}", chrono::Utc::now().timestamp_millis());
+    let tags = vec!["meeting".to_string(), "recall_ai".to_string()];
+    let result = ingest_pipeline::ingest_chat(&config, &source_id, "user", tags, batch)
+        .await
+        .map_err(|e| format!("[agent_meetings] transcript ingest failed: {e:#}"))?;
+
+    tracing::info!(
+        source_id = %source_id,
+        chunks_written = result.chunks_written,
+        "[agent_meetings] transcript ingested into memory tree"
+    );
+    Ok(())
+}
 
 fn validate_meeting_url(raw: &str) -> Result<url::Url, String> {
     let url = url::Url::parse(raw.trim()).map_err(|e| format!("invalid meeting URL: {e}"))?;
@@ -236,6 +302,30 @@ mod tests {
 
         let url = url::Url::parse("https://company.zoom.us/j/123").unwrap();
         assert_eq!(infer_platform(&url), "zoom");
+    }
+
+    #[test]
+    fn transcript_turns_convert_to_chat_batch() {
+        let batch = transcript_turns_to_chat_batch(
+            &[
+                BackendMeetTurn {
+                    role: "user".to_string(),
+                    content: "[Alice] OpenHuman, summarize this.".to_string(),
+                },
+                BackendMeetTurn {
+                    role: "assistant".to_string(),
+                    content: "Sure, here is the summary.".to_string(),
+                },
+            ],
+            1_000,
+        )
+        .expect("batch");
+
+        assert_eq!(batch.platform, "backend_meet");
+        assert_eq!(batch.messages.len(), 2);
+        assert_eq!(batch.messages[0].author, "Meeting participant");
+        assert_eq!(batch.messages[1].author, "OpenHuman");
+        assert!(batch.messages[0].text.contains("summarize"));
     }
 
     #[tokio::test]
