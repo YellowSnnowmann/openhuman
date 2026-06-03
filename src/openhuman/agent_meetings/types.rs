@@ -2,6 +2,15 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Optional Rive animation color overrides.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RiveColors {
+    #[serde(default)]
+    pub primary_color: Option<String>,
+    #[serde(default)]
+    pub secondary_color: Option<String>,
+}
+
 /// Inputs to `openhuman.agent_meetings_join`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BackendMeetJoinRequest {
@@ -10,6 +19,15 @@ pub struct BackendMeetJoinRequest {
     pub display_name: Option<String>,
     #[serde(default)]
     pub platform: Option<String>,
+    /// Display name for the AI agent (shown in bot replies and LLM system prompt).
+    #[serde(default)]
+    pub agent_name: Option<String>,
+    /// Custom system prompt for the meeting LLM. `{{AGENT_NAME}}` is replaced server-side.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    /// Optional Rive mascot color palette overrides.
+    #[serde(default)]
+    pub rive_colors: Option<RiveColors>,
 }
 
 /// Outputs from `openhuman.agent_meetings_join`.

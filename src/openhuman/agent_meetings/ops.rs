@@ -97,16 +97,32 @@ pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
         "[agent_meetings] emitting bot:join"
     );
 
-    mgr.emit(
-        "bot:join",
-        json!({
-            "meetUrl": normalized_url.as_str(),
-            "displayName": display_name,
-            "platform": platform,
-        }),
-    )
-    .await
-    .map_err(|e| format!("[agent_meetings] emit failed: {e}"))?;
+    let mut join_payload = json!({
+        "meetUrl": normalized_url.as_str(),
+        "displayName": display_name,
+        "platform": platform,
+    });
+    if let Some(map) = join_payload.as_object_mut() {
+        if let Some(agent_name) = &req.agent_name {
+            map.insert("agentName".to_string(), json!(agent_name));
+        }
+        if let Some(system_prompt) = &req.system_prompt {
+            map.insert("systemPrompt".to_string(), json!(system_prompt));
+        }
+        if let Some(rive_colors) = &req.rive_colors {
+            map.insert(
+                "riveColors".to_string(),
+                json!({
+                    "primaryColor": rive_colors.primary_color,
+                    "secondaryColor": rive_colors.secondary_color,
+                }),
+            );
+        }
+    }
+
+    mgr.emit("bot:join", join_payload)
+        .await
+        .map_err(|e| format!("[agent_meetings] emit failed: {e}"))?;
 
     let response = BackendMeetJoinResponse {
         ok: true,

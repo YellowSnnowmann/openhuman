@@ -164,6 +164,9 @@ export type BackendMeetJoinInput = {
   meetUrl: string;
   displayName?: string;
   platform?: MeetingPlatform;
+  agentName?: string;
+  systemPrompt?: string;
+  riveColors?: { primaryColor?: string; secondaryColor?: string };
 };
 
 type CoreBackendMeetJoinResponse = { ok: boolean; meet_url: string; platform: string };
@@ -189,6 +192,14 @@ export async function joinMeetViaBackendBot(
       meet_url: meetUrl,
       display_name: input.displayName?.trim() || undefined,
       platform: input.platform || undefined,
+      agent_name: input.agentName?.trim() || undefined,
+      system_prompt: input.systemPrompt?.trim() || undefined,
+      rive_colors: input.riveColors
+        ? {
+            primary_color: input.riveColors.primaryColor || undefined,
+            secondary_color: input.riveColors.secondaryColor || undefined,
+          }
+        : undefined,
     },
   });
 
