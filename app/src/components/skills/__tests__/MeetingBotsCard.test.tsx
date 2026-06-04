@@ -7,6 +7,7 @@ import MeetingBotsCard, { MeetingBotsModal } from '../MeetingBotsCard';
 
 const joinMock = vi.fn();
 const listMock = vi.fn();
+const leaveMock = vi.fn();
 
 vi.mock('../../../services/meetCallService', async () => {
   const actual = await vi.importActual<typeof import('../../../services/meetCallService')>(
@@ -16,6 +17,7 @@ vi.mock('../../../services/meetCallService', async () => {
     ...actual,
     joinMeetViaBackendBot: (...args: unknown[]) => joinMock(...args),
     listMeetCalls: (...args: unknown[]) => listMock(...args),
+    leaveBackendMeetBot: (...args: unknown[]) => leaveMock(...args),
   };
 });
 
@@ -122,6 +124,103 @@ describe('MeetingBotsCard', () => {
     renderWithProviders(<MeetingBotsCard />);
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
     expect(screen.queryByLabelText(/your name in the call/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── ActiveMeetingView tests ───────────────────────────────────────────────────
+// Exercises the live-meeting banner rendered when Redux status is active/joining.
+
+const activeMeetState = {
+  backendMeet: {
+    status: 'active' as const,
+    meetUrl: 'https://meet.google.com/abc-defg-hij',
+    lastReply: null,
+    lastHarness: null,
+    transcript: null,
+    error: null,
+  },
+};
+
+describe('MeetingBotsCard — ActiveMeetingView', () => {
+  beforeEach(() => {
+    leaveMock.mockReset();
+    leaveMock.mockResolvedValue(undefined);
+  });
+  afterEach(() => cleanup());
+
+  it('shows the LIVE badge and meeting code when status is active', () => {
+    renderWithProviders(<MeetingBotsCard />, { preloadedState: activeMeetState });
+    // Both "Live" (badge) and "Live in meeting" (status text) are present
+    expect(screen.getAllByText(/live/i).length).toBeGreaterThan(0);
+    // Pathname stripped: shows "abc-defg-hij" not the full URL
+    expect(screen.getByText('abc-defg-hij')).toBeInTheDocument();
+  });
+
+  it('shows Leave button when status is active', () => {
+    renderWithProviders(<MeetingBotsCard />, { preloadedState: activeMeetState });
+    expect(screen.getByRole('button', { name: /leave/i })).toBeInTheDocument();
+  });
+
+  it('calls leaveBackendMeetBot when Leave is clicked', async () => {
+    renderWithProviders(<MeetingBotsCard />, { preloadedState: activeMeetState });
+    fireEvent.click(screen.getByRole('button', { name: /leave/i }));
+    await waitFor(() => expect(leaveMock).toHaveBeenCalledWith('user-requested'));
+  });
+
+  it('Leave button is disabled during in-flight leave call', async () => {
+    // Hang the leave call so we can inspect intermediate disabled state
+    leaveMock.mockReturnValue(new Promise(() => {}));
+    renderWithProviders(<MeetingBotsCard />, { preloadedState: activeMeetState });
+    const btn = screen.getByRole('button', { name: /leave/i });
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toBeDisabled());
+  });
+
+  it('shows last reply text when lastReply is set', () => {
+    renderWithProviders(<MeetingBotsCard />, {
+      preloadedState: {
+        backendMeet: {
+          ...activeMeetState.backendMeet,
+          lastReply: { transcript: 'hello', reply: 'Hi there!', emotion: 'happy' },
+        },
+      },
+    });
+    expect(screen.getByText(/hi there/i)).toBeInTheDocument();
+  });
+
+  it('shows joining status text when status is joining', () => {
+    renderWithProviders(<MeetingBotsCard />, {
+      preloadedState: {
+        backendMeet: { ...activeMeetState.backendMeet, status: 'joining' as const },
+      },
+    });
+    expect(screen.getByText(/joining/i)).toBeInTheDocument();
+  });
+
+  it('shows banner (not ActiveMeetingView) when status is ended', () => {
+    // MeetingBotsCard only shows ActiveMeetingView for active/joining.
+    // When ended the banner is rendered so the user can start a new call.
+    renderWithProviders(<MeetingBotsCard />, {
+      preloadedState: {
+        backendMeet: { ...activeMeetState.backendMeet, status: 'ended' as const },
+      },
+    });
+    expect(screen.getByTestId('meeting-bots-banner')).toBeInTheDocument();
+    expect(screen.queryByText(/live in meeting/i)).not.toBeInTheDocument();
+  });
+
+  it('shows error toast when leave call fails', async () => {
+    leaveMock.mockRejectedValueOnce(new Error('Network error'));
+    const onToast = vi.fn();
+    renderWithProviders(<MeetingBotsCard onToast={onToast} />, {
+      preloadedState: activeMeetState,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /leave/i }));
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error' })
+      )
+    );
   });
 });
 
