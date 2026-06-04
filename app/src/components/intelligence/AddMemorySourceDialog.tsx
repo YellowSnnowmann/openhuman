@@ -8,7 +8,7 @@
  * presents them as a dropdown — the user picks an existing OAuth
  * connection rather than typing toolkit + connection_id.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { listConnections } from '../../lib/composio/composioApi';
 import type { ComposioConnection } from '../../lib/composio/types';
@@ -487,12 +487,31 @@ function KindFields(props: KindFieldsProps) {
   }
 }
 
+/** Active-first status rank — lower is better. */
+const STATUS_RANK: Record<string, number> = {
+  ACTIVE: 0,
+  CONNECTED: 0,
+  PENDING: 1,
+  INITIATED: 1,
+  INITIALIZING: 1,
+  EXPIRED: 2,
+  FAILED: 3,
+  ERROR: 3,
+};
+
+function statusRank(conn: ComposioConnection): number {
+  return STATUS_RANK[conn.status.toUpperCase()] ?? 2;
+}
+
 /**
  * Deduplicates and labels connections for display in the picker.
  *
+ * - Sorts by status rank first (ACTIVE/CONNECTED before EXPIRED/FAILED) so
+ *   that when two connections share the same toolkit + identity, the healthier
+ *   one wins rather than the first-returned one.
  * - Connections sharing the same toolkit + identity (accountEmail / workspace /
- *   username) are collapsed to the first occurrence — the duplicate entries
- *   that triggered issue #3356.
+ *   username) OR the same raw connection id are collapsed to the first
+ *   occurrence, preventing both labeled and identity-less duplicates.
  * - Connections with no identity field get a numbered "Account N" suffix
  *   scoped per toolkit, so users can distinguish them without seeing raw IDs.
  */
@@ -500,11 +519,21 @@ export function deduplicateConnections(
   connections: ComposioConnection[],
   accountLabel: string
 ): Array<{ conn: ComposioConnection; label: string }> {
+  const sorted = [...connections].sort((a, b) => statusRank(a) - statusRank(b));
   const seen = new Set<string>();
   const unidentifiedCount: Record<string, number> = {};
   const result: Array<{ conn: ComposioConnection; label: string }> = [];
 
-  for (const conn of connections) {
+  for (const conn of sorted) {
+    // Always dedup by raw connection id to guard against identity-less dupes.
+    if (seen.has(conn.id)) {
+      console.debug(
+        `[ui-flow][composio-picker] dropping duplicate connection toolkit=${conn.toolkit} id=${conn.id}`
+      );
+      continue;
+    }
+    seen.add(conn.id);
+
     const identity = conn.accountEmail ?? conn.workspace ?? conn.username;
     if (identity) {
       const key = `${conn.toolkit}:${identity}`;
@@ -532,6 +561,12 @@ function ComposioPicker({
   setConnection,
 }: KindFieldsProps) {
   const { t } = useT();
+  // useMemo must be declared before any early returns (Rules of Hooks).
+  const accountLabel = t('memorySources.connectionAccount');
+  const dedupedConnections = useMemo(
+    () => deduplicateConnections(connections, accountLabel),
+    [connections, accountLabel]
+  );
 
   if (loadingConnections) {
     return (
@@ -548,11 +583,6 @@ function ComposioPicker({
       </p>
     );
   }
-
-  const dedupedConnections = deduplicateConnections(
-    connections,
-    t('memorySources.connectionAccount')
-  );
 
   return (
     <label className="block">

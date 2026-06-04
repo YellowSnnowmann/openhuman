@@ -152,6 +152,40 @@ describe('deduplicateConnections', () => {
     expect(result.find(r => r.conn.id === 'n-2')?.label).toBe('Notion · Account 2');
     expect(result.find(r => r.conn.id === 's-1')?.label).toBe('Slack · Account 1');
   });
+
+  it('prefers ACTIVE over EXPIRED when deduplicating same toolkit+identity', () => {
+    // Backend returns EXPIRED first — the ACTIVE one should win
+    const conns = [
+      { id: 'conn-expired', toolkit: 'Gmail', status: 'EXPIRED', accountEmail: 'x@example.com' },
+      { id: 'conn-active', toolkit: 'Gmail', status: 'ACTIVE', accountEmail: 'x@example.com' },
+    ];
+    const result = deduplicateConnections(conns, 'Account');
+    expect(result).toHaveLength(1);
+    expect(result[0].conn.id).toBe('conn-active');
+  });
+
+  it('deduplicates identity-less connections with the same conn.id', () => {
+    // Same connection returned twice with no identity — must not produce duplicate React keys
+    const conns = [
+      { id: 'conn-same', toolkit: 'Notion', status: 'ACTIVE' },
+      { id: 'conn-same', toolkit: 'Notion', status: 'ACTIVE' },
+    ];
+    const result = deduplicateConnections(conns, 'Account');
+    expect(result).toHaveLength(1);
+    expect(result[0].conn.id).toBe('conn-same');
+  });
+
+  it('sorts CONNECTED equal to ACTIVE above PENDING and EXPIRED', () => {
+    const conns = [
+      { id: 'exp', toolkit: 'Linear', status: 'EXPIRED', accountEmail: 'a@b.com' },
+      { id: 'pending', toolkit: 'Linear', status: 'PENDING', accountEmail: 'a@b.com' },
+      { id: 'connected', toolkit: 'Linear', status: 'CONNECTED', accountEmail: 'a@b.com' },
+    ];
+    const result = deduplicateConnections(conns, 'Account');
+    expect(result).toHaveLength(1);
+    // CONNECTED ranks same as ACTIVE — must win over EXPIRED and PENDING
+    expect(result[0].conn.id).toBe('connected');
+  });
 });
 
 // ---------------------------------------------------------------------------
