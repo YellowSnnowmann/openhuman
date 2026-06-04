@@ -75,13 +75,19 @@ fn schema_join() -> ControllerSchema {
             FieldSchema {
                 name: "agent_name",
                 ty: TypeSchema::String,
-                comment: "Optional AI agent display/name hint forwarded to the backend bot.",
+                comment: "Optional AI agent display name forwarded to the backend bot.",
                 required: false,
             },
             FieldSchema {
                 name: "system_prompt",
                 ty: TypeSchema::String,
                 comment: "Optional custom meeting system prompt forwarded to the backend bot.",
+                required: false,
+            },
+            FieldSchema {
+                name: "mascot_id",
+                ty: TypeSchema::String,
+                comment: "Optional mascot ID selecting which Rive character appears in the meeting (e.g. \"yellow\").",
                 required: false,
             },
             FieldSchema {

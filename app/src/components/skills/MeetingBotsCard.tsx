@@ -5,15 +5,29 @@
 // backend streams replies, harness requests, and the final transcript
 // back through the core Socket.IO bridge.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { RiveMascot, type MascotFace } from '../../features/human/Mascot';
 import { useT } from '../../lib/i18n/I18nContext';
 import {
   joinMeetViaBackendBot,
+  leaveBackendMeetBot,
   listMeetCalls,
   type MascotMeetPlatform,
   type MeetCallRecord,
 } from '../../services/meetCallService';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import {
+  type BackendMeetHarnessEvent,
+  type BackendMeetReplyEvent,
+  type BackendMeetStatus,
+  resetBackendMeet,
+  selectBackendMeetLastHarness,
+  selectBackendMeetLastReply,
+  selectBackendMeetStatus,
+  selectBackendMeetUrl,
+  setBackendMeetJoining,
+} from '../../store/backendMeetSlice';
 
 type Toast = { type: 'success' | 'error' | 'info'; title: string; message?: string };
 
@@ -38,24 +52,126 @@ const PLATFORMS: PlatformDef[] = [
     platform: 'zoom',
     labelKey: 'skills.meetingBots.platforms.zoom',
     domainHintKey: 'skills.meetingBots.platformHints.zoom',
-    comingSoon: true,
   },
   {
     platform: 'teams',
     labelKey: 'skills.meetingBots.platforms.teams',
     domainHintKey: 'skills.meetingBots.platformHints.teams',
-    comingSoon: true,
   },
 ];
 
 export default function MeetingBotsCard({ onToast }: Props) {
   const [open, setOpen] = useState(false);
+  const status = useAppSelector(selectBackendMeetStatus);
+
+  const showActive = status === 'active' || status === 'joining';
 
   return (
     <>
-      <MeetingBotsBanner onClick={() => setOpen(true)} />
+      {showActive ? (
+        <ActiveMeetingView onToast={onToast} />
+      ) : (
+        <MeetingBotsBanner onClick={() => setOpen(true)} />
+      )}
       {open && <MeetingBotsModal onClose={() => setOpen(false)} onToast={onToast} />}
     </>
+  );
+}
+
+function faceFromMeetState(
+  status: BackendMeetStatus,
+  lastReply: BackendMeetReplyEvent | null,
+  lastHarness: BackendMeetHarnessEvent | null,
+): MascotFace {
+  if (status === 'joining') return 'thinking';
+  if (status === 'error') return 'concerned';
+  if (status === 'ended') return 'happy';
+  if (lastHarness) return 'thinking';
+  if (lastReply) {
+    const e = (lastReply.emotion ?? '').toLowerCase();
+    if (e.includes('happy') || e.includes('pleased') || e.includes('joy') || e.includes('excit')) return 'happy';
+    if (e.includes('celebrat') || e.includes('proud')) return 'celebrating';
+    if (e.includes('concern') || e.includes('worried') || e.includes('unsure')) return 'concerned';
+    if (e.includes('curious') || e.includes('interest')) return 'curious';
+  }
+  return 'idle';
+}
+
+function ActiveMeetingView({ onToast }: Props) {
+  const { t } = useT();
+  const dispatch = useAppDispatch();
+  const status = useAppSelector(selectBackendMeetStatus);
+  const meetUrl = useAppSelector(selectBackendMeetUrl);
+  const lastReply = useAppSelector(selectBackendMeetLastReply);
+  const lastHarness = useAppSelector(selectBackendMeetLastHarness);
+  const face = faceFromMeetState(status, lastReply, lastHarness);
+  const meetingCode = useMemo(() => {
+    if (!meetUrl) return '';
+    try {
+      const tail = new URL(meetUrl).pathname.replace(/^\/+/, '');
+      return tail || meetUrl;
+    } catch { return meetUrl; }
+  }, [meetUrl]);
+
+  const handleLeave = async () => {
+    try {
+      await leaveBackendMeetBot('user-requested');
+    } catch (err) {
+      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message: String(err) });
+    }
+  };
+
+  const statusText = {
+    joining: t('skills.meetingBots.liveStatusJoining'),
+    active: t('skills.meetingBots.liveStatusActive'),
+    ended: t('skills.meetingBots.liveStatusEnded'),
+    error: t('skills.meetingBots.liveStatusError'),
+    idle: '',
+  }[status] ?? '';
+
+  const canLeave = status === 'active' || status === 'joining';
+  const isDone = status === 'ended' || status === 'error';
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-primary-200/60 dark:border-primary-500/30 bg-gradient-to-br from-primary-50 via-white to-amber-50 dark:from-primary-500/15 dark:via-neutral-900 dark:to-amber-500/10 p-4 shadow-soft animate-fade-up">
+      <div className="flex items-center justify-between mb-3">
+        <span className="flex items-center gap-1.5 rounded-full bg-coral-500/10 dark:bg-coral-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-coral-600 dark:text-coral-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-coral-500 animate-pulse" aria-hidden="true" />
+          {t('skills.meetingBots.liveBadge')}
+        </span>
+        {canLeave && (
+          <button type="button" onClick={handleLeave}
+            className="rounded-xl px-3 py-1.5 text-xs font-medium bg-stone-100 dark:bg-neutral-800 text-stone-700 dark:text-neutral-300 hover:bg-stone-200 dark:hover:bg-neutral-700">
+            {t('skills.meetingBots.leaveButton')}
+          </button>
+        )}
+        {isDone && (
+          <button type="button" onClick={() => dispatch(resetBackendMeet())}
+            className="rounded-xl px-3 py-1.5 text-xs font-medium bg-stone-100 dark:bg-neutral-800 text-stone-700 dark:text-neutral-300 hover:bg-stone-200 dark:hover:bg-neutral-700">
+            {t('common.close')}
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-4">
+        <div className="w-20 h-20 flex-shrink-0">
+          <RiveMascot face={face} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-stone-900 dark:text-neutral-100">
+            {t('skills.meetingBots.liveTitle')}
+          </div>
+          <div className="mt-0.5 text-xs text-stone-500 dark:text-neutral-400">{statusText}</div>
+          {meetingCode && (
+            <div className="mt-1 truncate font-mono text-[11px] text-stone-600 dark:text-neutral-400">{meetingCode}</div>
+          )}
+          {lastReply?.reply && (
+            <div className="mt-1.5 text-xs text-stone-600 dark:text-neutral-300 line-clamp-2 italic">
+              &ldquo;{lastReply.reply}&rdquo;
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -120,6 +236,7 @@ interface ModalProps {
 
 export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const { t } = useT();
+  const dispatch = useAppDispatch();
   const [platform, setPlatform] = useState<MascotMeetPlatform>('gmeet');
   const [meetUrl, setMeetUrl] = useState('');
   const [displayName, setDisplayName] = useState('OpenHuman');
@@ -173,12 +290,14 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
     }
     setSubmitting(true);
     try {
-      await joinMeetViaBackendBot({
-        meetUrl,
-        displayName,
-        platform,
-        agentName: displayName,
-      });
+      // Optimistically update Redux state so the banner transitions to
+      // the ActiveMeetingView immediately, before the backend responds.
+      dispatch(setBackendMeetJoining({ meetUrl: meetUrl.trim() }));
+      // Backend Recall.ai bot: sends the mascot into the meeting via
+      // the backend's Recall.ai integration. The backend joins as a
+      // participant, renders the mascot as the bot's camera feed, and
+      // streams transcript events back over Socket.IO.
+      await joinMeetViaBackendBot({ meetUrl, displayName, platform, agentName: displayName });
       onToast?.({
         type: 'success',
         title: t('skills.meetingBots.joiningTitle'),
@@ -338,13 +457,14 @@ function RecentCallsSection({
   rows: MeetCallRecord[] | null;
   error: string | null;
 }) {
+  const { t } = useT();
   return (
     <section
-      aria-label="Recent meeting calls"
+      aria-label={t('skills.meetingBots.recentCallsAriaLabel')}
       className="mt-4 border-t border-stone-200 dark:border-neutral-800 pt-4">
       <div className="flex items-baseline justify-between">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
-          Recent calls
+          {t('skills.meetingBots.recentCallsHeading')}
           {rows && rows.length > 0 && (
             <span className="ml-1 text-stone-400 dark:text-neutral-500 normal-case font-normal">
               ({rows.length})
@@ -363,10 +483,10 @@ function RecentCallsSection({
       )}
 
       {rows === null ? (
-        <p className="mt-2 text-[11px] text-stone-400 dark:text-neutral-500">Loading…</p>
+        <p className="mt-2 text-[11px] text-stone-400 dark:text-neutral-500">{t('skills.meetingBots.recentCallsLoading')}</p>
       ) : rows.length === 0 ? (
         <p className="mt-2 text-[11px] text-stone-400 dark:text-neutral-500">
-          No previous calls yet — your meeting history will appear here.
+          {t('skills.meetingBots.recentCallsEmpty')}
         </p>
       ) : (
         <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">

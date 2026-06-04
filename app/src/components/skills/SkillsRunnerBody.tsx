@@ -637,7 +637,7 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
     // this effect on every viewer update would tear down and re-create the
     // timer on every poll. Equally, depending on `viewer` would cause
     // an infinite re-render loop because setViewer happens inside.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [expandedRunId]);
 
   const toggleExpand = useCallback((runId: string) => {

@@ -166,6 +166,7 @@ export type BackendMeetJoinInput = {
   platform?: MeetingPlatform;
   agentName?: string;
   systemPrompt?: string;
+  mascotId?: string;
   riveColors?: { primaryColor?: string; secondaryColor?: string };
 };
 
@@ -194,6 +195,7 @@ export async function joinMeetViaBackendBot(
       platform: input.platform || undefined,
       agent_name: input.agentName?.trim() || undefined,
       system_prompt: input.systemPrompt?.trim() || undefined,
+      mascot_id: input.mascotId?.trim() || undefined,
       rive_colors: input.riveColors
         ? {
             primary_color: input.riveColors.primaryColor || undefined,

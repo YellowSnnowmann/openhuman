@@ -25,6 +25,10 @@ pub struct BackendMeetJoinRequest {
     /// Custom system prompt for the meeting LLM. `{{AGENT_NAME}}` is replaced server-side.
     #[serde(default)]
     pub system_prompt: Option<String>,
+    /// Selects which Rive mascot appears in the meeting (e.g. "yellow", "blue").
+    /// Defaults to the backend's configured default mascot when omitted.
+    #[serde(default)]
+    pub mascot_id: Option<String>,
     /// Optional Rive mascot color palette overrides.
     #[serde(default)]
     pub rive_colors: Option<RiveColors>,

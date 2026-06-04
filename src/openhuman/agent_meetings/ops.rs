@@ -175,6 +175,9 @@ pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
         if let Some(system_prompt) = &req.system_prompt {
             map.insert("systemPrompt".to_string(), json!(system_prompt));
         }
+        if let Some(mascot_id) = &req.mascot_id {
+            map.insert("mascotId".to_string(), json!(mascot_id));
+        }
         if let Some(rive_colors) = &req.rive_colors {
             map.insert(
                 "riveColors".to_string(),
