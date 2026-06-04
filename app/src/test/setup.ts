@@ -84,6 +84,24 @@ function ensureStorage(name: 'localStorage' | 'sessionStorage') {
 ensureStorage('localStorage');
 ensureStorage('sessionStorage');
 
+// Polyfill window.matchMedia — used by Rive (@rive-app/react-webgl2) and
+// some media-query hooks; not implemented in jsdom.
+if (typeof window.matchMedia === 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 // Polyfill ResizeObserver for cmdk/Radix components in jsdom
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class ResizeObserver {

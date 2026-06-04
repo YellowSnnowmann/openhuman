@@ -109,13 +109,13 @@ describe('MeetingBotsCard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Bad URL');
   });
 
-  it('disables the submit when the active platform is coming-soon', () => {
+  it('Zoom is a live platform — submit is labelled "Send to Zoom", not "coming soon"', () => {
     renderWithProviders(<MeetingBotsCard />);
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
-    // Pick Zoom (coming soon)
+    // Zoom is fully supported via Recall.ai; submit should not say "coming soon".
     fireEvent.click(screen.getByRole('button', { name: /Zoom/ }));
-    const submit = screen.getByRole('button', { name: /coming soon/i });
-    expect(submit).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /coming soon/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /send to zoom/i })).toBeInTheDocument();
   });
 
   it('does not require the old owner-name field for backend Recall joins', () => {
