@@ -510,7 +510,7 @@ export function deduplicateConnections(
       const key = `${conn.toolkit}:${identity}`;
       if (seen.has(key)) {
         console.debug(
-          `[ui-flow][composio-picker] dropping duplicate connection toolkit=${conn.toolkit} identity=${identity} id=${conn.id}`
+          `[ui-flow][composio-picker] dropping duplicate connection toolkit=${conn.toolkit} id=${conn.id}`
         );
         continue;
       }
