@@ -29,8 +29,15 @@ fn transcript_turns_to_chat_batch(
     turns: &[BackendMeetTurn],
     duration_ms: u64,
 ) -> Option<ChatBatch> {
-    let base = chrono::Utc::now()
-        - chrono::Duration::milliseconds(i64::try_from(duration_ms).unwrap_or(i64::MAX));
+    let duration_i64 = i64::try_from(duration_ms).unwrap_or(i64::MAX);
+    let base = chrono::Utc::now() - chrono::Duration::milliseconds(duration_i64);
+    // Spread turns evenly across the duration; fall back to 1 ms spacing when
+    // duration is zero or turns is empty (avoids division by zero).
+    let spacing_ms = if turns.is_empty() {
+        1i64
+    } else {
+        i64::try_from(duration_ms / turns.len() as u64).unwrap_or(1)
+    };
     let mut messages = Vec::new();
 
     for (idx, turn) in turns.iter().enumerate() {
@@ -43,9 +50,10 @@ fn transcript_turns_to_chat_batch(
         } else {
             "Meeting participant"
         };
+        let offset_ms = spacing_ms.saturating_mul(idx as i64);
         messages.push(ChatMessage {
             author: author.to_string(),
-            timestamp: base + chrono::Duration::milliseconds(idx as i64),
+            timestamp: base + chrono::Duration::milliseconds(offset_ms),
             text: text.to_string(),
             source_ref: Some(format!("backend-meet://turn/{idx}")),
         });

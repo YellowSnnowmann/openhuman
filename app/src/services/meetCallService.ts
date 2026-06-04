@@ -196,12 +196,13 @@ export async function joinMeetViaBackendBot(
       agent_name: input.agentName?.trim() || undefined,
       system_prompt: input.systemPrompt?.trim() || undefined,
       mascot_id: input.mascotId?.trim() || undefined,
-      rive_colors: input.riveColors
-        ? {
-            primary_color: input.riveColors.primaryColor || undefined,
-            secondary_color: input.riveColors.secondaryColor || undefined,
-          }
-        : undefined,
+      rive_colors: (() => {
+        if (!input.riveColors) return undefined;
+        const primary = input.riveColors.primaryColor?.trim() || undefined;
+        const secondary = input.riveColors.secondaryColor?.trim() || undefined;
+        if (!primary && !secondary) return undefined;
+        return { primary_color: primary, secondary_color: secondary };
+      })(),
     },
   });
 

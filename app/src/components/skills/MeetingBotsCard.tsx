@@ -113,11 +113,17 @@ function ActiveMeetingView({ onToast }: Props) {
     } catch { return meetUrl; }
   }, [meetUrl]);
 
+  const [leaving, setLeaving] = useState(false);
+
   const handleLeave = async () => {
+    if (leaving) return;
+    setLeaving(true);
     try {
       await leaveBackendMeetBot('user-requested');
     } catch (err) {
       onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message: String(err) });
+    } finally {
+      setLeaving(false);
     }
   };
 
@@ -140,8 +146,8 @@ function ActiveMeetingView({ onToast }: Props) {
           {t('skills.meetingBots.liveBadge')}
         </span>
         {canLeave && (
-          <button type="button" onClick={handleLeave}
-            className="rounded-xl px-3 py-1.5 text-xs font-medium bg-stone-100 dark:bg-neutral-800 text-stone-700 dark:text-neutral-300 hover:bg-stone-200 dark:hover:bg-neutral-700">
+          <button type="button" onClick={handleLeave} disabled={leaving}
+            className="rounded-xl px-3 py-1.5 text-xs font-medium bg-stone-100 dark:bg-neutral-800 text-stone-700 dark:text-neutral-300 hover:bg-stone-200 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed">
             {t('skills.meetingBots.leaveButton')}
           </button>
         )}
