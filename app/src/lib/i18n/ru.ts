@@ -1981,6 +1981,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Загрузка подключений…',
   'memorySources.noConnections':
     'Активных соединений Composio не ​​найдено. Сначала подключите интеграцию.',
+  'memorySources.connectionAccount': 'Аккаунт',
   'memorySources.pickConnection': 'Выберите соединение',
   'memorySources.selectConnection': '— Выберите соединение —',
   'memorySources.composioListFailed': 'Не удалось загрузить соединения Composio.',

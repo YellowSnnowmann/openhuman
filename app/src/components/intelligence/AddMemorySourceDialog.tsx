@@ -487,6 +487,44 @@ function KindFields(props: KindFieldsProps) {
   }
 }
 
+/**
+ * Deduplicates and labels connections for display in the picker.
+ *
+ * - Connections sharing the same toolkit + identity (accountEmail / workspace /
+ *   username) are collapsed to the first occurrence — the duplicate entries
+ *   that triggered issue #3356.
+ * - Connections with no identity field get a numbered "Account N" suffix
+ *   scoped per toolkit, so users can distinguish them without seeing raw IDs.
+ */
+export function deduplicateConnections(
+  connections: ComposioConnection[],
+  accountLabel: string
+): Array<{ conn: ComposioConnection; label: string }> {
+  const seen = new Set<string>();
+  const unidentifiedCount: Record<string, number> = {};
+  const result: Array<{ conn: ComposioConnection; label: string }> = [];
+
+  for (const conn of connections) {
+    const identity = conn.accountEmail ?? conn.workspace ?? conn.username;
+    if (identity) {
+      const key = `${conn.toolkit}:${identity}`;
+      if (seen.has(key)) {
+        console.debug(
+          `[ui-flow][composio-picker] dropping duplicate connection toolkit=${conn.toolkit} identity=${identity} id=${conn.id}`
+        );
+        continue;
+      }
+      seen.add(key);
+      result.push({ conn, label: `${conn.toolkit} · ${identity}` });
+    } else {
+      unidentifiedCount[conn.toolkit] = (unidentifiedCount[conn.toolkit] ?? 0) + 1;
+      const n = unidentifiedCount[conn.toolkit];
+      result.push({ conn, label: `${conn.toolkit} · ${accountLabel} ${n}` });
+    }
+  }
+  return result;
+}
+
 function ComposioPicker({
   connections,
   loadingConnections,
@@ -511,6 +549,11 @@ function ComposioPicker({
     );
   }
 
+  const dedupedConnections = deduplicateConnections(
+    connections,
+    t('memorySources.connectionAccount')
+  );
+
   return (
     <label className="block">
       <span className="text-xs font-medium text-stone-600 dark:text-neutral-400">
@@ -519,10 +562,9 @@ function ComposioPicker({
       <select
         value={connectionId}
         onChange={e => {
-          const conn = connections.find(c => c.id === e.target.value);
-          if (conn) {
-            const identity = conn.accountEmail ?? conn.workspace ?? conn.username ?? conn.id;
-            setConnection(conn.id, conn.toolkit, `${conn.toolkit} · ${identity}`);
+          const entry = dedupedConnections.find(({ conn }) => conn.id === e.target.value);
+          if (entry) {
+            setConnection(entry.conn.id, entry.conn.toolkit, entry.label);
           }
         }}
         className="mt-1 block w-full rounded-md border border-stone-300 bg-white px-3 py-2
@@ -530,14 +572,11 @@ function ComposioPicker({
                    focus:ring-1 focus:ring-primary-400 dark:border-neutral-600
                    dark:bg-neutral-800 dark:text-neutral-100 dark:focus:border-primary-500">
         <option value="">{t('memorySources.selectConnection')}</option>
-        {connections.map(conn => {
-          const identity = conn.accountEmail ?? conn.workspace ?? conn.username ?? conn.id;
-          return (
-            <option key={conn.id} value={conn.id}>
-              {conn.toolkit} · {identity}
-            </option>
-          );
-        })}
+        {dedupedConnections.map(({ conn, label }) => (
+          <option key={conn.id} value={conn.id}>
+            {label}
+          </option>
+        ))}
       </select>
     </label>
   );
