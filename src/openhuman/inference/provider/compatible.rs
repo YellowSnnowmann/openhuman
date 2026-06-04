@@ -30,15 +30,29 @@ use futures_util::{stream, StreamExt};
 
 use compatible_dump::{dump_prompt_if_enabled, dump_response_if_enabled, reserve_dump_seq};
 use compatible_parse::{
-    build_responses_prompt, extract_responses_text, normalize_function_arguments,
-    parse_chat_response_body, parse_responses_response_body, parse_tool_calls_from_content_json,
+    aggregate_responses_sse_body, build_responses_prompt, extract_responses_text,
+    normalize_function_arguments, parse_chat_response_body, parse_responses_response_body,
+    parse_tool_calls_from_content_json,
 };
 use compatible_stream::sse_bytes_to_chunks;
 use compatible_types::{
-    ApiChatRequest, ApiChatResponse, ApiUsage, Choice, Function, Message, NativeChatRequest,
-    NativeMessage, OpenAiStreamOptions, OpenHumanMeta, ResponseMessage, ResponsesRequest,
-    StreamChunkResponse, StreamingToolCall, ToolCall,
+    ApiChatRequest, ApiChatResponse, ApiUsage, Choice, Function, Message, MessageContent,
+    NativeChatRequest, NativeMessage, OpenAiStreamOptions, OpenHumanMeta, ResponseMessage,
+    ResponsesRequest, StreamChunkResponse, StreamingToolCall, ToolCall,
 };
+
+/// `frequency_penalty` applied to streaming chat-completions requests.
+///
+/// Autoregressive models have a self-reinforcing bias toward repeating spans
+/// already in their context; with no penalty a momentary repeat can spiral into
+/// the same line emitted until the output-token cap (degenerate decoding). A
+/// small positive penalty damps that loop without harming coherence. Carried on
+/// the streaming path (where those loops occur — long autonomous turns) and
+/// retried without it if a strict provider rejects it; the buffered
+/// non-streaming fallback omits it for maximum compatibility. Skipped in
+/// serialisation when `None` so providers that don't accept the field are
+/// unaffected.
+const CHAT_FREQUENCY_PENALTY: f64 = 0.3;
 
 /// A provider that speaks the OpenAI-compatible chat completions API.
 /// Used by: Venice, Vercel AI Gateway, Cloudflare AI Gateway, Moonshot,
@@ -176,6 +190,62 @@ impl OpenAiCompatibleProvider {
         if Self::is_completion_only_model_404(status, sanitized) {
             Some(anyhow::anyhow!(
                 self.completion_only_model_message(model, sanitized)
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Build an actionable error for a model that lacks the chat capability —
+    /// e.g. an *embedding* model (Ollama `bge-m3`) selected as the chat model.
+    /// Ollama returns `400 "<model>" does not support chat`; we replace the
+    /// opaque upstream JSON with concrete remediation. See Sentry
+    /// TAURI-RUST-4P6.
+    ///
+    /// The phrase `does not support chat` is preserved verbatim so the
+    /// re-reported error still matches
+    /// [`super::config_rejection::is_provider_config_rejection_message`] and
+    /// stays demoted from Sentry.
+    fn not_chat_capable_model_message(&self, model: &str, sanitized: &str) -> String {
+        format!(
+            "{name} API error: model '{model}' does not support chat — it \
+             appears to be an embedding or non-chat model. Assign a \
+             chat-capable model to this provider (e.g. in Settings → AI), or \
+             pick a different model. Provider detail: {sanitized}",
+            name = self.name,
+        )
+    }
+
+    /// Detect a model rejected because it has no chat capability. Unlike the
+    /// completion-only base model (which 404s), an embedding model picked as
+    /// the chat model is rejected by Ollama with a **400/422** carrying
+    /// `"<model>" does not support chat`, so it bypasses
+    /// [`is_completion_only_model_404`]. Match is tight (the exact phrase) so
+    /// ordinary 400s keep their normal handling. See Sentry TAURI-RUST-4P6.
+    fn is_not_chat_capable_model(status: reqwest::StatusCode, error: &str) -> bool {
+        if !matches!(
+            status,
+            reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::UNPROCESSABLE_ENTITY
+        ) {
+            return false;
+        }
+        error.to_lowercase().contains("does not support chat")
+    }
+
+    /// Guard shared by every chat-completions error handler: if the body shows
+    /// a non-chat-capable model (embedding model picked as chat), return the
+    /// actionable error so the caller fails fast with concrete remediation
+    /// instead of surfacing the opaque upstream JSON. `None` means "not this
+    /// case — proceed with normal fallback/enrich". See Sentry TAURI-RUST-4P6.
+    fn not_chat_capable_guard(
+        &self,
+        status: reqwest::StatusCode,
+        sanitized: &str,
+        model: &str,
+    ) -> Option<anyhow::Error> {
+        if Self::is_not_chat_capable_model(status, sanitized) {
+            Some(anyhow::anyhow!(
+                self.not_chat_capable_model_message(model, sanitized)
             ))
         } else {
             None
@@ -347,11 +417,45 @@ impl OpenAiCompatibleProvider {
             );
         }
 
+        // #3201: the Codex/ChatGPT OAuth Responses endpoint
+        // (`https://chatgpt.com/backend-api/codex/responses`) rejects
+        // `stream: false` outright with `{"detail":"Stream must be set to
+        // true"}`. PR #3192 fixed the sibling `store: false` requirement;
+        // this branch lifts the same constraint for the stream flag and
+        // parses the resulting SSE body inline so the existing non-streaming
+        // call signature is preserved. Other Responses-API providers (real
+        // OpenAI, custom OpenAI-compatible) keep the single-envelope path —
+        // they accept `stream: false` and the SSE branch would be wasted
+        // work for them.
+        //
+        // Detection is keyed on the `/backend-api/codex` path segment, not
+        // the `chatgpt.com` host: the same path segment is what
+        // `OpenAiCodexRouting` substitutes when a user is signed in via
+        // OAuth (see `OPENAI_CODEX_BACKEND_BASE_URL`), and it's specific
+        // enough that no other OpenAI-compatible provider URL uses it.
+        //
+        // Parse the URL and inspect path segments rather than scanning the
+        // whole `base_url` so a proxy URL whose query string or fragment
+        // contains the literal `/backend-api/codex` (e.g.
+        // `.../v1?upstream=/backend-api/codex`) doesn't get falsely
+        // promoted into the SSE branch.
+        let is_codex_oauth_responses = reqwest::Url::parse(&self.base_url)
+            .ok()
+            .and_then(|url| {
+                let segments: Vec<&str> = url.path_segments()?.collect();
+                Some(
+                    segments
+                        .windows(2)
+                        .any(|window| window == ["backend-api", "codex"]),
+                )
+            })
+            .unwrap_or(false);
+
         let request = ResponsesRequest {
             model: model.to_string(),
             input,
             instructions,
-            stream: Some(false),
+            stream: Some(is_codex_oauth_responses),
             store: Some(false),
         };
 
@@ -417,6 +521,12 @@ impl OpenAiCompatibleProvider {
         }
 
         let body = response.text().await?;
+        if is_codex_oauth_responses {
+            // SSE branch — `stream: true` always produces a Server-Sent
+            // Event body, even on the non-streaming wrapper. Aggregate it
+            // back into the same `String` shape the caller expects.
+            return aggregate_responses_sse_body(&self.name, &body);
+        }
         let responses = parse_responses_response_body(&self.name, &body)?;
 
         extract_responses_text(responses)
@@ -506,13 +616,13 @@ impl OpenAiCompatibleProvider {
                                     // emits `"content":""` rather than omitting
                                     // the key — some providers reject a missing
                                     // content alongside reasoning_content.
-                                    let content = Some(
+                                    let content = Some(MessageContent::Text(
                                         value
                                             .get("content")
                                             .and_then(serde_json::Value::as_str)
                                             .unwrap_or("")
                                             .to_string(),
-                                    );
+                                    ));
 
                                     // Replay the assistant's reasoning so
                                     // DeepSeek thinking mode accepts the
@@ -554,7 +664,8 @@ impl OpenAiCompatibleProvider {
                                 .get("content")
                                 .and_then(serde_json::Value::as_str)
                                 .map(ToString::to_string)
-                                .or_else(|| Some(message.content.clone()));
+                                .or_else(|| Some(message.content.clone()))
+                                .map(MessageContent::Text);
 
                             return NativeMessage {
                                 role: "tool".to_string(),
@@ -568,7 +679,12 @@ impl OpenAiCompatibleProvider {
 
                     NativeMessage {
                         role: message.role.clone(),
-                        content: Some(message.content.clone()),
+                        // User-authored content may carry `[IMAGE:<data-uri>]`
+                        // markers from chat attachments — promote them to
+                        // structured `image_url` parts here. Markerless text
+                        // (every system/assistant/tool turn) is returned as the
+                        // plain-string arm, unchanged on the wire.
+                        content: Some(MessageContent::from_chat_text(&message.content)),
                         tool_call_id: None,
                         tool_calls: None,
                         reasoning_content,
@@ -880,6 +996,23 @@ impl OpenAiCompatibleProvider {
 
     fn err_supports_no_tools_retry(error: &str) -> bool {
         Self::is_native_tool_schema_unsupported(reqwest::StatusCode::BAD_REQUEST, error)
+    }
+
+    /// Detect a provider rejecting the `frequency_penalty` sampling field. Some
+    /// strict OpenAI-compatible backends 400 on unknown params; when this fires
+    /// the caller retries once with the field omitted (mirrors the no-tools
+    /// retry). String-based because the streamed transport error surfaces the
+    /// API error body.
+    fn err_indicates_frequency_penalty_unsupported(error: &str) -> bool {
+        let lower = error.to_lowercase();
+        lower.contains("frequency_penalty")
+            && (lower.contains("unsupported")
+                || lower.contains("unknown")
+                || lower.contains("unrecognized")
+                || lower.contains("not supported")
+                || lower.contains("does not support")
+                || lower.contains("invalid")
+                || lower.contains("unexpected"))
     }
 
     /// Detect a 404 whose body says the model is completion-only and cannot be
@@ -1350,6 +1483,13 @@ impl Provider for OpenAiCompatibleProvider {
     fn capabilities(&self) -> crate::openhuman::inference::provider::traits::ProviderCapabilities {
         crate::openhuman::inference::provider::traits::ProviderCapabilities {
             native_tool_calling: self.native_tool_calling,
+            // Kept `false` for now. The provider already serializes images as
+            // `image_url` content parts on the chat-completions path (#3205), but
+            // vision is a per-*model* property the provider can't know here — and
+            // the Responses-API path (`chat_via_responses`) is still text-only.
+            // Claiming vision provider-wide would let image turns through the
+            // gate to a possibly-non-vision model. The capability stays off until
+            // it can be driven per-model (e.g. from `model_registry.vision`).
             vision: false,
         }
     }
@@ -1372,18 +1512,18 @@ impl Provider for OpenAiCompatibleProvider {
             };
             messages.push(Message {
                 role: "user".to_string(),
-                content,
+                content: MessageContent::from_chat_text(&content),
             });
         } else {
             if let Some(sys) = system_prompt {
                 messages.push(Message {
                     role: "system".to_string(),
-                    content: sys.to_string(),
+                    content: sys.into(),
                 });
             }
             messages.push(Message {
                 role: "user".to_string(),
-                content: message.to_string(),
+                content: MessageContent::from_chat_text(message),
             });
         }
 
@@ -1448,6 +1588,13 @@ impl Provider for OpenAiCompatibleProvider {
             // A completion-only model 404s here and the /v1/responses fallback
             // cannot rescue it — fail fast with actionable guidance (#3193).
             if let Some(err) = self.completion_only_404_guard(status, &sanitized, model) {
+                return Err(err);
+            }
+
+            // An embedding / non-chat model rejected with 400 "does not
+            // support chat" (e.g. Ollama bge-m3 picked as the chat model) —
+            // fail fast with actionable guidance. See Sentry TAURI-RUST-4P6.
+            if let Some(err) = self.not_chat_capable_guard(status, &sanitized, model) {
                 return Err(err);
             }
 
@@ -1570,7 +1717,7 @@ impl Provider for OpenAiCompatibleProvider {
             .iter()
             .map(|m| Message {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: MessageContent::from_chat_text(&m.content),
             })
             .collect();
 
@@ -1652,7 +1799,21 @@ impl Provider for OpenAiCompatibleProvider {
                 return Err(anyhow::anyhow!("{enriched}"));
             }
 
+            // `api_error` reads the body and runs the shared classification
+            // (SessionExpired publish, config-rejection demotion, Sentry-report
+            // decision). For a non-chat-capable model (embedding model picked
+            // as chat → 400 "does not support chat") it already demotes the
+            // event, but its message is the opaque upstream JSON. Upgrade that
+            // to the actionable "assign a chat-capable model" copy — which
+            // still carries the phrase, so it stays demoted on any re-report.
+            // See Sentry TAURI-RUST-4P6.
             let err = super::api_error(&self.name, response).await;
+            let err_str = err.to_string();
+            if Self::is_not_chat_capable_model(status, &err_str) {
+                return Err(anyhow::anyhow!(
+                    self.not_chat_capable_model_message(model, &err_str)
+                ));
+            }
             let enriched = self.enrich_404_message(format!("{err:#}"), status);
             return Err(anyhow::anyhow!("{enriched}"));
         }
@@ -1698,7 +1859,7 @@ impl Provider for OpenAiCompatibleProvider {
             .iter()
             .map(|m| Message {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: MessageContent::from_chat_text(&m.content),
             })
             .collect();
 
@@ -1860,6 +2021,7 @@ impl Provider for OpenAiCompatibleProvider {
                     include_usage: true,
                 }),
                 options: self.build_ollama_options(),
+                frequency_penalty: Some(CHAT_FREQUENCY_PENALTY),
             };
             let stream_dump_seq = reserve_dump_seq();
             dump_prompt_if_enabled(&self.name, model, stream_dump_seq, &native_request);
@@ -1902,6 +2064,31 @@ impl Provider for OpenAiCompatibleProvider {
                                 );
                             }
                         }
+                    } else if Self::err_indicates_frequency_penalty_unsupported(&err_str) {
+                        // Symmetric to the no-tools retry: a strict provider that
+                        // 400s on `frequency_penalty` should degrade gracefully
+                        // rather than fail the whole chat path.
+                        log::info!(
+                            "[stream] {} rejected frequency_penalty — retrying streaming without it",
+                            self.name,
+                        );
+                        let retry_request = NativeChatRequest {
+                            frequency_penalty: None,
+                            ..native_request.clone()
+                        };
+                        match self
+                            .stream_native_chat(credential, &retry_request, tx, stream_dump_seq)
+                            .await
+                        {
+                            Ok(resp) => return Ok(resp),
+                            Err(retry_err) => {
+                                log::warn!(
+                                    "[stream] {} retry without frequency_penalty also failed, falling back to non-streaming: {}",
+                                    self.name,
+                                    retry_err
+                                );
+                            }
+                        }
                     } else {
                         log::warn!(
                             "[stream] {} streaming chat failed, falling back to non-streaming: {}",
@@ -1909,7 +2096,9 @@ impl Provider for OpenAiCompatibleProvider {
                             err
                         );
                     }
-                    // Fall through to the non-streaming path below.
+                    // Fall through to the non-streaming path below. The
+                    // non-streaming request below omits `frequency_penalty` so a
+                    // provider that rejected it (streaming or not) still succeeds.
                 }
             }
         }
@@ -1931,6 +2120,12 @@ impl Provider for OpenAiCompatibleProvider {
             thread_id,
             stream_options: None,
             options: self.build_ollama_options(),
+            // The buffered (non-streaming) path is the fallback / non-streaming
+            // provider path — omit `frequency_penalty` here for maximum
+            // compatibility (a provider that rejects it still succeeds). The
+            // streaming path above carries it (where degenerate repetition loops
+            // actually occur) and retries without it on rejection.
+            frequency_penalty: None,
         };
         let dump_seq = reserve_dump_seq();
         dump_prompt_if_enabled(&self.name, model, dump_seq, &native_request);
@@ -1992,6 +2187,13 @@ impl Provider for OpenAiCompatibleProvider {
             // A completion-only model 404s here and the /v1/responses fallback
             // cannot rescue it — fail fast with actionable guidance (#3193).
             if let Some(err) = self.completion_only_404_guard(status, &sanitized, model) {
+                return Err(err);
+            }
+
+            // An embedding / non-chat model rejected with 400 "does not
+            // support chat" (e.g. Ollama bge-m3 picked as the chat model) —
+            // fail fast with actionable guidance. See Sentry TAURI-RUST-4P6.
+            if let Some(err) = self.not_chat_capable_guard(status, &sanitized, model) {
                 return Err(err);
             }
 
@@ -2107,12 +2309,12 @@ impl Provider for OpenAiCompatibleProvider {
         if let Some(sys) = system_prompt {
             messages.push(Message {
                 role: "system".to_string(),
-                content: sys.to_string(),
+                content: sys.into(),
             });
         }
         messages.push(Message {
             role: "user".to_string(),
-            content: message.to_string(),
+            content: MessageContent::from_chat_text(message),
         });
 
         let request = ApiChatRequest {
@@ -2128,6 +2330,7 @@ impl Provider for OpenAiCompatibleProvider {
         let client = self.http_client();
         let auth_header = self.auth_header.clone();
         let extra_headers = self.extra_headers.clone();
+        let openrouter_attribution_headers = self.openrouter_attribution_headers();
         let provider_name = self.name.clone();
         let model_owned = model.to_string();
 
@@ -2157,6 +2360,11 @@ impl Provider for OpenAiCompatibleProvider {
 
             for (name, value) in &extra_headers {
                 req_builder = req_builder.header(name.as_str(), value.as_str());
+            }
+            if let Some((referer, title)) = openrouter_attribution_headers {
+                req_builder = req_builder
+                    .header("HTTP-Referer", referer)
+                    .header("X-OpenRouter-Title", title);
             }
 
             // Set accept header for streaming
@@ -2284,7 +2492,7 @@ impl Provider for OpenAiCompatibleProvider {
             .into_iter()
             .map(|message| Message {
                 role: message.role,
-                content: message.content,
+                content: MessageContent::from_chat_text(&message.content),
             })
             .collect();
 
@@ -2300,6 +2508,8 @@ impl Provider for OpenAiCompatibleProvider {
         let url = self.chat_completions_url();
         let client = self.http_client();
         let auth_header = self.auth_header.clone();
+        let extra_headers = self.extra_headers.clone();
+        let openrouter_attribution_headers = self.openrouter_attribution_headers();
         let provider_name = self.name.clone();
         let model_owned = model.to_string();
 
@@ -2322,6 +2532,14 @@ impl Provider for OpenAiCompatibleProvider {
                     req_builder.header(header, credential)
                 }
             };
+            for (name, value) in &extra_headers {
+                req_builder = req_builder.header(name.as_str(), value.as_str());
+            }
+            if let Some((referer, title)) = openrouter_attribution_headers {
+                req_builder = req_builder
+                    .header("HTTP-Referer", referer)
+                    .header("X-OpenRouter-Title", title);
+            }
             req_builder = req_builder.header("Accept", "text/event-stream");
 
             let response = match req_builder.send().await {

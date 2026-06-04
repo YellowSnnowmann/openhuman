@@ -339,6 +339,37 @@ mod tests {
     }
 
     #[test]
+    fn build_routes_prompt_heavy_domains_to_specialists() {
+        let body = build(&ctx_with(&[])).unwrap();
+        assert!(body.contains("use `ask_docs`"));
+        assert!(body.contains("use `schedule_task`"));
+        assert!(body.contains("use `make_presentation`"));
+        assert!(body.contains("use `delegate_desktop_control`"));
+        assert!(
+            !body.contains("## Presentation generation"),
+            "presentation-specific grounding policy belongs in presentation_agent"
+        );
+        assert!(
+            !body.contains("Before calling `generate_presentation`"),
+            "orchestrator prompt should not carry generate_presentation tool policy"
+        );
+        assert!(
+            !body.contains("## Presentations with images"),
+            "image policy belongs in presentation_agent"
+        );
+    }
+
+    #[test]
+    fn build_includes_evidence_aware_synthesis_contract() {
+        let body = build(&ctx_with(&[])).unwrap();
+        assert!(body.contains("## Evidence-aware synthesis"));
+        assert!(body.contains("Evidence used"));
+        assert!(body.contains("Failed tool calls"));
+        assert!(body.contains("Do not introduce facts"));
+        assert!(body.contains("truncated, oversized, partial, or unavailable"));
+    }
+
+    #[test]
     fn build_omits_guide_when_no_integrations_connected() {
         let integrations = vec![ConnectedIntegration {
             toolkit: "linear".into(),

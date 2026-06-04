@@ -167,6 +167,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'Impossibile cancellare i dati ed effettuare il logout. Riprova.',
   'clearData.failedLogout': 'Impossibile effettuare il logout. Riprova.',
   'clearData.failedPersist': "Impossibile cancellare lo stato persistente dell'app. Riprova.",
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Benvenuto in OpenHuman',
   'welcome.subtitle':
     'La tua super intelligenza AI personale. Privata, semplice ed estremamente potente.',
@@ -207,6 +208,10 @@ const messages: TranslationMap = {
   'home.usageExhaustedBody':
     'Hai esaurito per ora l’utilizzo incluso. Avvia un abbonamento per sbloccare più capacità continuativa.',
   'home.usageExhaustedCta': 'Attiva un abbonamento',
+  'openrouterFree.cta': 'Usa i modelli gratuiti di OpenRouter',
+  'openrouterFree.saving': 'Connessione a OpenRouter...',
+  'openrouterFree.error':
+    'Impossibile passare ai modelli gratuiti di OpenRouter. Controlla l’accesso a OpenRouter e riprova.',
   'home.routinesCard': 'Le tue routine',
   'home.routinesActive': '{count} attive',
   'routines.title': 'Le tue routine',
@@ -1740,16 +1745,13 @@ const messages: TranslationMap = {
   'common.enable': 'Abilita',
   'chat.safetyTimeout':
     "Nessuna risposta dall'agente dopo 2 minuti. Riprova o controlla la connessione.",
-  'chat.filter.all': 'Tutti',
-  'chat.filter.work': 'Lavoro',
-  'chat.filter.briefing': 'Briefing',
-  'chat.filter.notification': 'Notifica',
-  'chat.filter.workers': 'Worker',
+  'chat.filter.general': 'Generale',
+  'chat.filter.subconscious': 'Subconscio',
+  'chat.filter.tasks': 'Attività',
   'chat.selectThread': 'Seleziona un thread',
   'chat.threads': 'Thread',
   'chat.noThreads': 'Nessun thread',
   'chat.noLabelThreads': 'Nessun thread "{label}"',
-  'chat.noWorkerThreads': 'Nessun thread worker',
   'chat.deleteThread': 'Elimina thread',
   'chat.deleteThreadConfirm': 'Sei sicuro di voler eliminare "{title}"?',
   'chat.untitledThread': 'Thread senza titolo',
@@ -1999,6 +2001,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Caricamento delle connessioni…',
   'memorySources.noConnections':
     "Nessuna connessione Composio attiva trovata. Collega prima un'integrazione.",
+  'memorySources.connectionAccount': 'Account',
   'memorySources.pickConnection': 'Scegli una connessione',
   'memorySources.selectConnection': '— Seleziona una connessione —',
   'memorySources.composioListFailed': 'Impossibile caricare le connessioni Composio.',
@@ -2051,6 +2054,33 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Albero costruito',
   'memorySources.build.failedTitle': 'Costruzione fallita',
   'memorySources.build.sealsMessage': 'sigillatura completata',
+  'memorySources.allIn.button': 'Tutto attivo',
+  'memorySources.allIn.title': 'Attivare tutto?',
+  'memorySources.allIn.message':
+    'Questo attiverà tutte le sorgenti di memoria e rimuoverà tutti i limiti di sincronizzazione. Costruisce il grafico di memoria più ricco, ma potrebbe utilizzare più crediti.',
+  'memorySources.allIn.confirm': 'Sì',
+  'memorySources.allIn.cancel': 'No',
+  'memorySources.allIn.success':
+    'Tutte le sorgenti attivate senza limiti. Sincronizzazione avviata.',
+  'memorySources.allIn.failed': 'Impossibile attivare tutto. Riprova.',
+  'memorySources.settings.button': 'Impostazioni',
+  'memorySources.settings.title': 'Impostazioni di sincronizzazione',
+  'memorySources.settings.maxPrs': 'Numero massimo di pull request',
+  'memorySources.settings.maxIssues': 'Numero massimo di issue',
+  'memorySources.settings.maxCommits': 'Numero massimo di commit',
+  'memorySources.settings.maxItems': 'Numero massimo di elementi',
+  'memorySources.settings.sinceDays': 'Periodo di ricerca (giorni)',
+  'memorySources.settings.syncDepthDays': 'Profondità di sincronizzazione (giorni)',
+  'memorySources.settings.maxTokens': 'Token massimi per sincronizzazione',
+  'memorySources.settings.maxCost': 'Costo massimo per sincronizzazione (USD)',
+  'memorySources.settings.unlimited': 'Illimitato',
+  'memorySources.settings.unlimitedTooltip':
+    'Hai scelto di sincronizzare il massimo per {toolkit}. Puoi modificare i limiti qui.',
+  'memorySources.settings.maxed': 'Pieno',
+  'memorySources.settings.save': 'Salva',
+  'memorySources.settings.saving': 'Salvataggio…',
+  'memorySources.settings.saved': 'Impostazioni salvate',
+  'memorySources.settings.saveFailed': 'Impossibile salvare le impostazioni',
   'backend.aiBackend': 'Backend AI',
   'backend.cloud': 'Cloud',
   'backend.recommended': 'Consigliato',
@@ -2555,8 +2585,25 @@ const messages: TranslationMap = {
   'conversations.taskKanban.field.title': 'Titolo',
   'conversations.taskKanban.saveChanges': 'Salva modifiche',
   'conversations.taskKanban.deleteCard': 'Elimina',
+  'conversations.taskKanban.workTask': "Lavora sull'attività",
+  'conversations.taskKanban.startingTask': 'Avvio…',
   'conversations.taskKanban.updateFailed':
     "Impossibile aggiornare l'attività; le modifiche non sono state salvate.",
+  'conversations.taskKanban.sourcesButton': 'Fonti',
+  'conversations.taskKanban.source.openExternal': 'Apri attività esterna',
+  'conversations.taskKanban.source.openExternalShort': 'Apri',
+  'conversations.taskKanban.source.unknownProvider': 'Fonte sconosciuta',
+  'conversations.taskKanban.source.urgencyValue': 'Urgenza {percent}%',
+  'conversations.taskKanban.sources.desktopOnly':
+    'I controlli delle fonti attività sono disponibili nell’app desktop.',
+  'conversations.taskKanban.sources.title': 'Fonti attività',
+  'conversations.taskKanban.sources.statusEnabled': 'Polling automatico attivo',
+  'conversations.taskKanban.sources.manage': 'Gestisci fonti',
+  'conversations.taskKanban.source.title': 'Fonte',
+  'conversations.taskKanban.source.sourceId': 'ID fonte',
+  'conversations.taskKanban.source.externalId': 'ID esterno',
+  'conversations.taskKanban.source.repo': 'Repository',
+  'conversations.taskKanban.source.urgency': 'Urgenza',
   'conversations.toolTimeline.turn': 'turno',
   'conversations.toolTimeline.step': 'Passo',
   'conversations.toolTimeline.workerThread': 'thread worker',
@@ -2672,6 +2719,49 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Crea attività',
   'intelligence.tasks.composer.creating': 'Creando…',
   'intelligence.tasks.composer.createFailed': 'Impossibile creare il task',
+  'intelligence.tasks.composer.assignAgentLabel':
+    'Lascia che un agente se ne occupi automaticamente',
+  'intelligence.tasks.composer.assignAgentHint':
+    'La bacheca delle attività la prende in carico e la esegue per te. Lascia disattivato per una semplice attività personale.',
+  'intelligence.tasks.sourceList.subtitle':
+    "Attività dalle fonti in attesa di diventare lavoro dell'agente.",
+  'intelligence.tasks.sourceList.empty': 'Nessuna attività da fonti in attesa.',
+  'intelligence.tasks.sourceList.queued': 'In coda',
+  'intelligence.tasks.sourceList.workOnTask': 'Lavora sull’attività',
+  'intelligence.tasks.sourcePlan.title': 'Perfeziona attività sorgente',
+  'intelligence.tasks.sourcePlan.subtitle':
+    "Rivedi la bozza di ricerca prima di creare un'attività agente.",
+  'intelligence.tasks.sourcePlan.researchAgent': "Bozza dell'agente di ricerca",
+  'intelligence.tasks.sourcePlan.approve': 'Approva piano',
+  'intelligence.tasks.sourcePlan.creating': 'Creazione attività…',
+  'intelligence.tasks.sourcePlan.createFailed': "Impossibile creare l'attività agente",
+  'intelligence.tasks.workTaskFailed': "Impossibile avviare il lavoro sull'attività",
+  'intelligence.workTask.sourceTaskHeading': 'Attività di origine:',
+  'intelligence.workTask.repositoryLine': '- Repository (deposito): {repo}',
+  'intelligence.workTask.externalIdLine': '- ID esterno: {externalId}',
+  'intelligence.workTask.urlLine': '- Indirizzo: {url}',
+  'intelligence.workTask.closingInstruction':
+    'Inizia riformulando brevemente il piano di implementazione concreto, poi eseguilo. Mantieni i progressi visibili in questo thread e aggiorna la bacheca delle attività quando cambia lo stato del lavoro.',
+  'intelligence.refine.objectiveDefault':
+    "Trasforma l'attività di origine in un'attività dell'agente pronta per l'implementazione: {title}",
+  'intelligence.refine.sourceLine': 'Origine: {url}',
+  'intelligence.refine.sourceIntake': 'Origine: acquisizione delle fonti delle attività',
+  'intelligence.refine.repositoryLine': 'Repository (deposito): {repo}',
+  'intelligence.refine.externalTaskLine': 'Attività esterna: {externalId}',
+  'intelligence.refine.planStep1':
+    "Leggi l'attività di origine collegata e conferma il comportamento esatto richiesto.",
+  'intelligence.refine.planStep2':
+    'Esamina i percorsi di codice rilevanti e individua il confine di implementazione più piccolo.',
+  'intelligence.refine.planStep3':
+    "Implementa la modifica con test mirati sul comportamento visibile all'utente.",
+  'intelligence.refine.planStep4':
+    'Esegui una validazione mirata e annota eventuali rischi residui o lavoro di follow-up.',
+  'intelligence.refine.acceptance1':
+    "I requisiti dell'attività di origine sono rappresentati nell'implementazione finale.",
+  'intelligence.refine.acceptance2':
+    'I test unitari o di integrazione pertinenti coprono il comportamento modificato.',
+  'intelligence.refine.acceptance3':
+    'I risultati della validazione e gli eventuali rischi irrisolti vengono registrati al completamento.',
   'notifications.card.dismiss': 'Ignora notifica',
   'notifications.card.importanceTitle': 'Importanza: {pct}%',
   'notifications.center.empty': 'Nessuna notifica',
@@ -3719,10 +3809,27 @@ const messages: TranslationMap = {
   'settings.agentAccess.readWriteAccess': 'lettura + scrittura',
   'settings.agentAccess.actionSandboxDesc':
     'Directory di lavoro predefinita per gli strumenti shell, file e git.',
+  'settings.agentAccess.actionDir.edit': 'Modifica',
+  'settings.agentAccess.actionDir.save': 'Salva',
+  'settings.agentAccess.actionDir.cancel': 'Annulla',
+  'settings.agentAccess.actionDir.placeholder': 'Percorso assoluto, es. /Users/you/Projects',
+  'settings.agentAccess.actionDir.envLocked':
+    'Impostato da OPENHUMAN_ACTION_DIR. Modifica la variabile d’ambiente per sostituirlo.',
+  'settings.agentAccess.actionDir.saved': 'Directory delle azioni aggiornata.',
   'settings.agentAccess.internalState': 'Stato interno',
   'settings.agentAccess.agentBlocked': "bloccato per l'agente",
   'settings.agentAccess.internalStateDesc':
     "Database memoria, sessioni, token e altri dati fondamentali. Non accessibile dagli strumenti dell'agente.",
+  'settings.agentAccess.actionDirInputLabel': 'Percorso della sandbox delle azioni',
+  'settings.agentAccess.actionDirSave': 'Salva',
+  'settings.agentAccess.actionDirSaving': 'Salvataggio…',
+  'settings.agentAccess.actionDirSaved': 'Sandbox delle azioni aggiornata.',
+  'settings.agentAccess.actionDirEmptyError': 'Il percorso non può essere vuoto.',
+  'settings.agentAccess.actionDirSaveError': 'Impossibile aggiornare la sandbox delle azioni.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    "OPENHUMAN_ACTION_DIR è impostata — rimuovi la variabile d'ambiente per modificarla dalle Impostazioni.",
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    "Sovrascritta da OPENHUMAN_ACTION_DIR — rimuovi la variabile d'ambiente per gestirla dalle Impostazioni.",
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4207,6 +4314,8 @@ const messages: TranslationMap = {
   'chat.agentProfile.defaultAgentLabel': 'Orchestrator',
   'chat.agentProfile.exists': 'Il profilo agente "{name}" esiste già.',
   'chat.agentProfile.label': 'Profilo agente',
+  'chat.agentProfile.quick': 'Veloce',
+  'chat.agentProfile.reasoning': 'Ragionamento',
   'chat.agentProfile.namePlaceholder': 'Nome profilo',
   'chat.agentProfile.promptStylePlaceholder': 'Stile prompt',
   'chat.agentProfile.allowedToolsPlaceholder': 'Strumenti consentiti',
@@ -4343,6 +4452,10 @@ const messages: TranslationMap = {
   'settings.taskSources.github.repo': 'Repository (proprietario/nome, facoltativo)',
   'settings.taskSources.github.labels': 'Etichette (separate da virgola)',
   'settings.taskSources.notion.database': 'ID del database (board)',
+  'settings.taskSources.notion.browseDatabases': 'Sfoglia i database',
+  'settings.taskSources.notion.loadingDatabases': 'Caricamento dei database…',
+  'settings.taskSources.notion.selectDatabase': 'Seleziona un database…',
+  'settings.taskSources.notion.noDatabases': 'Nessun database trovato per questa connessione.',
   'settings.taskSources.linear.team': 'ID del team (opzionale)',
   'settings.taskSources.clickup.team': 'ID dello spazio di lavoro (team) (opzionale)',
   'settings.taskSources.assignedToMe': 'Solo gli articoli assegnati a me',
@@ -4782,6 +4895,25 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Finestra di memoria',
   'memoryData.windowUpdated': 'Finestra di memoria aggiornata',
   'memoryData.windowUpdatedMsg': 'Impostata su {window}.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Porta di approvazione disattivata',
+  'security.approvalGateDisabled.body':
+    'OPENHUMAN_APPROVAL_GATE=0 è impostato nel tuo ambiente. Gli strumenti con effetti esterni verranno eseguiti senza chiedere conferma.',
+  'security.approvalGateOverrideIgnored.title': 'Override bloccato',
+  'security.approvalGateOverrideIgnored.body':
+    "È stato rilevato un override OPENHUMAN_APPROVAL_GATE=0 ma è stato ignorato: l'app desktop mantiene sempre attiva la porta di approvazione.",
+
+  // Run queue
+  'runQueue.mode.interrupt': 'Interrompi',
+  'runQueue.mode.steer': 'Guida',
+  'runQueue.mode.followup': 'Seguito',
+  'runQueue.mode.collect': 'Aggiungi contesto',
+  'runQueue.queued': 'Messaggio in coda',
+  'runQueue.steerHint': 'Guida il turno corrente',
+  'runQueue.followupHint': 'Metti in coda come seguito',
+  'runQueue.collectHint': 'Aggiungi come contesto extra',
+  'runQueue.status': '{total} in coda',
+  'runQueue.cleared': 'Coda svuotata',
 };
 
 export default messages;

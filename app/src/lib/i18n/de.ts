@@ -169,6 +169,7 @@ const messages: TranslationMap = {
   'clearData.failedLogout': 'Abmelden fehlgeschlagen. Bitte versuche es erneut.',
   'clearData.failedPersist':
     'Der persistente App-Status konnte nicht gelöscht werden. Bitte versuche es erneut.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Willkommen bei OpenHuman',
   'welcome.subtitle':
     'Deine persönliche KI-Superintelligenz. Privat, einfach und äußerst leistungsstark.',
@@ -210,6 +211,10 @@ const messages: TranslationMap = {
   'home.usageExhaustedBody':
     'Dein enthaltenes Nutzungskontingent ist vorerst aufgebraucht. Starte ein Abo, um mehr laufende Kapazität freizuschalten.',
   'home.usageExhaustedCta': 'Abo starten',
+  'openrouterFree.cta': 'Kostenlose OpenRouter-Modelle verwenden',
+  'openrouterFree.saving': 'OpenRouter wird verbunden...',
+  'openrouterFree.error':
+    'Der Wechsel zu kostenlosen OpenRouter-Modellen ist fehlgeschlagen. Prüfe deine OpenRouter-Anmeldung und versuche es erneut.',
   'home.routinesCard': 'Deine Routinen',
   'home.routinesActive': '{count} aktiv',
   'routines.title': 'Ihre Routinen',
@@ -1756,16 +1761,13 @@ const messages: TranslationMap = {
   'common.enable': 'Aktivieren',
   'chat.safetyTimeout':
     'Keine Antwort vom Agenten nach 2 Minuten. Versuche es erneut oder prüfe deine Verbindung.',
-  'chat.filter.all': 'Alle',
-  'chat.filter.work': 'Arbeit',
-  'chat.filter.briefing': 'Briefing',
-  'chat.filter.notification': 'Benachrichtigung',
-  'chat.filter.workers': 'Arbeiter',
+  'chat.filter.general': 'Allgemein',
+  'chat.filter.subconscious': 'Unterbewusstsein',
+  'chat.filter.tasks': 'Aufgaben',
   'chat.selectThread': 'Wähle einen Thread aus',
   'chat.threads': 'Themen',
   'chat.noThreads': 'Noch keine Threads',
   'chat.noLabelThreads': 'Keine „{label}“-Threads',
-  'chat.noWorkerThreads': 'Noch keine Arbeitsthreads',
   'chat.deleteThread': 'Thread löschen',
   'chat.deleteThreadConfirm': 'Bist du sicher, dass du „{title}“ löschen möchtest?',
   'chat.untitledThread': 'Thread ohne Titel',
@@ -2017,6 +2019,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Verbindungen werden geladen...',
   'memorySources.noConnections':
     'Keine aktiven Composio-Verbindungen gefunden. Verbinden Sie zuerst eine Integration.',
+  'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wählen Sie eine Verbindung',
   'memorySources.selectConnection': 'Wählen Sie eine Verbindung aus.',
   'memorySources.composioListFailed': 'Fehler beim Laden der Composio-Verbindungen.',
@@ -2069,6 +2072,32 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Baum erstellt',
   'memorySources.build.failedTitle': 'Erstellung fehlgeschlagen',
   'memorySources.build.sealsMessage': 'Versiegelung(en) abgeschlossen',
+  'memorySources.allIn.button': 'Alles aktivieren',
+  'memorySources.allIn.title': 'Alles aktivieren?',
+  'memorySources.allIn.message':
+    'Dadurch werden alle Speicherquellen aktiviert und alle Synchronisierungslimits entfernt. Es erstellt den reichhaltigsten Speichergraphen, kann aber mehr Credits verbrauchen.',
+  'memorySources.allIn.confirm': 'Ja',
+  'memorySources.allIn.cancel': 'Nein',
+  'memorySources.allIn.success': 'Alle Quellen ohne Limits aktiviert. Synchronisierung gestartet.',
+  'memorySources.allIn.failed': 'Konnte „Alles aktivieren" nicht anwenden. Bitte erneut versuchen.',
+  'memorySources.settings.button': 'Einstellungen',
+  'memorySources.settings.title': 'Synchronisierungseinstellungen',
+  'memorySources.settings.maxPrs': 'Maximale Pull-Requests',
+  'memorySources.settings.maxIssues': 'Maximale Issues',
+  'memorySources.settings.maxCommits': 'Maximale Commits',
+  'memorySources.settings.maxItems': 'Maximale Elemente',
+  'memorySources.settings.sinceDays': 'Rückblick (Tage)',
+  'memorySources.settings.syncDepthDays': 'Synchronisierungstiefe (Tage)',
+  'memorySources.settings.maxTokens': 'Maximale Tokens pro Synchronisierung',
+  'memorySources.settings.maxCost': 'Maximale Kosten pro Synchronisierung (USD)',
+  'memorySources.settings.unlimited': 'Unbegrenzt',
+  'memorySources.settings.unlimitedTooltip':
+    'Du hast dich entschieden, das Maximum für {toolkit} zu synchronisieren. Du kannst die Limits hier ändern.',
+  'memorySources.settings.maxed': 'Voll',
+  'memorySources.settings.save': 'Speichern',
+  'memorySources.settings.saving': 'Speichern…',
+  'memorySources.settings.saved': 'Einstellungen gespeichert',
+  'memorySources.settings.saveFailed': 'Einstellungen konnten nicht gespeichert werden',
   'backend.aiBackend': 'KI-Backend',
   'backend.cloud': 'Wolke',
   'backend.recommended': 'Empfohlen',
@@ -2582,8 +2611,25 @@ const messages: TranslationMap = {
   'conversations.taskKanban.field.title': 'Titel',
   'conversations.taskKanban.saveChanges': 'Änderungen speichern',
   'conversations.taskKanban.deleteCard': 'Löschen',
+  'conversations.taskKanban.workTask': 'Aufgabe bearbeiten',
+  'conversations.taskKanban.startingTask': 'Startet…',
   'conversations.taskKanban.updateFailed':
     'Aufgabe konnte nicht aktualisiert werden; Änderungen wurden nicht gespeichert.',
+  'conversations.taskKanban.sourcesButton': 'Quellen',
+  'conversations.taskKanban.source.openExternal': 'Externe Aufgabe öffnen',
+  'conversations.taskKanban.source.openExternalShort': 'Öffnen',
+  'conversations.taskKanban.source.unknownProvider': 'Unbekannte Quelle',
+  'conversations.taskKanban.source.urgencyValue': 'Dringlichkeit {percent}%',
+  'conversations.taskKanban.sources.desktopOnly':
+    'Aufgabenquellen-Steuerungen sind in der Desktop-App verfügbar.',
+  'conversations.taskKanban.sources.title': 'Aufgabenquellen',
+  'conversations.taskKanban.sources.statusEnabled': 'Automatische Abfrage aktiviert',
+  'conversations.taskKanban.sources.manage': 'Quellen verwalten',
+  'conversations.taskKanban.source.title': 'Quelle',
+  'conversations.taskKanban.source.sourceId': 'Quellen-ID',
+  'conversations.taskKanban.source.externalId': 'Externe ID',
+  'conversations.taskKanban.source.repo': 'Repository',
+  'conversations.taskKanban.source.urgency': 'Dringlichkeit',
   'conversations.toolTimeline.turn': 'drehen',
   'conversations.toolTimeline.step': 'Schritt',
   'conversations.toolTimeline.workerThread': 'Worker-Thread',
@@ -2698,6 +2744,48 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Aufgabe erstellen',
   'intelligence.tasks.composer.creating': 'Erstellen…',
   'intelligence.tasks.composer.createFailed': 'Die Aufgabe konnte nicht erstellt werden',
+  'intelligence.tasks.composer.assignAgentLabel': 'Einen Agenten automatisch daran arbeiten lassen',
+  'intelligence.tasks.composer.assignAgentHint':
+    'Das Aufgabenboard übernimmt sie und erledigt sie für dich. Für eine einfache persönliche Aufgabe ausgeschaltet lassen.',
+  'intelligence.tasks.sourceList.subtitle':
+    'Quellaufgaben, die in Agentenarbeit umgewandelt werden sollen.',
+  'intelligence.tasks.sourceList.empty': 'Keine Quellaufgaben in der Warteschlange.',
+  'intelligence.tasks.sourceList.queued': 'Eingereiht',
+  'intelligence.tasks.sourceList.workOnTask': 'Aufgabe bearbeiten',
+  'intelligence.tasks.sourcePlan.title': 'Quellaufgabe verfeinern',
+  'intelligence.tasks.sourcePlan.subtitle':
+    'Prüfen Sie den Rechercheentwurf, bevor eine Agentenaufgabe erstellt wird.',
+  'intelligence.tasks.sourcePlan.researchAgent': 'Entwurf des Recherche-Agenten',
+  'intelligence.tasks.sourcePlan.approve': 'Plan genehmigen',
+  'intelligence.tasks.sourcePlan.creating': 'Aufgabe wird erstellt…',
+  'intelligence.tasks.sourcePlan.createFailed': 'Die Agentenaufgabe konnte nicht erstellt werden',
+  'intelligence.tasks.workTaskFailed': 'Die Arbeit an der Aufgabe konnte nicht gestartet werden',
+  'intelligence.workTask.sourceTaskHeading': 'Quellaufgabe:',
+  'intelligence.workTask.repositoryLine': '- Repository (Repo): {repo}',
+  'intelligence.workTask.externalIdLine': '- Externe ID: {externalId}',
+  'intelligence.workTask.urlLine': '- Adresse: {url}',
+  'intelligence.workTask.closingInstruction':
+    'Beginne damit, den konkreten Umsetzungsplan kurz zu wiederholen, und führe ihn dann aus. Halte den Fortschritt in diesem Thread sichtbar und aktualisiere das Aufgabenboard, wenn sich der Arbeitsstand ändert.',
+  'intelligence.refine.objectiveDefault':
+    'Verwandle die Quellaufgabe in eine umsetzungsbereite Agentenaufgabe: {title}',
+  'intelligence.refine.sourceLine': 'Quelle: {url}',
+  'intelligence.refine.sourceIntake': 'Quelle: Aufgabenquellen-Eingang',
+  'intelligence.refine.repositoryLine': 'Repository (Repo): {repo}',
+  'intelligence.refine.externalTaskLine': 'Externe Aufgabe: {externalId}',
+  'intelligence.refine.planStep1':
+    'Lies die verknüpfte Quellaufgabe und bestätige das genau gewünschte Verhalten.',
+  'intelligence.refine.planStep2':
+    'Untersuche die relevanten Codepfade und ermittle die kleinste Umsetzungsgrenze.',
+  'intelligence.refine.planStep3':
+    'Setze die Änderung mit gezielten Tests rund um das nutzersichtbare Verhalten um.',
+  'intelligence.refine.planStep4':
+    'Führe gezielte Validierung durch und halte verbleibende Risiken oder Folgearbeiten fest.',
+  'intelligence.refine.acceptance1':
+    'Die Anforderungen der Quellaufgabe sind in der finalen Umsetzung abgebildet.',
+  'intelligence.refine.acceptance2':
+    'Relevante Unit- oder Integrationstests decken das geänderte Verhalten ab.',
+  'intelligence.refine.acceptance3':
+    'Validierungsergebnisse und ungelöste Risiken werden bei Abschluss festgehalten.',
   'notifications.card.dismiss': 'Benachrichtigung verwerfen',
   'notifications.card.importanceTitle': 'Wichtigkeit: {pct}%',
   'notifications.center.empty': 'Noch keine Benachrichtigungen',
@@ -3755,10 +3843,27 @@ const messages: TranslationMap = {
   'settings.agentAccess.readWriteAccess': 'Lesen + Schreiben',
   'settings.agentAccess.actionSandboxDesc':
     'Standard-Arbeitsverzeichnis für Shell-, Datei- und Git-Tools.',
+  'settings.agentAccess.actionDir.edit': 'Bearbeiten',
+  'settings.agentAccess.actionDir.save': 'Speichern',
+  'settings.agentAccess.actionDir.cancel': 'Abbrechen',
+  'settings.agentAccess.actionDir.placeholder': 'Absoluter Pfad, z. B. /Users/you/Projects',
+  'settings.agentAccess.actionDir.envLocked':
+    'Durch OPENHUMAN_ACTION_DIR festgelegt. Ändere die Umgebungsvariable zum Überschreiben.',
+  'settings.agentAccess.actionDir.saved': 'Aktionsverzeichnis aktualisiert.',
   'settings.agentAccess.internalState': 'Interner Zustand',
   'settings.agentAccess.agentBlocked': 'Agent-gesperrt',
   'settings.agentAccess.internalStateDesc':
     'Speicherdatenbanken, Sitzungen, Token und andere Kerndaten. Für Agent-Tools nicht zugänglich.',
+  'settings.agentAccess.actionDirInputLabel': 'Pfad der Aktions-Sandbox',
+  'settings.agentAccess.actionDirSave': 'Speichern',
+  'settings.agentAccess.actionDirSaving': 'Wird gespeichert…',
+  'settings.agentAccess.actionDirSaved': 'Aktions-Sandbox aktualisiert.',
+  'settings.agentAccess.actionDirEmptyError': 'Pfad darf nicht leer sein.',
+  'settings.agentAccess.actionDirSaveError': 'Aktions-Sandbox konnte nicht aktualisiert werden.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR ist gesetzt — entferne die Umgebungsvariable, um dies in den Einstellungen zu bearbeiten.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Durch OPENHUMAN_ACTION_DIR überschrieben — entferne die Umgebungsvariable, um dies in den Einstellungen zu verwalten.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4251,6 +4356,8 @@ const messages: TranslationMap = {
   'chat.agentProfile.defaultAgentLabel': 'Orchestrator',
   'chat.agentProfile.exists': 'Agentenprofil „{name}“ ist bereits vorhanden.',
   'chat.agentProfile.label': 'Agentenprofil',
+  'chat.agentProfile.quick': 'Schnell',
+  'chat.agentProfile.reasoning': 'Denkmodus',
   'chat.agentProfile.namePlaceholder': 'Profilname',
   'chat.agentProfile.promptStylePlaceholder': 'Eingabeaufforderungsstil',
   'chat.agentProfile.allowedToolsPlaceholder': 'Zulässige Tools',
@@ -4386,6 +4493,10 @@ const messages: TranslationMap = {
   'settings.taskSources.github.repo': 'Repository (Inhaber/Name, optional)',
   'settings.taskSources.github.labels': 'Beschriftungen (durch Kommas getrennt)',
   'settings.taskSources.notion.database': 'Datenbank-(Board-)ID',
+  'settings.taskSources.notion.browseDatabases': 'Datenbanken durchsuchen',
+  'settings.taskSources.notion.loadingDatabases': 'Datenbanken werden geladen…',
+  'settings.taskSources.notion.selectDatabase': 'Datenbank auswählen…',
+  'settings.taskSources.notion.noDatabases': 'Keine Datenbanken für diese Verbindung gefunden.',
   'settings.taskSources.linear.team': 'Team-ID (optional)',
   'settings.taskSources.clickup.team': 'Arbeitsbereichs-(Team-)ID (optional)',
   'settings.taskSources.assignedToMe': 'Nur mir zugewiesene Artikel',
@@ -4826,6 +4937,25 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Speicherfenster',
   'memoryData.windowUpdated': 'Speicherfenster aktualisiert',
   'memoryData.windowUpdatedMsg': 'Auf {window} gesetzt.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Genehmigungstor deaktiviert',
+  'security.approvalGateDisabled.body':
+    'OPENHUMAN_APPROVAL_GATE=0 ist in deiner Umgebung gesetzt. Tools mit externer Wirkung werden ohne Bestätigungsabfrage ausgeführt.',
+  'security.approvalGateOverrideIgnored.title': 'Override blockiert',
+  'security.approvalGateOverrideIgnored.body':
+    'Ein OPENHUMAN_APPROVAL_GATE=0-Override wurde erkannt, aber ignoriert: Die Desktop-App lässt das Genehmigungstor immer eingeschaltet.',
+
+  // Run queue
+  'runQueue.mode.interrupt': 'Unterbrechen',
+  'runQueue.mode.steer': 'Steuern',
+  'runQueue.mode.followup': 'Nachfassen',
+  'runQueue.mode.collect': 'Kontext hinzufügen',
+  'runQueue.queued': 'Nachricht in Warteschlange',
+  'runQueue.steerHint': 'Aktuellen Durchlauf steuern',
+  'runQueue.followupHint': 'Als Nachfassen einreihen',
+  'runQueue.collectHint': 'Als zusätzlichen Kontext hinzufügen',
+  'runQueue.status': '{total} in der Warteschlange',
+  'runQueue.cleared': 'Warteschlange geleert',
 };
 
 export default messages;

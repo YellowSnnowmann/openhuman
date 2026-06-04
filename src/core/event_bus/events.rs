@@ -115,6 +115,32 @@ pub enum DomainEvent {
         reason: Option<String>,
     },
 
+    // ── Run Queue ──────────────────────────────────────────────────────
+    /// A message was queued into the active-run queue instead of interrupting.
+    RunQueueMessageQueued {
+        thread_id: String,
+        mode: String,
+        queue_depth: usize,
+    },
+    /// A queued steer/collect message was delivered to the engine at an
+    /// iteration boundary.
+    RunQueueMessageDelivered {
+        thread_id: String,
+        mode: String,
+        iteration: u32,
+    },
+    /// A queued followup message was dispatched as a fresh turn after the
+    /// current turn completed.
+    RunQueueFollowupDispatched {
+        thread_id: String,
+        followup_count: usize,
+    },
+    /// The active turn was interrupted by a new message (default behavior).
+    RunQueueInterrupted {
+        thread_id: String,
+        cancelled_request_id: String,
+    },
+
     // ── Memory ──────────────────────────────────────────────────────────
     /// The configured embedding provider is unreachable or the requested model
     /// is not installed, so the memory pipeline fell back to an alternative.
@@ -406,6 +432,40 @@ pub enum DomainEvent {
         /// producer (e.g. `PresentationError::truncate_stderr`).
         error: String,
         thread_id: Option<String>,
+        client_id: Option<String>,
+    },
+    /// An artifact record has been **created** (`ArtifactStatus::Pending`)
+    /// but no bytes are on disk yet — the producing tool has only just
+    /// reserved the row. Published by
+    /// [`crate::openhuman::artifacts::store::create_artifact`].
+    /// Bridged to the web channel as an `artifact_pending` socket event
+    /// so the frontend can render an in-progress / "Generating…" card the
+    /// moment the tool dispatches, instead of waiting until the file
+    /// arrives via [`Self::ArtifactReady`]. The pending card is replaced
+    /// in place when the matching `ArtifactReady` / `ArtifactFailed`
+    /// event with the same `artifact_id` arrives. Sub-task #3162 of #1535.
+    ArtifactPending {
+        /// UUID of the freshly-created artifact record.
+        artifact_id: String,
+        /// Lowercase variant of `ArtifactKind` (`presentation`,
+        /// `document`, `image`, `other`).
+        kind: String,
+        /// Human-readable title (also the on-disk filename stem).
+        title: String,
+        /// Absolute workspace root the artifact belongs to — see
+        /// [`Self::ArtifactReady::workspace_dir`] for rationale.
+        workspace_dir: String,
+        /// Relative path under `<workspace>/artifacts/` where the file
+        /// *will* land. The frontend uses it to render a stable card key
+        /// so subsequent `ArtifactReady` can swap the same surface in
+        /// place without flicker.
+        path: String,
+        /// Chat thread the artifact belongs to, when the producing turn
+        /// carried an `APPROVAL_CHAT_CONTEXT`. `None` for CLI / cron /
+        /// sub-agent paths — no client to fan out to.
+        thread_id: Option<String>,
+        /// Socket.IO client id (room) to surface the card to, when known.
+        /// `None` for non-chat callers.
         client_id: Option<String>,
     },
 
@@ -730,6 +790,30 @@ pub enum DomainEvent {
         reason: String,
     },
 
+    /// An `OPENHUMAN_APPROVAL_GATE=0` env override was observed but
+    /// IGNORED because the host is the Tauri desktop shell. The gate is
+    /// always installed under the desktop host; this event lets the UI
+    /// surface a one-shot info banner so the user sees the override was
+    /// rejected. Audit-only; carries no payload content.
+    ApprovalGateOverrideIgnored {
+        /// Host tag (currently always `"tauri-shell"` — added for forward
+        /// compatibility when more desktop hosts land).
+        host: String,
+    },
+    /// The approval gate was NOT installed because an
+    /// `OPENHUMAN_APPROVAL_GATE=0` env override was honored on a
+    /// standalone host (CLI / Docker). Surfaces the elevated-privilege
+    /// state so any connected dashboard can flag it; the desktop UI
+    /// banner subscribes to this variant.
+    ApprovalGateDisabled {
+        /// Host tag (`"cli"` or `"docker"`).
+        host: String,
+        /// Short reason code so downstream consumers can switch on the
+        /// cause without parsing free-text logs. Currently always
+        /// `"env-override"`.
+        reason: String,
+    },
+
     // ── System lifecycle ────────────────────────────────────────────────
     /// A system component started up.
     SystemStartup { component: String },
@@ -745,6 +829,11 @@ pub enum DomainEvent {
     /// changed at runtime. Live sessions should rebuild their `SecurityPolicy`
     /// from the persisted config before the next turn.
     AutonomyConfigChanged,
+    /// The agent's filesystem roots (currently the `action_dir` sandbox) were
+    /// changed at runtime via `config.update_agent_paths`. The live
+    /// `SecurityPolicy` is hot-swapped in-band; this broadcast lets other
+    /// listeners observe the change.
+    AgentPathsChanged,
     /// A component's health status changed.
     HealthChanged {
         component: String,
@@ -868,7 +957,11 @@ impl DomainEvent {
             | Self::AgentOrchestrationSpawned { .. }
             | Self::AgentOrchestrationCompleted { .. }
             | Self::AgentOrchestrationFailed { .. }
-            | Self::AgentOrchestrationClosed { .. } => "agent",
+            | Self::AgentOrchestrationClosed { .. }
+            | Self::RunQueueMessageQueued { .. }
+            | Self::RunQueueMessageDelivered { .. }
+            | Self::RunQueueFollowupDispatched { .. }
+            | Self::RunQueueInterrupted { .. } => "agent",
 
             Self::EmbeddingModelUnhealthy { .. }
             | Self::MemoryStored { .. }
@@ -941,6 +1034,7 @@ impl DomainEvent {
             | Self::SystemRestartRequested { .. }
             | Self::SystemShutdownRequested { .. }
             | Self::AutonomyConfigChanged
+            | Self::AgentPathsChanged
             | Self::HealthChanged { .. }
             | Self::HealthRestarted { .. } => "system",
 
@@ -954,9 +1048,14 @@ impl DomainEvent {
 
             Self::TaskPlanAwaitingApproval { .. } | Self::TaskRunReclaimed { .. } => "agent",
 
-            Self::ApprovalRequested { .. } | Self::ApprovalDecided { .. } => "approval",
+            Self::ApprovalRequested { .. }
+            | Self::ApprovalDecided { .. }
+            | Self::ApprovalGateOverrideIgnored { .. }
+            | Self::ApprovalGateDisabled { .. } => "approval",
 
-            Self::ArtifactReady { .. } | Self::ArtifactFailed { .. } => "artifact",
+            Self::ArtifactReady { .. }
+            | Self::ArtifactFailed { .. }
+            | Self::ArtifactPending { .. } => "artifact",
 
             Self::McpServerInstalled { .. }
             | Self::McpServerConnected { .. }
@@ -988,6 +1087,10 @@ impl DomainEvent {
             Self::AgentOrchestrationCompleted { .. } => "AgentOrchestrationCompleted",
             Self::AgentOrchestrationFailed { .. } => "AgentOrchestrationFailed",
             Self::AgentOrchestrationClosed { .. } => "AgentOrchestrationClosed",
+            Self::RunQueueMessageQueued { .. } => "RunQueueMessageQueued",
+            Self::RunQueueMessageDelivered { .. } => "RunQueueMessageDelivered",
+            Self::RunQueueFollowupDispatched { .. } => "RunQueueFollowupDispatched",
+            Self::RunQueueInterrupted { .. } => "RunQueueInterrupted",
             Self::MemoryStored { .. } => "MemoryStored",
             Self::MemoryRecalled { .. } => "MemoryRecalled",
             Self::MemorySyncRequested { .. } => "MemorySyncRequested",
@@ -1047,6 +1150,7 @@ impl DomainEvent {
             Self::SystemRestartRequested { .. } => "SystemRestartRequested",
             Self::SystemShutdownRequested { .. } => "SystemShutdownRequested",
             Self::AutonomyConfigChanged => "AutonomyConfigChanged",
+            Self::AgentPathsChanged => "AgentPathsChanged",
             Self::HealthChanged { .. } => "HealthChanged",
             Self::HealthRestarted { .. } => "HealthRestarted",
             Self::KeyringConsentRequired => "KeyringConsentRequired",
@@ -1054,8 +1158,11 @@ impl DomainEvent {
             Self::SessionExpired { .. } => "SessionExpired",
             Self::ApprovalRequested { .. } => "ApprovalRequested",
             Self::ApprovalDecided { .. } => "ApprovalDecided",
+            Self::ApprovalGateOverrideIgnored { .. } => "ApprovalGateOverrideIgnored",
+            Self::ApprovalGateDisabled { .. } => "ApprovalGateDisabled",
             Self::ArtifactReady { .. } => "ArtifactReady",
             Self::ArtifactFailed { .. } => "ArtifactFailed",
+            Self::ArtifactPending { .. } => "ArtifactPending",
             Self::McpServerInstalled { .. } => "McpServerInstalled",
             Self::McpServerConnected { .. } => "McpServerConnected",
             Self::McpServerDisconnected { .. } => "McpServerDisconnected",
@@ -1098,6 +1205,10 @@ impl DomainEvent {
             | Self::ChannelDisconnected { channel, .. } => Some(channel.as_str()),
             Self::ToolExecutionStarted { tool_name, .. }
             | Self::ToolExecutionCompleted { tool_name, .. } => Some(tool_name.as_str()),
+            Self::RunQueueMessageQueued { thread_id, .. }
+            | Self::RunQueueMessageDelivered { thread_id, .. }
+            | Self::RunQueueFollowupDispatched { thread_id, .. }
+            | Self::RunQueueInterrupted { thread_id, .. } => Some(thread_id.as_str()),
             _ => None,
         }
     }

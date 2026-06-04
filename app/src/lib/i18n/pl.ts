@@ -165,6 +165,7 @@ const messages: TranslationMap = {
   'clearData.failedLogout': 'Nie udało się wylogować. Spróbuj ponownie.',
   'clearData.failedPersist':
     'Nie udało się wyczyścić utrwalonego stanu aplikacji. Spróbuj ponownie.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Witaj w OpenHuman',
   'welcome.subtitle': 'Twoja osobista superinteligencja AI. Prywatna, prosta i niezwykle potężna.',
   'welcome.connectPrompt': 'Skonfiguruj URL RPC (zaawansowane)',
@@ -205,6 +206,10 @@ const messages: TranslationMap = {
   'home.usageExhaustedBody':
     'Twój limit użycia na ten moment został wyczerpany. Wykup subskrypcję, aby odblokować większą ciągłą pojemność.',
   'home.usageExhaustedCta': 'Wykup subskrypcję',
+  'openrouterFree.cta': 'Użyj darmowych modeli OpenRouter',
+  'openrouterFree.saving': 'Łączenie z OpenRouter...',
+  'openrouterFree.error':
+    'Nie udało się przełączyć na darmowe modele OpenRouter. Sprawdź logowanie do OpenRouter i spróbuj ponownie.',
   'home.routinesCard': 'Twoje Rutyny',
   'home.routinesActive': '{count} aktywnych',
   'routines.title': 'Twoje rutyny',
@@ -1733,16 +1738,13 @@ const messages: TranslationMap = {
   'common.enable': 'Włącz',
   'chat.safetyTimeout':
     'Brak odpowiedzi agenta po 2 minutach. Spróbuj ponownie lub sprawdź połączenie.',
-  'chat.filter.all': 'Wszystkie',
-  'chat.filter.work': 'Praca',
-  'chat.filter.briefing': 'Briefing',
-  'chat.filter.notification': 'Powiadomienia',
-  'chat.filter.workers': 'Workery',
+  'chat.filter.general': 'Ogólne',
+  'chat.filter.subconscious': 'Podświadomość',
+  'chat.filter.tasks': 'Zadania',
   'chat.selectThread': 'Wybierz wątek',
   'chat.threads': 'Wątki',
   'chat.noThreads': 'Brak wątków',
   'chat.noLabelThreads': 'Brak wątków „{label}”',
-  'chat.noWorkerThreads': 'Brak wątków workerów',
   'chat.deleteThread': 'Usuń wątek',
   'chat.deleteThreadConfirm': 'Czy na pewno chcesz usunąć „{title}”?',
   'chat.untitledThread': 'Wątek bez tytułu',
@@ -1988,6 +1990,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Wczytywanie połączeń…',
   'memorySources.noConnections':
     'Nie znaleziono aktywnych połączeń Composio. Najpierw połącz integrację.',
+  'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wybierz połączenie',
   'memorySources.selectConnection': '— Wybierz połączenie —',
   'memorySources.composioListFailed': 'Nie udało się wczytać połączeń Composio.',
@@ -2040,6 +2043,33 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Drzewo zbudowane',
   'memorySources.build.failedTitle': 'Budowanie nie powiodło się',
   'memorySources.build.sealsMessage': 'pieczętowanie zakończone',
+  'memorySources.allIn.button': 'Włącz wszystko',
+  'memorySources.allIn.title': 'Włączyć wszystko?',
+  'memorySources.allIn.message':
+    'Spowoduje to włączenie wszystkich źródeł pamięci i usunięcie wszystkich limitów synchronizacji. Buduje najbogatszy wykres pamięci, ale może zużywać więcej kredytów.',
+  'memorySources.allIn.confirm': 'Tak',
+  'memorySources.allIn.cancel': 'Nie',
+  'memorySources.allIn.success':
+    'Wszystkie źródła włączone bez limitów. Synchronizacja uruchomiona.',
+  'memorySources.allIn.failed': 'Nie udało się włączyć wszystkiego. Spróbuj ponownie.',
+  'memorySources.settings.button': 'Ustawienia',
+  'memorySources.settings.title': 'Ustawienia synchronizacji',
+  'memorySources.settings.maxPrs': 'Maksymalna liczba pull requestów',
+  'memorySources.settings.maxIssues': 'Maksymalna liczba zgłoszeń',
+  'memorySources.settings.maxCommits': 'Maksymalna liczba commitów',
+  'memorySources.settings.maxItems': 'Maksymalna liczba elementów',
+  'memorySources.settings.sinceDays': 'Okres wsteczny (dni)',
+  'memorySources.settings.syncDepthDays': 'Głębokość synchronizacji (dni)',
+  'memorySources.settings.maxTokens': 'Maksymalna liczba tokenów na synchronizację',
+  'memorySources.settings.maxCost': 'Maksymalny koszt na synchronizację (USD)',
+  'memorySources.settings.unlimited': 'Bez limitu',
+  'memorySources.settings.unlimitedTooltip':
+    'Wybrano synchronizację maksimum dla {toolkit}. Limity możesz zmienić tutaj.',
+  'memorySources.settings.maxed': 'Pełny',
+  'memorySources.settings.save': 'Zapisz',
+  'memorySources.settings.saving': 'Zapisywanie…',
+  'memorySources.settings.saved': 'Ustawienia zapisane',
+  'memorySources.settings.saveFailed': 'Nie udało się zapisać ustawień',
   'backend.aiBackend': 'Backend AI',
   'backend.cloud': 'Chmura',
   'backend.recommended': 'Zalecane',
@@ -2550,8 +2580,25 @@ const messages: TranslationMap = {
   'conversations.taskKanban.field.title': 'Tytuł',
   'conversations.taskKanban.saveChanges': 'Zapisz zmiany',
   'conversations.taskKanban.deleteCard': 'Usuń',
+  'conversations.taskKanban.workTask': 'Pracuj nad zadaniem',
+  'conversations.taskKanban.startingTask': 'Uruchamianie…',
   'conversations.taskKanban.updateFailed':
     'Nie udało się zaktualizować zadania; zmian nie zapisano.',
+  'conversations.taskKanban.sourcesButton': 'Źródła',
+  'conversations.taskKanban.source.openExternal': 'Otwórz zadanie zewnętrzne',
+  'conversations.taskKanban.source.openExternalShort': 'Otwórz',
+  'conversations.taskKanban.source.unknownProvider': 'Nieznane źródło',
+  'conversations.taskKanban.source.urgencyValue': 'Pilność {percent}%',
+  'conversations.taskKanban.sources.desktopOnly':
+    'Kontrolki źródeł zadań są dostępne w aplikacji desktopowej.',
+  'conversations.taskKanban.sources.title': 'Źródła zadań',
+  'conversations.taskKanban.sources.statusEnabled': 'Automatyczne odpytywanie włączone',
+  'conversations.taskKanban.sources.manage': 'Zarządzaj źródłami',
+  'conversations.taskKanban.source.title': 'Źródło',
+  'conversations.taskKanban.source.sourceId': 'ID źródła',
+  'conversations.taskKanban.source.externalId': 'ID zewnętrzne',
+  'conversations.taskKanban.source.repo': 'Repozytorium',
+  'conversations.taskKanban.source.urgency': 'Pilność',
   'conversations.toolTimeline.turn': 'tura',
   'conversations.toolTimeline.step': 'Krok',
   'conversations.toolTimeline.workerThread': 'wątek workera',
@@ -2669,6 +2716,48 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Utwórz zadanie',
   'intelligence.tasks.composer.creating': 'Tworzenie…',
   'intelligence.tasks.composer.createFailed': 'Nie udało się utworzyć zadania',
+  'intelligence.tasks.composer.assignAgentLabel': 'Pozwól agentowi zająć się tym automatycznie',
+  'intelligence.tasks.composer.assignAgentHint':
+    'Tablica zadań przejmie je i wykona za Ciebie. Wyłącz dla zwykłego zadania osobistego.',
+  'intelligence.tasks.sourceList.subtitle':
+    'Zadania ze źródeł czekające na przekształcenie w pracę agenta.',
+  'intelligence.tasks.sourceList.empty': 'Brak oczekujących zadań ze źródeł.',
+  'intelligence.tasks.sourceList.queued': 'W kolejce',
+  'intelligence.tasks.sourceList.workOnTask': 'Pracuj nad zadaniem',
+  'intelligence.tasks.sourcePlan.title': 'Dopracuj zadanie źródłowe',
+  'intelligence.tasks.sourcePlan.subtitle':
+    'Sprawdź szkic badawczy przed utworzeniem zadania agenta.',
+  'intelligence.tasks.sourcePlan.researchAgent': 'Szkic agenta badawczego',
+  'intelligence.tasks.sourcePlan.approve': 'Zatwierdź plan',
+  'intelligence.tasks.sourcePlan.creating': 'Tworzenie zadania…',
+  'intelligence.tasks.sourcePlan.createFailed': 'Nie udało się utworzyć zadania agenta',
+  'intelligence.tasks.workTaskFailed': 'Nie udało się rozpocząć pracy nad zadaniem',
+  'intelligence.workTask.sourceTaskHeading': 'Zadanie źródłowe:',
+  'intelligence.workTask.repositoryLine': '- Repozytorium: {repo}',
+  'intelligence.workTask.externalIdLine': '- Identyfikator zewnętrzny: {externalId}',
+  'intelligence.workTask.urlLine': '- Adres: {url}',
+  'intelligence.workTask.closingInstruction':
+    'Zacznij od krótkiego powtórzenia konkretnego planu wdrożenia, a następnie go zrealizuj. Utrzymuj widoczność postępów w tym wątku i aktualizuj tablicę zadań, gdy zmienia się stan pracy.',
+  'intelligence.refine.objectiveDefault':
+    'Przekształć zadanie źródłowe w gotowe do wdrożenia zadanie agenta: {title}',
+  'intelligence.refine.sourceLine': 'Źródło: {url}',
+  'intelligence.refine.sourceIntake': 'Źródło: przyjęcie źródła zadań',
+  'intelligence.refine.repositoryLine': 'Repozytorium: {repo}',
+  'intelligence.refine.externalTaskLine': 'Zadanie zewnętrzne: {externalId}',
+  'intelligence.refine.planStep1':
+    'Przeczytaj powiązane zadanie źródłowe i potwierdź dokładnie żądane zachowanie.',
+  'intelligence.refine.planStep2':
+    'Przejrzyj odpowiednie ścieżki kodu i wskaż najmniejszą granicę wdrożenia.',
+  'intelligence.refine.planStep3':
+    'Wdróż zmianę z ukierunkowanymi testami wokół zachowania widocznego dla użytkownika.',
+  'intelligence.refine.planStep4':
+    'Uruchom ukierunkowaną walidację i zapisz wszelkie pozostałe ryzyka lub prace następcze.',
+  'intelligence.refine.acceptance1':
+    'Wymagania zadania źródłowego są odzwierciedlone w ostatecznym wdrożeniu.',
+  'intelligence.refine.acceptance2':
+    'Odpowiednie testy jednostkowe lub integracyjne obejmują zmienione zachowanie.',
+  'intelligence.refine.acceptance3':
+    'Wyniki walidacji i wszelkie nierozwiązane ryzyka są zapisywane po zakończeniu.',
   'notifications.card.dismiss': 'Odrzuć powiadomienie',
   'notifications.card.importanceTitle': 'Ważność: {pct}%',
   'notifications.center.empty': 'Brak powiadomień',
@@ -3722,10 +3811,27 @@ const messages: TranslationMap = {
   'settings.agentAccess.readWriteAccess': 'odczyt + zapis',
   'settings.agentAccess.actionSandboxDesc':
     'Domyślny katalog roboczy dla narzędzi shell, plików i git.',
+  'settings.agentAccess.actionDir.edit': 'Edytuj',
+  'settings.agentAccess.actionDir.save': 'Zapisz',
+  'settings.agentAccess.actionDir.cancel': 'Anuluj',
+  'settings.agentAccess.actionDir.placeholder': 'Ścieżka bezwzględna, np. /Users/you/Projects',
+  'settings.agentAccess.actionDir.envLocked':
+    'Ustawione przez OPENHUMAN_ACTION_DIR. Zmień zmienną środowiskową, aby zastąpić.',
+  'settings.agentAccess.actionDir.saved': 'Zaktualizowano katalog akcji.',
   'settings.agentAccess.internalState': 'Stan wewnętrzny',
   'settings.agentAccess.agentBlocked': 'zablokowane dla agenta',
   'settings.agentAccess.internalStateDesc':
     'Bazy danych pamięci, sesje, tokeny i inne podstawowe dane. Niedostępne dla narzędzi agenta.',
+  'settings.agentAccess.actionDirInputLabel': 'Ścieżka piaskownicy działań',
+  'settings.agentAccess.actionDirSave': 'Zapisz',
+  'settings.agentAccess.actionDirSaving': 'Zapisywanie…',
+  'settings.agentAccess.actionDirSaved': 'Piaskownica działań zaktualizowana.',
+  'settings.agentAccess.actionDirEmptyError': 'Ścieżka nie może być pusta.',
+  'settings.agentAccess.actionDirSaveError': 'Nie udało się zaktualizować piaskownicy działań.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR jest ustawione — usuń zmienną środowiskową, aby edytować to w Ustawieniach.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Nadpisane przez OPENHUMAN_ACTION_DIR — usuń zmienną środowiskową, aby zarządzać tym w Ustawieniach.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4211,6 +4317,8 @@ const messages: TranslationMap = {
   'chat.agentProfile.defaultAgentLabel': 'Orchestrator',
   'chat.agentProfile.exists': 'Profil agenta „{name}” już istnieje.',
   'chat.agentProfile.label': 'Profil agenta',
+  'chat.agentProfile.quick': 'Szybki',
+  'chat.agentProfile.reasoning': 'Rozumowanie',
   'chat.agentProfile.namePlaceholder': 'Nazwa profilu',
   'chat.agentProfile.promptStylePlaceholder': 'Styl promptu',
   'chat.agentProfile.allowedToolsPlaceholder': 'Dozwolone narzędzia',
@@ -4342,6 +4450,10 @@ const messages: TranslationMap = {
   'settings.taskSources.github.repo': 'Repozytorium (właściciel/nazwa, opcjonalnie)',
   'settings.taskSources.github.labels': 'Etykiety (rozdzielone przecinkami)',
   'settings.taskSources.notion.database': 'ID bazy danych (tablicy)',
+  'settings.taskSources.notion.browseDatabases': 'Przeglądaj bazy danych',
+  'settings.taskSources.notion.loadingDatabases': 'Ładowanie baz danych…',
+  'settings.taskSources.notion.selectDatabase': 'Wybierz bazę danych…',
+  'settings.taskSources.notion.noDatabases': 'Nie znaleziono baz danych dla tego połączenia.',
   'settings.taskSources.linear.team': 'ID zespołu (opcjonalnie)',
   'settings.taskSources.clickup.team': 'ID przestrzeni roboczej (zespołu, opcjonalnie)',
   'settings.taskSources.assignedToMe': 'Tylko elementy przypisane do mnie',
@@ -4774,6 +4886,25 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Okno pamięci',
   'memoryData.windowUpdated': 'Okno pamięci zaktualizowane',
   'memoryData.windowUpdatedMsg': 'Ustawiono na {window}.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Bramka zatwierdzania wyłączona',
+  'security.approvalGateDisabled.body':
+    'W twoim środowisku ustawiono OPENHUMAN_APPROVAL_GATE=0. Narzędzia o zewnętrznym wpływie będą działać bez pytania o potwierdzenie.',
+  'security.approvalGateOverrideIgnored.title': 'Nadpisanie zablokowane',
+  'security.approvalGateOverrideIgnored.body':
+    'Wykryto nadpisanie OPENHUMAN_APPROVAL_GATE=0, ale je zignorowano: aplikacja desktopowa zawsze utrzymuje bramkę zatwierdzania włączoną.',
+
+  // Run queue
+  'runQueue.mode.interrupt': 'Przerwij',
+  'runQueue.mode.steer': 'Kieruj',
+  'runQueue.mode.followup': 'Kontynuacja',
+  'runQueue.mode.collect': 'Dodaj kontekst',
+  'runQueue.queued': 'Wiadomość w kolejce',
+  'runQueue.steerHint': 'Kieruj bieżącą turą',
+  'runQueue.followupHint': 'Dodaj do kolejki jako kontynuację',
+  'runQueue.collectHint': 'Dodaj jako dodatkowy kontekst',
+  'runQueue.status': '{total} w kolejce',
+  'runQueue.cleared': 'Kolejka wyczyszczona',
 };
 
 export default messages;
