@@ -29,7 +29,9 @@ fn transcript_turns_to_chat_batch(
     turns: &[BackendMeetTurn],
     duration_ms: u64,
 ) -> Option<ChatBatch> {
-    let duration_i64 = i64::try_from(duration_ms).unwrap_or(i64::MAX);
+    // Cap at 48 h to avoid DateTime underflow; real meetings never exceed this.
+    const MAX_DURATION_MS: u64 = 172_800_000;
+    let duration_i64 = i64::try_from(duration_ms.min(MAX_DURATION_MS)).unwrap_or(172_800_000);
     let base = chrono::Utc::now() - chrono::Duration::milliseconds(duration_i64);
     // Spread turns evenly across the duration; fall back to 1 ms spacing when
     // duration is zero or turns is empty (avoids division by zero).

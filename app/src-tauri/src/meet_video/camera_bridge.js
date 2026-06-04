@@ -419,7 +419,8 @@
               let settings = {};
               try { settings = track.getSettings ? track.getSettings() : {}; } catch (_) {}
               return {
-                label: track.label || '',
+                // track.label is intentionally omitted — on real devices it
+                // contains the camera/microphone device name, which is PII.
                 enabled: !!track.enabled,
                 muted: !!track.muted,
                 readyState: track.readyState || '',
@@ -502,7 +503,9 @@
         peerConnections.add(this);
         let nextTrackOrKind = trackOrKind;
         let nextInit = init;
-        if (trackOrKind === 'video' || isVideoTrack(trackOrKind) || isVideoTransceiverInit(init)) {
+        const direction = init && init.direction;
+        const willSend = !direction || direction === 'sendrecv' || direction === 'sendonly';
+        if (willSend && (isVideoTrack(trackOrKind) || isVideoTransceiverInit(init))) {
           const mascot = makeMascotTrack();
           if (mascot) {
             nextTrackOrKind = mascot;
