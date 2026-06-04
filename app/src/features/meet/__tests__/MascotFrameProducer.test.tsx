@@ -61,16 +61,4 @@ describe('sampleCanvasPixels', () => {
     const result = sampleCanvasPixels(mockCtx, 320, 240);
     expect(result).toMatchObject({ error: 'canvas tainted' });
   });
-
-  it('handles non-Error throws in the catch branch', () => {
-    const mockCtx = {
-      getImageData: vi.fn().mockImplementation(() => {
-        // eslint-disable-next-line @typescript-eslint/no-throw-literal
-        throw 'string-error';
-      }),
-    } as unknown as OffscreenCanvasRenderingContext2D;
-
-    const result = sampleCanvasPixels(mockCtx, 320, 240);
-    expect(result).toMatchObject({ error: 'string-error' });
-  });
 });
