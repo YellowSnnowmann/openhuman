@@ -4065,10 +4065,6 @@ const messages: TranslationMap = {
   'skills.meetingBots.sendTo': 'Enviar para',
   'skills.meetingBots.soonSuffix': 'em breve',
   'skills.meetingBots.starting': 'Iniciando…',
-  'skills.meetingBots.ownerNameLabel': 'Seu nome na chamada',
-  'skills.meetingBots.ownerNamePlaceholder': 'Como aparece na chamada (ex. Ana)',
-  'skills.meetingBots.ownerNameHint':
-    'Bloqueio de privacidade — OpenHuman responde apenas quando este nome fala.',
   'skills.meetingBots.recentCallsAriaLabel': 'Chamadas de reunião recentes',
   'skills.meetingBots.recentCallsHeading': 'Chamadas recentes',
   'skills.meetingBots.recentCallsEmpty':

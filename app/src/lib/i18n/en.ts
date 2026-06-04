@@ -4390,10 +4390,6 @@ const en: TranslationMap = {
   'skills.meetingBots.sendTo': 'Send to {label}',
   'skills.meetingBots.soonSuffix': 'soon',
   'skills.meetingBots.starting': 'Starting…',
-  'skills.meetingBots.ownerNameLabel': 'Your name in the call',
-  'skills.meetingBots.ownerNamePlaceholder': 'As shown in the call (e.g. Alice)',
-  'skills.meetingBots.ownerNameHint':
-    'Privacy lock — OpenHuman only responds when this exact name is speaking.',
   'skills.meetingBots.recentCallsAriaLabel': 'Recent meeting calls',
   'skills.meetingBots.recentCallsHeading': 'Recent calls',
   'skills.meetingBots.recentCallsEmpty':

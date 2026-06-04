@@ -4102,10 +4102,6 @@ const messages: TranslationMap = {
   'skills.meetingBots.sendTo': 'Senden an',
   'skills.meetingBots.soonSuffix': 'bald',
   'skills.meetingBots.starting': 'Beginnend mit …',
-  'skills.meetingBots.ownerNameLabel': 'Ihr Name im Anruf',
-  'skills.meetingBots.ownerNamePlaceholder': 'Wie im Anruf angezeigt (z. B. Anna)',
-  'skills.meetingBots.ownerNameHint':
-    'Datenschutzsperre — OpenHuman antwortet nur, wenn dieser Name spricht.',
   'skills.meetingBots.recentCallsAriaLabel': 'Letzte Meeting-Anrufe',
   'skills.meetingBots.recentCallsHeading': 'Letzte Anrufe',
   'skills.meetingBots.recentCallsEmpty':

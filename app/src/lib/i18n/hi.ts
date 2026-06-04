@@ -4004,10 +4004,6 @@ const messages: TranslationMap = {
   'skills.meetingBots.sendTo': 'भेजें',
   'skills.meetingBots.soonSuffix': 'जल्द ही',
   'skills.meetingBots.starting': 'शुरू हो रहा है…',
-  'skills.meetingBots.ownerNameLabel': 'कॉल में आपका नाम',
-  'skills.meetingBots.ownerNamePlaceholder': 'जैसा कॉल में दिखता है (जैसे रोहन)',
-  'skills.meetingBots.ownerNameHint':
-    'गोपनीयता लॉक — OpenHuman केवल तब प्रतिक्रिया देता है जब यह नाम बोलता है।',
   'skills.meetingBots.recentCallsAriaLabel': 'हाल की मीटिंग कॉल',
   'skills.meetingBots.recentCallsHeading': 'हाल की कॉल',
   'skills.meetingBots.recentCallsEmpty':

@@ -4029,10 +4029,6 @@ const messages: TranslationMap = {
   'skills.meetingBots.sendTo': 'Отправить',
   'skills.meetingBots.soonSuffix': 'скоро',
   'skills.meetingBots.starting': 'Запуск…',
-  'skills.meetingBots.ownerNameLabel': 'Ваше имя в звонке',
-  'skills.meetingBots.ownerNamePlaceholder': 'Как отображается в звонке (напр. Иван)',
-  'skills.meetingBots.ownerNameHint':
-    'Защита конфиденциальности — OpenHuman отвечает только когда говорит это имя.',
   'skills.meetingBots.recentCallsAriaLabel': 'Недавние звонки на встречах',
   'skills.meetingBots.recentCallsHeading': 'Недавние звонки',
   'skills.meetingBots.recentCallsEmpty': 'Предыдущих звонков нет — история встреч появится здесь.',

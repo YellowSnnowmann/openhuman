@@ -3997,10 +3997,6 @@ const messages: TranslationMap = {
   'skills.meetingBots.sendTo': 'পাঠান',
   'skills.meetingBots.soonSuffix': 'শীঘ্রই',
   'skills.meetingBots.starting': 'শুরু হচ্ছে…',
-  'skills.meetingBots.ownerNameLabel': 'কলে আপনার নাম',
-  'skills.meetingBots.ownerNamePlaceholder': 'কলে যেভাবে দেখাবে (যেমন: রাহুল)',
-  'skills.meetingBots.ownerNameHint':
-    'গোপনীয়তা লক — শুধুমাত্র এই নামটি কথা বললে OpenHuman সাড়া দেবে।',
   'skills.meetingBots.recentCallsAriaLabel': 'সাম্প্রতিক মিটিং কল',
   'skills.meetingBots.recentCallsHeading': 'সাম্প্রতিক কল',
   'skills.meetingBots.recentCallsEmpty': 'এখনও কোনো আগের কল নেই — আপনার মিটিং ইতিহাস এখানে দেখাবে।',

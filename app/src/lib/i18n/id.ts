@@ -4014,10 +4014,6 @@ const messages: TranslationMap = {
   'skills.meetingBots.sendTo': 'Kirim ke',
   'skills.meetingBots.soonSuffix': 'segera',
   'skills.meetingBots.starting': 'Memulai...',
-  'skills.meetingBots.ownerNameLabel': 'Nama Anda dalam panggilan',
-  'skills.meetingBots.ownerNamePlaceholder': 'Seperti yang terlihat dalam panggilan (mis. Budi)',
-  'skills.meetingBots.ownerNameHint':
-    'Kunci privasi — OpenHuman hanya merespons saat nama ini berbicara.',
   'skills.meetingBots.recentCallsAriaLabel': 'Panggilan rapat terbaru',
   'skills.meetingBots.recentCallsHeading': 'Panggilan terbaru',
   'skills.meetingBots.recentCallsEmpty':

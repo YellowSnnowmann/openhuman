@@ -4063,10 +4063,6 @@ const messages: TranslationMap = {
   'skills.meetingBots.sendTo': 'Wyślij do',
   'skills.meetingBots.soonSuffix': 'wkrótce',
   'skills.meetingBots.starting': 'Uruchamianie…',
-  'skills.meetingBots.ownerNameLabel': 'Twoje imię w rozmowie',
-  'skills.meetingBots.ownerNamePlaceholder': 'Jak widoczne w rozmowie (np. Anna)',
-  'skills.meetingBots.ownerNameHint':
-    'Blokada prywatności — OpenHuman odpowiada tylko, gdy to imię mówi.',
   'skills.meetingBots.recentCallsAriaLabel': 'Ostatnie rozmowy na spotkaniach',
   'skills.meetingBots.recentCallsHeading': 'Ostatnie rozmowy',
   'skills.meetingBots.recentCallsEmpty':
