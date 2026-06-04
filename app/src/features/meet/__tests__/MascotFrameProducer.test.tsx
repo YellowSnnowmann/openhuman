@@ -37,7 +37,7 @@ describe('sampleCanvasPixels', () => {
       maxLuma: 128,
       darkSamples: 0,
       brightSamples: 35, // all 35 samples have luma > 32
-      sampleCount: 35,   // 7 cols × 5 rows
+      sampleCount: 35, // 7 cols × 5 rows
     });
   });
 
@@ -48,10 +48,7 @@ describe('sampleCanvasPixels', () => {
     } as unknown as OffscreenCanvasRenderingContext2D;
 
     const result = sampleCanvasPixels(mockCtx, 320, 240);
-    expect(result).toMatchObject({
-      darkSamples: 35,
-      brightSamples: 0,
-    });
+    expect(result).toMatchObject({ darkSamples: 35, brightSamples: 0 });
   });
 
   it('returns an error object when getImageData throws', () => {

@@ -13,7 +13,11 @@ interface BusSession {
   port: number;
 }
 
-export function sampleCanvasPixels(ctx: OffscreenCanvasRenderingContext2D, width: number, height: number) {
+export function sampleCanvasPixels(
+  ctx: OffscreenCanvasRenderingContext2D,
+  width: number,
+  height: number
+) {
   const cols = 7;
   const rows = 5;
   let sum = 0;
