@@ -246,6 +246,8 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const [platform, setPlatform] = useState<MascotMeetPlatform>('gmeet');
   const [meetUrl, setMeetUrl] = useState('');
   const [displayName, setDisplayName] = useState('OpenHuman');
+  const [respondToParticipant, setRespondToParticipant] = useState('');
+  const [wakePhrase, setWakePhrase] = useState('Hey OpenHuman');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Recent-calls history loaded from core when the modal opens.
@@ -303,7 +305,14 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       // the backend's Recall.ai integration. The backend joins as a
       // participant, renders the mascot as the bot's camera feed, and
       // streams transcript events back over Socket.IO.
-      await joinMeetViaBackendBot({ meetUrl, displayName, platform, agentName: displayName });
+      await joinMeetViaBackendBot({
+        meetUrl,
+        displayName,
+        platform,
+        agentName: displayName,
+        respondToParticipant: respondToParticipant.trim() || undefined,
+        wakePhrase: wakePhrase.trim() || undefined,
+      });
       onToast?.({
         type: 'success',
         title: t('skills.meetingBots.joiningTitle'),
@@ -406,6 +415,42 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
                 disabled={isComingSoon || submitting}
                 className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
               />
+            </label>
+
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+                {t('skills.meetingBots.respondToParticipant')}
+              </span>
+              <input
+                type="text"
+                value={respondToParticipant}
+                onChange={e => setRespondToParticipant(e.target.value)}
+                placeholder={t('skills.meetingBots.respondToParticipantHint')}
+                maxLength={128}
+                disabled={isComingSoon || submitting}
+                className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
+              />
+              <span className="mt-1 block text-[10px] text-stone-400 dark:text-neutral-500">
+                {t('skills.meetingBots.respondToParticipantDesc')}
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+                {t('skills.meetingBots.wakePhrase')}
+              </span>
+              <input
+                type="text"
+                value={wakePhrase}
+                onChange={e => setWakePhrase(e.target.value)}
+                placeholder={t('skills.meetingBots.wakePhraseHint')}
+                maxLength={128}
+                disabled={isComingSoon || submitting}
+                className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
+              />
+              <span className="mt-1 block text-[10px] text-stone-400 dark:text-neutral-500">
+                {t('skills.meetingBots.wakePhraseDesc')}
+              </span>
             </label>
 
             {error && (

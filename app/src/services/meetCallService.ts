@@ -168,6 +168,10 @@ export type BackendMeetJoinInput = {
   systemPrompt?: string;
   mascotId?: string;
   riveColors?: { primaryColor?: string; secondaryColor?: string };
+  /** Only respond to messages from this participant name (empty = respond to all). */
+  respondToParticipant?: string;
+  /** Wake phrase the participant must say before the bot responds (empty = no wake phrase). */
+  wakePhrase?: string;
 };
 
 type CoreBackendMeetJoinResponse = { ok: boolean; meet_url: string; platform: string };
@@ -196,6 +200,8 @@ export async function joinMeetViaBackendBot(
       agent_name: input.agentName?.trim() || undefined,
       system_prompt: input.systemPrompt?.trim() || undefined,
       mascot_id: input.mascotId?.trim() || undefined,
+      respond_to_participant: input.respondToParticipant?.trim() || undefined,
+      wake_phrase: input.wakePhrase?.trim() || undefined,
       rive_colors: (() => {
         if (!input.riveColors) return undefined;
         const primary = input.riveColors.primaryColor?.trim() || undefined;
