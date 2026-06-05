@@ -2293,8 +2293,8 @@ fn make_connections_response(
     super::super::types::ComposioConnectionsResponse { connections }
 }
 
-#[test]
-fn enrich_does_nothing_when_no_cached_identities() {
+#[tokio::test]
+async fn enrich_does_nothing_when_no_cached_identities() {
     // Memory client not initialised → load_connected_identities returns
     // Vec::new() → connections are returned unchanged.
     let resp = make_connections_response(&[("c1", "gmail", "ACTIVE")]);
@@ -2305,8 +2305,8 @@ fn enrich_does_nothing_when_no_cached_identities() {
     assert!(enriched.connections[0].username.is_none());
 }
 
-#[test]
-fn enrich_populates_email_from_cached_profile() {
+#[tokio::test]
+async fn enrich_populates_email_from_cached_profile() {
     use crate::openhuman::memory_sync::composio::providers::{
         profile::persist_provider_profile, ProviderUserProfile,
     };
@@ -2340,8 +2340,8 @@ fn enrich_populates_email_from_cached_profile() {
     );
 }
 
-#[test]
-fn enrich_populates_handle_for_github() {
+#[tokio::test]
+async fn enrich_populates_handle_for_github() {
     use crate::openhuman::memory_sync::composio::providers::{
         profile::persist_provider_profile, ProviderUserProfile,
     };
@@ -2367,8 +2367,8 @@ fn enrich_populates_handle_for_github() {
     assert!(enriched.connections[0].account_email.is_none());
 }
 
-#[test]
-fn enrich_skips_connection_already_having_identity() {
+#[tokio::test]
+async fn enrich_skips_connection_already_having_identity() {
     // If the backend-proxied path already populated account_email, the
     // enricher must NOT overwrite it with a potentially stale cached value.
     let mut resp = make_connections_response(&[("c-preloaded", "gmail", "ACTIVE")]);
@@ -2382,8 +2382,8 @@ fn enrich_skips_connection_already_having_identity() {
     );
 }
 
-#[test]
-fn enrich_handles_multiple_connections_same_toolkit() {
+#[tokio::test]
+async fn enrich_handles_multiple_connections_same_toolkit() {
     // Two Gmail accounts — each gets its own identity label, not "Account N".
     use crate::openhuman::memory_sync::composio::providers::{
         profile::persist_provider_profile, ProviderUserProfile,
@@ -2422,8 +2422,8 @@ fn enrich_handles_multiple_connections_same_toolkit() {
     );
 }
 
-#[test]
-fn enrich_leaves_unmatched_connection_unchanged() {
+#[tokio::test]
+async fn enrich_leaves_unmatched_connection_unchanged() {
     // Connection whose id has no cached profile row is returned with all
     // identity fields as None — the UI falls back to "Account N".
     use crate::openhuman::memory_sync::composio::providers::{
