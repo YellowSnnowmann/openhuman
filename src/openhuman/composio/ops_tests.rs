@@ -2270,9 +2270,7 @@ fn composio_direct_500_does_not_demote() {
 /// isolated profile storage. The returned guard prevents concurrent tests from
 /// rebinding the singleton while the calling test is running — hold it with
 /// `let _guard = init_memory_client(tmp.path());`.
-async fn init_memory_client(
-    workspace: &std::path::Path,
-) -> tokio::sync::MutexGuard<'static, ()> {
+async fn init_memory_client(workspace: &std::path::Path) -> tokio::sync::MutexGuard<'static, ()> {
     let guard = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
         .lock()
         .await;
