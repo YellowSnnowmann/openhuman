@@ -4200,9 +4200,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.liveStatusEnded': 'Reunión finalizada',
   'skills.meetingBots.liveStatusError': 'Error al unirse',
   'skills.meetingBots.leaveButton': 'Salir',
-  'skills.meetingBots.respondToParticipant': 'Responder a participante',
-  'skills.meetingBots.respondToParticipantHint': 'p. ej. Ana',
-  'skills.meetingBots.respondToParticipantDesc': 'Dejar en blanco para responder a todos.',
+  'skills.meetingBots.respondToParticipant': 'Tu nombre en esta reunión',
+  'skills.meetingBots.respondToParticipantHint': 'p. ej. Ana (tu nombre visible en la llamada)',
+  'skills.meetingBots.respondToParticipantDesc': 'El bot solo te responderá a ti. Deja en blanco para que cualquiera pueda activarlo.',
   'skills.meetingBots.wakePhrase': 'Frase de activación',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc':
