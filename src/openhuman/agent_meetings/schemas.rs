@@ -96,6 +96,21 @@ fn schema_join() -> ControllerSchema {
                 comment: "Optional Rive mascot color overrides forwarded to the backend bot.",
                 required: false,
             },
+            FieldSchema {
+                name: "respond_to_participant",
+                ty: TypeSchema::String,
+                comment: "Only respond to this participant's messages. Case-insensitive substring match \
+                          against the speaker name in the transcript. Omit to respond to everyone.",
+                required: false,
+            },
+            FieldSchema {
+                name: "wake_phrase",
+                ty: TypeSchema::String,
+                comment: "Wake phrase the participant must say before the bot responds. \
+                          When set, captions without this phrase are silently dropped. \
+                          The phrase is stripped before the text reaches the LLM.",
+                required: false,
+            },
         ],
         outputs: vec![
             FieldSchema {

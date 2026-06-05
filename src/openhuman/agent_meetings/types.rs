@@ -32,6 +32,15 @@ pub struct BackendMeetJoinRequest {
     /// Optional Rive mascot color palette overrides.
     #[serde(default)]
     pub rive_colors: Option<RiveColors>,
+    /// Only respond to this participant's messages (empty/absent = respond to everyone).
+    /// Case-insensitive substring match against the speaker name in the transcript.
+    #[serde(default)]
+    pub respond_to_participant: Option<String>,
+    /// Wake phrase the participant must say before the bot responds.
+    /// When set, captions without this phrase are silently dropped.
+    /// The phrase is stripped from the text before it reaches the LLM.
+    #[serde(default)]
+    pub wake_phrase: Option<String>,
 }
 
 /// Outputs from `openhuman.agent_meetings_join`.

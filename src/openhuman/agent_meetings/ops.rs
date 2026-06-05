@@ -197,6 +197,12 @@ pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
                 }),
             );
         }
+        if let Some(respond_to) = &req.respond_to_participant {
+            map.insert("respondToParticipant".to_string(), json!(respond_to));
+        }
+        if let Some(phrase) = &req.wake_phrase {
+            map.insert("wakePhrase".to_string(), json!(phrase));
+        }
     }
 
     mgr.emit("bot:join", join_payload)
