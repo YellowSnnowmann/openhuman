@@ -270,7 +270,6 @@ const messages: TranslationMap = {
   'skills.tabs.composio': 'Composio',
   'skills.tabs.channels': 'Kanały',
   'skills.tabs.mcp': 'Serwery MCP',
-  'skills.tabs.runners': 'Runnery',
   'memory.title': 'Pamięć',
   'memory.search': 'Szukaj w pamięci...',
   'memory.noResults': 'Nie znaleziono wspomnień',
@@ -1179,6 +1178,9 @@ const messages: TranslationMap = {
   'mcp.detail.reconfigureSuccess': 'Środowisko zaktualizowane i połączone ponownie.',
   'mcp.detail.reconfigureReconnectFailed':
     'Zapisano, ale ponowne połączenie z nowymi wartościami nie powiodło się.',
+  'mcp.detail.enable': 'Włącz',
+  'mcp.detail.disable': 'Wyłącz',
+  'mcp.status.disabled': 'Wyłączony',
   'mcp.detail.tools': 'Narzędzia',
   'onboarding.skipForNow': 'Pomiń na razie',
   'onboarding.localAI.continueWithCloud': 'Kontynuuj z chmurą',
@@ -1438,6 +1440,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Próg ciszy (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Nagrania z energią poniżej tego progu są traktowane jako cisza i pomijane. Niżej = bardziej czułe.',
+  'voice.debug.alwaysOn': 'Ciągłe nasłuchiwanie',
+  'voice.debug.alwaysOnDesc':
+    'Utrzymuje mikrofon włączony i automatycznie wysyła to, co mówisz, do agenta, bez skrótu. Wstrzymuje się, gdy ekran jest zablokowany.',
   'voice.providers.saved': 'Zapisano dostawców głosu.',
   'voice.providers.failedToSave': 'Nie udało się zapisać dostawców głosu',
   'voice.providers.ellipsis': '…',
@@ -2581,6 +2586,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Zapisz zmiany',
   'conversations.taskKanban.deleteCard': 'Usuń',
   'conversations.taskKanban.workTask': 'Pracuj nad zadaniem',
+  'conversations.taskKanban.viewWork': 'Zobacz pracę',
   'conversations.taskKanban.startingTask': 'Uruchamianie…',
   'conversations.taskKanban.updateFailed':
     'Nie udało się zaktualizować zadania; zmian nie zapisano.',
@@ -3590,7 +3596,7 @@ const messages: TranslationMap = {
   'settings.skillsRunner.error.preflightGate': 'Brama preflight nie powiodła się',
   'settings.skillsRunner.schedule.heading': 'Harmonogram (cykliczny)',
   'settings.skillsRunner.schedule.help':
-    'Zapisz tę umiejętność i dane wejściowe jako cykliczne zadanie cron. Agent wywoła run_skill przy każdym tyknięciu.',
+    'Zapisz tę umiejętność i dane wejściowe jako cykliczne zadanie cron. Agent wywoła run_workflow przy każdym tyknięciu.',
   'settings.skillsRunner.schedule.frequency': 'Częstotliwość',
   'settings.skillsRunner.schedule.every30min': 'Co 30 minut',
   'settings.skillsRunner.schedule.everyHour': 'Co godzinę',
@@ -3605,6 +3611,8 @@ const messages: TranslationMap = {
   'settings.skillsRunner.schedule.noJobs':
     'Nie zapisano jeszcze harmonogramów dla tej umiejętności.',
   'settings.skillsRunner.schedule.existing': 'Zaplanowane zadania dla tej umiejętności:',
+  'settings.skillsRunner.schedule.inputsLabel': 'Dane wejściowe',
+  'settings.skillsRunner.schedule.inputsNone': 'Brak danych wejściowych',
   'settings.skillsRunner.schedule.runNow': 'Uruchom',
   'settings.skillsRunner.schedule.remove': 'Usuń',
   'settings.skillsRunner.scheduleEnabled': 'Włączone',
@@ -4481,22 +4489,12 @@ const messages: TranslationMap = {
   'settings.taskSources.providers.notion': 'Notion',
   'settings.taskSources.providers.linear': 'Linear',
   'settings.taskSources.providers.clickup': 'ClickUp',
-  'skills.dashboard.title': 'Skills',
-  'skills.dashboard.scheduledHeading': 'Zaplanowane umiejętności',
-  'skills.dashboard.emptyTitle': 'Brak zaplanowanych umiejętności',
-  'skills.dashboard.emptyBody':
-    'Uruchom wbudowaną umiejętność jednorazowo lub zapisz harmonogram cykliczny, aby zobaczyć ją tutaj.',
-  'skills.dashboard.create': 'Utwórz umiejętność',
-  'skills.dashboard.run': 'Uruchom umiejętność',
-  'skills.dashboard.enable': 'Włącz zaplanowaną umiejętność',
-  'skills.dashboard.disable': 'Wyłącz zaplanowaną umiejętność',
+  'skills.dashboard.enable': 'Włącz zaplanowany przepływ pracy',
+  'skills.dashboard.disable': 'Wyłącz zaplanowany przepływ pracy',
   'skills.dashboard.lastRun': 'Ostatnie uruchomienie',
   'skills.dashboard.nextRun': 'Następne uruchomienie',
   'skills.dashboard.cardOpenRunner': 'Otwórz w runnerze',
-  'skills.dashboard.loadError': 'Nie udało się załadować zaplanowanych umiejętności',
-  'skills.new.title': 'Utwórz umiejętność',
-  'skills.new.placeholderBody':
-    'Formularz tworzenia pojawi się wkrótce. Na razie użyj przycisku „Nowa umiejętność” na stronie runnera.',
+  'skills.new.title': 'Utwórz przepływ pracy',
   'settings.agents.title': 'Agenci',
   'settings.agents.subtitle':
     'Zarządzaj agentami dostępnymi do delegowania — wbudowanymi domyślnymi i własnymi niestandardowymi agentami.',
@@ -4618,6 +4616,33 @@ const messages: TranslationMap = {
   'autocomplete.maxChars': 'Maksymalna liczba znaków kontekstu',
   'autocomplete.overlayTtlMs': 'Limit czasu nakładki (ms)',
   'memory.tab.council': 'Council',
+  'intelligence.agents.title': 'Biblioteka agentów',
+  'intelligence.agents.subtitle':
+    'Przeglądaj uruchamialnych specjalistów i wyślij zadanie do wskazanego agenta.',
+  'intelligence.agents.refresh': 'Odśwież',
+  'intelligence.agents.loading': 'Ładowanie agentów…',
+  'intelligence.agents.failedToLoad': 'Nie udało się załadować agentów',
+  'intelligence.agents.empty': 'Brak dostępnych agentów do uruchomienia.',
+  'intelligence.agents.readOnly': 'Tylko odczyt',
+  'intelligence.agents.writeCapable': 'Może zapisywać',
+  'intelligence.agents.allTools': 'Wszystkie narzędzia',
+  'intelligence.agents.toolCountOne': '{count} narzędzie',
+  'intelligence.agents.toolCountOther': '{count} narzędzi',
+  'intelligence.agents.subagentCountOne': '{count} subagent',
+  'intelligence.agents.subagentCountOther': '{count} subagentów',
+  'intelligence.agents.startChat': 'Rozpocznij czat',
+  'intelligence.agents.startChatPrompt':
+    'Rozpocznij czat z tym agentem. Przedstaw swoją specjalizację, zapytaj o potrzebny kontekst i poczekaj na moje zadanie.',
+  'intelligence.agents.copyId': 'Kopiuj ID',
+  'intelligence.agents.copied': 'Skopiowano',
+  'intelligence.agents.taskPlaceholder': 'Zadanie dla tego agenta',
+  'intelligence.agents.runTask': 'Uruchom zadanie',
+  'intelligence.agents.running': 'Uruchamianie…',
+  'intelligence.agents.runFailed': 'Nie udało się uruchomić wybranego agenta',
+  'intelligence.agents.model.inherit': 'Dziedzicz',
+  'intelligence.agents.tier.chat': 'Czat',
+  'intelligence.agents.tier.reasoning': 'Rozumowanie',
+  'intelligence.agents.tier.worker': 'Wykonawca',
   'modelCouncil.title': 'Model Council',
   'modelCouncil.intro':
     'Ask one question, get independent answers from several models in parallel, then a chair model synthesizes where they agree, where they disagree, and what each uniquely adds.',
@@ -4886,6 +4911,16 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Okno pamięci',
   'memoryData.windowUpdated': 'Okno pamięci zaktualizowane',
   'memoryData.windowUpdatedMsg': 'Ustawiono na {window}.',
+  'skills.create.whenToUse': 'Kiedy używać',
+  'skills.create.whenToUsePlaceholder':
+    'np. gdy użytkownik prosi o uporządkowanie skrzynki odbiorczej',
+  'skills.create.whenToUseHelp':
+    'Wyzwalacz, na podstawie którego agent decyduje o uruchomieniu tego przepływu pracy. Pozostaw puste, aby użyć opisu.',
+  'skills.create.inputs.row.descriptionError': 'Każde pole wejściowe wymaga opisu.',
+  'skills.detail.run': 'Uruchom',
+  'skills.detail.runAriaLabel': 'Uruchom ten przepływ pracy',
+  'skills.run.title': 'Przepływ pracy',
+  'workflows.installFromUrl': 'Zainstaluj z adresu URL',
   // Security banner (approval-gate host-aware boot state)
   'security.approvalGateDisabled.title': 'Bramka zatwierdzania wyłączona',
   'security.approvalGateDisabled.body':
@@ -4905,6 +4940,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': 'Dodaj jako dodatkowy kontekst',
   'runQueue.status': '{total} w kolejce',
   'runQueue.cleared': 'Kolejka wyczyszczona',
+  'notch.ready': 'Gotowe',
+  'notch.processing': 'Przetwarzanie…',
+  'notch.listening': 'Słucham…',
+  'notch.thinking': 'Myślę…',
+  'notch.speaking': 'Mówię…',
+  'notch.transcribing': 'Transkrybuję…',
+  'notch.executing': 'Wykonuję…',
 };
 
 export default messages;

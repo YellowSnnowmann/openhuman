@@ -274,7 +274,6 @@ const messages: TranslationMap = {
   'skills.tabs.composio': 'Composio',
   'skills.tabs.channels': 'Canaux',
   'skills.tabs.mcp': 'MCP Serveurs',
-  'skills.tabs.runners': 'Runners',
   'memory.title': 'Mémoire',
   'memory.search': 'Rechercher dans la mémoire…',
   'memory.noResults': 'Aucun souvenir trouvé',
@@ -1192,6 +1191,9 @@ const messages: TranslationMap = {
   'mcp.detail.reconfigureSuccess': 'Environnement mis à jour et reconnecté.',
   'mcp.detail.reconfigureReconnectFailed':
     'Enregistré, mais la reconnexion avec les nouvelles valeurs a échoué.',
+  'mcp.detail.enable': 'Activer',
+  'mcp.detail.disable': 'Désactiver',
+  'mcp.status.disabled': 'Désactivé',
   'mcp.detail.tools': 'Outils',
   'onboarding.skipForNow': "Passer pour l'instant",
   'onboarding.localAI.continueWithCloud': 'Continuer avec Cloud',
@@ -1457,6 +1459,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Seuil de silence (RMS)',
   'voice.debug.silenceThresholdDesc':
     "Les enregistrements dont l'énergie est inférieure à ce seuil sont traités comme du silence et ignorés. Plus bas = plus sensible.",
+  'voice.debug.alwaysOn': 'Écoute permanente',
+  'voice.debug.alwaysOnDesc':
+    'Garde le microphone ouvert et envoie automatiquement ce que vous dites à l’agent, sans raccourci. Se met en pause lorsque l’écran est verrouillé.',
   'voice.providers.saved': 'Fournisseurs de voix enregistrés.',
   'voice.providers.failedToSave': 'Échec de la sauvegarde des fournisseurs vocaux',
   'voice.providers.ellipsis': '…',
@@ -2604,6 +2609,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Enregistrer les modifications',
   'conversations.taskKanban.deleteCard': 'Supprimer',
   'conversations.taskKanban.workTask': 'Travailler la tâche',
+  'conversations.taskKanban.viewWork': 'Voir le travail',
   'conversations.taskKanban.startingTask': 'Démarrage…',
   'conversations.taskKanban.updateFailed':
     "Impossible de mettre à jour la tâche; les modifications n'ont pas été enregistrées.",
@@ -3605,7 +3611,7 @@ const messages: TranslationMap = {
   'settings.skillsRunner.error.preflightGate': 'La porte de prévol a échoué',
   'settings.skillsRunner.schedule.heading': 'Planifier (récurrent)',
   'settings.skillsRunner.schedule.help':
-    "Enregistrez cette compétence + les entrées comme un travail cron récurrent. L'agent appellera run_skill à chaque tick.",
+    "Enregistrez cette compétence + les entrées comme un travail cron récurrent. L'agent appellera run_workflow à chaque tick.",
   'settings.skillsRunner.schedule.frequency': 'Fréquence',
   'settings.skillsRunner.schedule.every30min': 'Toutes les 30 minutes',
   'settings.skillsRunner.schedule.everyHour': 'Toutes les heures',
@@ -3620,6 +3626,8 @@ const messages: TranslationMap = {
   'settings.skillsRunner.schedule.noJobs':
     "Aucun emploi du temps n'a encore été enregistré pour cette compétence.",
   'settings.skillsRunner.schedule.existing': 'Tâches planifiées pour cette compétence:',
+  'settings.skillsRunner.schedule.inputsLabel': 'Entrées',
+  'settings.skillsRunner.schedule.inputsNone': 'Aucune entrée',
   'settings.skillsRunner.schedule.runNow': 'Courir',
   'settings.skillsRunner.schedule.remove': 'Supprimer',
   'settings.skillsRunner.scheduleEnabled': 'Activé',
@@ -4508,22 +4516,12 @@ const messages: TranslationMap = {
   'settings.taskSources.providers.notion': 'Notion',
   'settings.taskSources.providers.linear': 'Linéaire',
   'settings.taskSources.providers.clickup': 'ClickUp',
-  'skills.dashboard.title': 'Skills',
-  'skills.dashboard.scheduledHeading': 'Compétences planifiées',
-  'skills.dashboard.emptyTitle': 'Aucune compétence planifiée',
-  'skills.dashboard.emptyBody':
-    'Exécutez une compétence intégrée une fois ou enregistrez un calendrier récurrent pour la voir ici.',
-  'skills.dashboard.create': 'Créer une compétence',
-  'skills.dashboard.run': 'Exécuter une compétence',
-  'skills.dashboard.enable': 'Activer la compétence planifiée',
-  'skills.dashboard.disable': 'Désactiver la compétence planifiée',
+  'skills.dashboard.enable': 'Activer le workflow planifié',
+  'skills.dashboard.disable': 'Désactiver le workflow planifié',
   'skills.dashboard.lastRun': 'Dernière exécution',
   'skills.dashboard.nextRun': 'Prochaine exécution',
   'skills.dashboard.cardOpenRunner': 'Ouvrir dans le lanceur',
-  'skills.dashboard.loadError': 'Échec du chargement des compétences planifiées',
-  'skills.new.title': 'Créer une compétence',
-  'skills.new.placeholderBody':
-    "Le formulaire de création arrive bientôt. Pour l'instant, utilisez le bouton « Nouvelle compétence » sur la page du lanceur.",
+  'skills.new.title': 'Créer un workflow',
   'settings.agents.title': 'Agents',
   'settings.agents.subtitle':
     'Gérez les agents disponibles pour la délégation — les agents par défaut intégrés et vos propres agents personnalisés.',
@@ -4680,6 +4678,33 @@ const messages: TranslationMap = {
   'autocomplete.maxChars': 'Caractères de contexte maximum',
   'autocomplete.overlayTtlMs': "Délai d'affichage (ms)",
   'memory.tab.council': 'Council',
+  'intelligence.agents.title': "Bibliothèque d'agents",
+  'intelligence.agents.subtitle':
+    'Inspectez les spécialistes exécutables et envoyez une tâche à un agent nommé.',
+  'intelligence.agents.refresh': 'Actualiser',
+  'intelligence.agents.loading': 'Chargement des agents…',
+  'intelligence.agents.failedToLoad': 'Impossible de charger les agents',
+  'intelligence.agents.empty': 'Aucun agent exécutable disponible.',
+  'intelligence.agents.readOnly': 'Lecture seule',
+  'intelligence.agents.writeCapable': 'Peut écrire',
+  'intelligence.agents.allTools': 'Tous les outils',
+  'intelligence.agents.toolCountOne': '{count} outil',
+  'intelligence.agents.toolCountOther': '{count} outils',
+  'intelligence.agents.subagentCountOne': '{count} sous-agent',
+  'intelligence.agents.subagentCountOther': '{count} sous-agents',
+  'intelligence.agents.startChat': 'Démarrer le chat',
+  'intelligence.agents.startChatPrompt':
+    'Démarre une conversation avec cet agent. Présente ta spécialité, demande le contexte nécessaire, puis attends ma tâche.',
+  'intelligence.agents.copyId': "Copier l'ID",
+  'intelligence.agents.copied': 'Copié',
+  'intelligence.agents.taskPlaceholder': 'Tâche pour cet agent',
+  'intelligence.agents.runTask': 'Exécuter la tâche',
+  'intelligence.agents.running': 'Exécution…',
+  'intelligence.agents.runFailed': "Impossible de démarrer l'agent sélectionné",
+  'intelligence.agents.model.inherit': 'Hériter',
+  'intelligence.agents.tier.chat': 'Chat',
+  'intelligence.agents.tier.reasoning': 'Raisonnement',
+  'intelligence.agents.tier.worker': 'Travailleur',
   'modelCouncil.title': 'Model Council',
   'modelCouncil.intro':
     'Ask one question, get independent answers from several models in parallel, then a chair model synthesizes where they agree, where they disagree, and what each uniquely adds.',
@@ -4920,6 +4945,16 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Fenêtre de mémoire',
   'memoryData.windowUpdated': 'Fenêtre de mémoire mise à jour',
   'memoryData.windowUpdatedMsg': 'Définie sur {window}.',
+  'skills.create.whenToUse': "Quand l'utiliser",
+  'skills.create.whenToUsePlaceholder':
+    "p. ex. lorsque l'utilisateur demande de trier sa boîte de réception",
+  'skills.create.whenToUseHelp':
+    "Le déclencheur sur lequel un agent se base pour décider d'exécuter ce workflow. Laissez vide pour réutiliser la description.",
+  'skills.create.inputs.row.descriptionError': 'Une description est requise pour chaque entrée.',
+  'skills.detail.run': 'Exécuter',
+  'skills.detail.runAriaLabel': 'Exécuter ce workflow',
+  'skills.run.title': 'Workflow',
+  'workflows.installFromUrl': 'Installer depuis une URL',
   // Security banner (approval-gate host-aware boot state)
   'security.approvalGateDisabled.title': "Porte d'approbation désactivée",
   'security.approvalGateDisabled.body':
@@ -4939,6 +4974,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': 'Ajouter comme contexte supplémentaire',
   'runQueue.status': '{total} en attente',
   'runQueue.cleared': "File d'attente vidée",
+  'notch.ready': 'Prêt',
+  'notch.processing': 'Traitement…',
+  'notch.listening': "J'écoute…",
+  'notch.thinking': 'Je réfléchis…',
+  'notch.speaking': 'Je parle…',
+  'notch.transcribing': 'Transcription…',
+  'notch.executing': "J'exécute…",
 };
 
 export default messages;

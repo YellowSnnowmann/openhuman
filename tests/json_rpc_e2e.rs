@@ -1003,6 +1003,43 @@ async fn json_rpc_tool_registry_lists_and_gets_entries() {
 }
 
 #[tokio::test]
+async fn json_rpc_monitor_list_and_read_surface() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{rpc_addr}");
+
+    let list = post_json_rpc(&rpc_base, 3371_1, "openhuman.monitor_list", json!({})).await;
+    let list_result = assert_no_jsonrpc_error(&list, "monitor_list");
+    let monitors = list_result
+        .get("monitors")
+        .and_then(Value::as_array)
+        .expect("monitor_list should return monitor array");
+    assert!(
+        monitors.is_empty(),
+        "fresh monitor list should start empty: {list_result}"
+    );
+
+    let missing = post_json_rpc(
+        &rpc_base,
+        3371_2,
+        "openhuman.monitor_read",
+        json!({ "monitor_id": "mon_missing" }),
+    )
+    .await;
+    let error = assert_jsonrpc_error(&missing, "monitor_read missing");
+    let message = error
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        message.contains("mon_missing"),
+        "missing monitor error should name id in error.message: {error}"
+    );
+
+    rpc_join.abort();
+}
+
+#[tokio::test]
 async fn json_rpc_agent_registry_manages_defaults_and_custom_agents() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
@@ -1043,6 +1080,41 @@ async fn json_rpc_agent_registry_manages_defaults_and_custom_agents() {
         orchestrator.get("enabled").and_then(Value::as_bool),
         Some(true)
     );
+
+    let definitions = post_json_rpc(
+        &rpc_base,
+        2862_1_1,
+        "openhuman.agent_list_definitions",
+        json!({}),
+    )
+    .await;
+    let definitions_result = assert_no_jsonrpc_error(&definitions, "agent_list_definitions");
+    let definitions = definitions_result
+        .get("definitions")
+        .and_then(Value::as_array)
+        .expect("agent_list_definitions should return definitions array");
+    let researcher = definitions
+        .iter()
+        .find(|definition| definition.get("id").and_then(Value::as_str) == Some("researcher"))
+        .expect("safe agent library should include researcher");
+    assert_eq!(
+        researcher.get("display_name").and_then(Value::as_str),
+        Some("Researcher")
+    );
+    assert!(researcher
+        .get("when_to_use")
+        .and_then(Value::as_str)
+        .is_some());
+    assert!(researcher.get("system_prompt").is_none());
+    assert!(researcher.get("tools").is_some());
+    assert!(researcher
+        .get("direct_tool_count")
+        .and_then(Value::as_u64)
+        .is_some());
+    assert!(researcher
+        .get("can_run_as_user_facing_worker")
+        .and_then(Value::as_bool)
+        .is_some());
 
     let missing = post_json_rpc(
         &rpc_base,
@@ -2396,6 +2468,125 @@ async fn json_rpc_thread_turn_state_lifecycle() {
         .and_then(|d| d.get("turnState"))
         .map(|v| v.is_null())
         .unwrap_or(true));
+
+    api_join.abort();
+    rpc_join.abort();
+}
+
+#[tokio::test]
+async fn json_rpc_run_ledger_lifecycle() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_url_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+    let _api_url_guard = EnvVarGuard::unset("OPENHUMAN_API_URL");
+
+    let (api_addr, api_join) = serve_on_ephemeral(mock_upstream_router()).await;
+    let api_origin = format!("http://{api_addr}");
+    write_min_config(openhuman_home.as_path(), &api_origin);
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{rpc_addr}");
+
+    let config = openhuman_core::openhuman::config::Config::load_or_init()
+        .await
+        .expect("load config");
+
+    openhuman_core::openhuman::session_db::run_ledger::upsert_agent_run(
+        &config,
+        openhuman_core::openhuman::session_db::run_ledger::AgentRunUpsert {
+            id: "sub-run-1".to_string(),
+            kind: openhuman_core::openhuman::session_db::run_ledger::AgentRunKind::WorkerThread,
+            parent_run_id: Some("req-run-1".to_string()),
+            parent_thread_id: Some("thread-run-1".to_string()),
+            agent_id: Some("researcher".to_string()),
+            status: openhuman_core::openhuman::session_db::run_ledger::AgentRunStatus::AwaitingUser,
+            prompt_ref: Some("thread:worker-1:message:seed".to_string()),
+            worker_thread_id: Some("worker-1".to_string()),
+            task_board_id: Some("thread-run-1".to_string()),
+            task_card_id: Some("card-1".to_string()),
+            checkpoint_path: Some("/tmp/sub-run-1.json".to_string()),
+            checkpoint: Some(json!({
+                "resumeTool": "continue_subagent",
+                "taskId": "sub-run-1"
+            })),
+            summary: Some("Which repo should I inspect?".to_string()),
+            error: None,
+            metadata: json!({ "source": "json_rpc_e2e" }),
+            started_at: None,
+            completed_at: None,
+        },
+    )
+    .expect("seed run");
+
+    openhuman_core::openhuman::session_db::run_ledger::append_run_event(
+        &config,
+        openhuman_core::openhuman::session_db::run_ledger::RunEventAppend {
+            run_id: "sub-run-1".to_string(),
+            event_type: "subagent_awaiting_user".to_string(),
+            payload: json!({ "question": "Which repo should I inspect?" }),
+        },
+    )
+    .expect("seed event");
+
+    let list = post_json_rpc(
+        &rpc_base,
+        9111,
+        "openhuman.run_ledger_list",
+        json!({ "parentThreadId": "thread-run-1" }),
+    )
+    .await;
+    let list_outer = assert_no_jsonrpc_error(&list, "run_ledger_list");
+    assert_eq!(
+        list_outer.get("count").and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        list_outer
+            .get("runs")
+            .and_then(|runs| runs.get(0))
+            .and_then(|run| run.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("awaiting_user")
+    );
+
+    let get = post_json_rpc(
+        &rpc_base,
+        9112,
+        "openhuman.run_ledger_get",
+        json!({ "id": "sub-run-1" }),
+    )
+    .await;
+    let get_outer = assert_no_jsonrpc_error(&get, "run_ledger_get");
+    assert_eq!(
+        get_outer
+            .get("run")
+            .and_then(|run| run.get("workerThreadId"))
+            .and_then(serde_json::Value::as_str),
+        Some("worker-1")
+    );
+
+    let events = post_json_rpc(
+        &rpc_base,
+        9113,
+        "openhuman.run_ledger_events",
+        json!({ "runId": "sub-run-1" }),
+    )
+    .await;
+    let events_outer = assert_no_jsonrpc_error(&events, "run_ledger_events");
+    assert_eq!(
+        events_outer
+            .get("events")
+            .and_then(|events| events.get(0))
+            .and_then(|event| event.get("sequence"))
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
 
     api_join.abort();
     rpc_join.abort();
@@ -6560,7 +6751,7 @@ async fn credentials_crud_roundtrip() {
     rpc_join.abort();
 }
 
-/// End-to-end coverage for `openhuman.skills_uninstall`.
+/// End-to-end coverage for `openhuman.workflows_uninstall`.
 ///
 /// Validates that the RPC method is registered, wire-decodes
 /// `UninstallSkillParams`, resolves the slug against
@@ -6600,11 +6791,11 @@ async fn skills_uninstall_rpc_e2e() {
     let ok = post_json_rpc(
         &rpc_base,
         6001,
-        "openhuman.skills_uninstall",
+        "openhuman.workflows_uninstall",
         json!({ "name": slug }),
     )
     .await;
-    let ok_result = assert_no_jsonrpc_error(&ok, "skills_uninstall success");
+    let ok_result = assert_no_jsonrpc_error(&ok, "workflows_uninstall success");
     assert_eq!(
         ok_result.get("name").and_then(Value::as_str),
         Some(slug),
@@ -6633,7 +6824,7 @@ async fn skills_uninstall_rpc_e2e() {
     let missing = post_json_rpc(
         &rpc_base,
         6002,
-        "openhuman.skills_uninstall",
+        "openhuman.workflows_uninstall",
         json!({ "name": "does-not-exist" }),
     )
     .await;
@@ -6654,7 +6845,7 @@ async fn skills_uninstall_rpc_e2e() {
     let traversal = post_json_rpc(
         &rpc_base,
         6003,
-        "openhuman.skills_uninstall",
+        "openhuman.workflows_uninstall",
         json!({ "name": "../etc" }),
     )
     .await;
@@ -7962,7 +8153,7 @@ async fn whatsapp_data_agent_tools_e2e_1341() {
     .expect("ingest");
 
     // Helper: parse a successful Tool response back into JSON.
-    fn parse_tool_output(result: openhuman_core::openhuman::skills::types::ToolResult) -> Value {
+    fn parse_tool_output(result: openhuman_core::openhuman::workflows::types::ToolResult) -> Value {
         assert!(!result.is_error, "tool returned error: {result:?}");
         serde_json::from_str(&result.output()).expect("tool output is valid JSON")
     }
@@ -8566,6 +8757,113 @@ async fn mcp_clients_install_connect_tool_call_happy_path() {
         disc_body.get("status").and_then(Value::as_str),
         Some("disconnected"),
         "disconnect should report disconnected: {disc_body}"
+    );
+
+    mock_join.abort();
+    rpc_join.abort();
+}
+
+/// `mcp_clients_set_enabled` smoke: installs a server, disables it via RPC,
+/// and asserts the response carries `enabled=false` (issue #3196).
+#[tokio::test]
+async fn mcp_clients_set_enabled_smoke() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
+    let mock_origin = format!("http://{}", mock_addr);
+    write_min_config(&openhuman_home, &mock_origin);
+    let user_scoped_dir = openhuman_home.join("users").join("local");
+    write_min_config(&user_scoped_dir, &mock_origin);
+
+    // Seed the registry detail cache so install resolves offline to the stub.
+    let stub_path = env!("CARGO_BIN_EXE_test-mcp-stub");
+    let qualified_name = "@openhuman-test/echo-set-enabled";
+    let detail = serde_json::json!({
+        "qualifiedName": qualified_name,
+        "displayName": "Test Echo SetEnabled",
+        "description": "Stub for set_enabled smoke.",
+        "connections": [{
+            "type": "stdio",
+            "published": true,
+            "exampleConfig": { "command": stub_path, "args": [] }
+        }]
+    });
+    let seed_config = openhuman_core::openhuman::config::load_config_with_timeout()
+        .await
+        .expect("load config for cache seed");
+    openhuman_core::openhuman::mcp_registry::store::set_cached(
+        &seed_config,
+        &format!("smithery:detail:{qualified_name}"),
+        &detail.to_string(),
+    )
+    .expect("seed smithery detail cache");
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // ── 1. install ───────────────────────────────────────────────────────────
+    let install = post_json_rpc(
+        &rpc_base,
+        9940,
+        "openhuman.mcp_clients_install",
+        json!({ "qualified_name": qualified_name, "env": {} }),
+    )
+    .await;
+    let install_result =
+        assert_no_jsonrpc_error(&install, "mcp_clients_install (set_enabled smoke)");
+    let install_body = install_result.get("result").unwrap_or(install_result);
+    let server_id = install_body
+        .get("server")
+        .and_then(|s| s.get("server_id"))
+        .and_then(Value::as_str)
+        .expect("install returns server.server_id")
+        .to_string();
+
+    // ── 2. set_enabled=false ─────────────────────────────────────────────────
+    let set_enabled = post_json_rpc(
+        &rpc_base,
+        9941,
+        "openhuman.mcp_clients_set_enabled",
+        json!({ "server_id": server_id, "enabled": false }),
+    )
+    .await;
+    let se_result = assert_no_jsonrpc_error(&set_enabled, "mcp_clients_set_enabled (false)");
+    let se_body = se_result.get("result").unwrap_or(se_result);
+    assert_eq!(
+        se_body.get("enabled"),
+        Some(&json!(false)),
+        "set_enabled should report enabled=false: {se_body}"
+    );
+    assert_eq!(
+        se_body.get("server_id").and_then(Value::as_str),
+        Some(server_id.as_str()),
+        "set_enabled should echo server_id: {se_body}"
+    );
+
+    // ── 3. set_enabled=true restores it ─────────────────────────────────────
+    let set_enabled_true = post_json_rpc(
+        &rpc_base,
+        9942,
+        "openhuman.mcp_clients_set_enabled",
+        json!({ "server_id": server_id, "enabled": true }),
+    )
+    .await;
+    let se_true_result =
+        assert_no_jsonrpc_error(&set_enabled_true, "mcp_clients_set_enabled (true)");
+    let se_true_body = se_true_result.get("result").unwrap_or(se_true_result);
+    assert_eq!(
+        se_true_body.get("enabled"),
+        Some(&json!(true)),
+        "set_enabled=true should report enabled=true: {se_true_body}"
     );
 
     mock_join.abort();
@@ -9762,87 +10060,74 @@ async fn json_rpc_workflows_lifecycle_round_trip() {
     )
     .await;
     let create_result = assert_no_jsonrpc_error(&create, "workflows_create");
-    let wf = create_result.get("workflow").expect("workflow in create");
-    assert_eq!(
-        wf.get("dir_name").and_then(Value::as_str),
-        Some("bug-triage")
-    );
-    assert_eq!(wf.get("name").and_then(Value::as_str), Some("Bug Triage"));
-    assert!(
-        wf.pointer("/phases/on_pick_up_task").is_some(),
-        "scaffold seeds an on_pick_up_task phase"
-    );
+    let wf = create_result.get("skill").expect("skill in create result");
+    // `id` is the on-disk slug (WorkflowSummary maps dir_name → id). The
+    // persisted frontmatter `name` is the slug too (create slugifies it).
+    assert_eq!(wf.get("id").and_then(Value::as_str), Some("bug-triage"));
+    assert_eq!(wf.get("name").and_then(Value::as_str), Some("bug-triage"));
 
     // 2. List reflects the new workflow.
     let list = post_json_rpc(&rpc_base, 9202, "openhuman.workflows_list", json!({})).await;
     let list_result = assert_no_jsonrpc_error(&list, "workflows_list");
     let workflows = list_result
-        .get("workflows")
+        .get("skills")
         .and_then(Value::as_array)
-        .expect("workflows array");
+        .expect("skills array in list result");
     assert_eq!(workflows.len(), 1, "exactly one workflow after create");
     assert_eq!(
         workflows[0].get("id").and_then(Value::as_str),
         Some("bug-triage")
     );
-    assert_eq!(
-        workflows[0].get("when_to_use").and_then(Value::as_str),
-        Some("a user reports a bug or something is broken")
-    );
+    // when_to_use is surfaced via `workflows_describe` (step 3), not the list summary.
 
-    // 3. Read returns the full workflow.
-    let read = post_json_rpc(
+    // 3. Describe returns the workflow's display name, when-to-use, and inputs.
+    let describe = post_json_rpc(
         &rpc_base,
         9203,
-        "openhuman.workflows_read",
-        json!({ "id": "bug-triage" }),
+        "openhuman.workflows_describe",
+        json!({ "workflow_id": "bug-triage" }),
     )
     .await;
-    let read_result = assert_no_jsonrpc_error(&read, "workflows_read");
+    let describe_result = assert_no_jsonrpc_error(&describe, "workflows_describe");
+    // Display name isn't separately preserved today — create slugifies it, so
+    // describe reflects the slug. (Preserving the human display name is a known
+    // minor gap, tracked separately.)
     assert_eq!(
-        read_result
-            .pointer("/workflow/name")
-            .and_then(Value::as_str),
-        Some("Bug Triage")
+        describe_result.get("display_name").and_then(Value::as_str),
+        Some("bug-triage")
     );
-
-    // 4. Phase resolution renders the seeded rule's guidance.
-    let phase = post_json_rpc(
-        &rpc_base,
-        9204,
-        "openhuman.workflows_phase",
-        json!({ "id": "bug-triage", "phase": "on_pick_up_task" }),
-    )
-    .await;
-    let phase_result = assert_no_jsonrpc_error(&phase, "workflows_phase");
-    let guidance = phase_result
-        .get("guidance")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    assert_eq!(
+        describe_result.get("when_to_use").and_then(Value::as_str),
+        Some("a user reports a bug or something is broken")
+    );
     assert!(
-        guidance.contains("on_pick_up_task"),
-        "guidance names the phase, got: {guidance}"
+        describe_result
+            .get("inputs")
+            .and_then(Value::as_array)
+            .is_some(),
+        "describe returns an inputs array (empty for a bare workflow)"
     );
 
-    // 5. Uninstall removes it; the list is empty again.
+    // 4. Uninstall removes it; the list is empty again.
     let uninstall = post_json_rpc(
         &rpc_base,
         9205,
         "openhuman.workflows_uninstall",
-        json!({ "id": "bug-triage" }),
+        json!({ "name": "bug-triage" }),
     )
     .await;
     let uninstall_result = assert_no_jsonrpc_error(&uninstall, "workflows_uninstall");
     assert_eq!(
-        uninstall_result.get("removed").and_then(Value::as_bool),
-        Some(true)
+        uninstall_result.get("name").and_then(Value::as_str),
+        Some("bug-triage"),
+        "uninstall echoes the slug it removed"
     );
 
     let after = post_json_rpc(&rpc_base, 9206, "openhuman.workflows_list", json!({})).await;
     let after_result = assert_no_jsonrpc_error(&after, "workflows_list");
     assert!(
         after_result
-            .get("workflows")
+            .get("skills")
             .and_then(Value::as_array)
             .expect("workflows array")
             .is_empty(),

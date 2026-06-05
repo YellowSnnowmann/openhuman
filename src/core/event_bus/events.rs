@@ -141,6 +141,23 @@ pub enum DomainEvent {
         cancelled_request_id: String,
     },
 
+    // ── Monitor ───────────────────────────────────────────────────────
+    /// A background monitor changed lifecycle state.
+    MonitorStatusChanged {
+        monitor_id: String,
+        status: String,
+        thread_id: Option<String>,
+        description: String,
+    },
+    /// A background monitor emitted one bounded stdout/stderr line.
+    MonitorLine {
+        monitor_id: String,
+        thread_id: Option<String>,
+        timestamp_ms: u64,
+        stream: String,
+        line: String,
+    },
+
     // ── Memory ──────────────────────────────────────────────────────────
     /// The configured embedding provider is unreachable or the requested model
     /// is not installed, so the memory pipeline fell back to an alternative.
@@ -311,13 +328,13 @@ pub enum DomainEvent {
 
     // ── Skills ──────────────────────────────────────────────────────────
     /// A skill was loaded into the runtime.
-    SkillLoaded { skill_id: String, runtime: String },
+    WorkflowLoaded { skill_id: String, runtime: String },
     /// A skill was stopped.
-    SkillStopped { skill_id: String },
+    WorkflowStopped { skill_id: String },
     /// A skill failed to start.
-    SkillStartFailed { skill_id: String, error: String },
+    WorkflowStartFailed { skill_id: String, error: String },
     /// A skill tool was executed.
-    SkillExecuted {
+    WorkflowExecuted {
         skill_id: String,
         tool_name: String,
         arguments: serde_json::Value,
@@ -963,6 +980,8 @@ impl DomainEvent {
             | Self::RunQueueFollowupDispatched { .. }
             | Self::RunQueueInterrupted { .. } => "agent",
 
+            Self::MonitorStatusChanged { .. } | Self::MonitorLine { .. } => "monitor",
+
             Self::EmbeddingModelUnhealthy { .. }
             | Self::MemoryStored { .. }
             | Self::MemoryRecalled { .. }
@@ -987,10 +1006,10 @@ impl DomainEvent {
             | Self::CronDeliveryRequested { .. }
             | Self::ProactiveMessageRequested { .. } => "cron",
 
-            Self::SkillLoaded { .. }
-            | Self::SkillStopped { .. }
-            | Self::SkillStartFailed { .. }
-            | Self::SkillExecuted { .. } => "skill",
+            Self::WorkflowLoaded { .. }
+            | Self::WorkflowStopped { .. }
+            | Self::WorkflowStartFailed { .. }
+            | Self::WorkflowExecuted { .. } => "workflow",
 
             Self::ToolExecutionStarted { .. } | Self::ToolExecutionCompleted { .. } => "tool",
 
@@ -1091,6 +1110,8 @@ impl DomainEvent {
             Self::RunQueueMessageDelivered { .. } => "RunQueueMessageDelivered",
             Self::RunQueueFollowupDispatched { .. } => "RunQueueFollowupDispatched",
             Self::RunQueueInterrupted { .. } => "RunQueueInterrupted",
+            Self::MonitorStatusChanged { .. } => "MonitorStatusChanged",
+            Self::MonitorLine { .. } => "MonitorLine",
             Self::MemoryStored { .. } => "MemoryStored",
             Self::MemoryRecalled { .. } => "MemoryRecalled",
             Self::MemorySyncRequested { .. } => "MemorySyncRequested",
@@ -1110,10 +1131,10 @@ impl DomainEvent {
             Self::CronJobCompleted { .. } => "CronJobCompleted",
             Self::CronDeliveryRequested { .. } => "CronDeliveryRequested",
             Self::ProactiveMessageRequested { .. } => "ProactiveMessageRequested",
-            Self::SkillLoaded { .. } => "SkillLoaded",
-            Self::SkillStopped { .. } => "SkillStopped",
-            Self::SkillStartFailed { .. } => "SkillStartFailed",
-            Self::SkillExecuted { .. } => "SkillExecuted",
+            Self::WorkflowLoaded { .. } => "WorkflowLoaded",
+            Self::WorkflowStopped { .. } => "WorkflowStopped",
+            Self::WorkflowStartFailed { .. } => "WorkflowStartFailed",
+            Self::WorkflowExecuted { .. } => "WorkflowExecuted",
             Self::ToolExecutionStarted { .. } => "ToolExecutionStarted",
             Self::ToolExecutionCompleted { .. } => "ToolExecutionCompleted",
             Self::WebhookIncomingRequest { .. } => "WebhookIncomingRequest",
@@ -1209,6 +1230,9 @@ impl DomainEvent {
             | Self::RunQueueMessageDelivered { thread_id, .. }
             | Self::RunQueueFollowupDispatched { thread_id, .. }
             | Self::RunQueueInterrupted { thread_id, .. } => Some(thread_id.as_str()),
+            Self::MonitorStatusChanged { thread_id, .. } | Self::MonitorLine { thread_id, .. } => {
+                thread_id.as_deref()
+            }
             _ => None,
         }
     }
