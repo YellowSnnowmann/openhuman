@@ -560,10 +560,7 @@ function ComposioPicker({
 }: KindFieldsProps) {
   const { t } = useT();
   // useMemo must be declared before any early returns (Rules of Hooks).
-  const dedupedConnections = useMemo(
-    () => deduplicateConnections(connections),
-    [connections]
-  );
+  const dedupedConnections = useMemo(() => deduplicateConnections(connections), [connections]);
 
   if (loadingConnections) {
     return (
