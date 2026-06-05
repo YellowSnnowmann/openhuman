@@ -2293,8 +2293,12 @@ fn make_connections_response(
 
 #[tokio::test]
 async fn enrich_does_nothing_when_no_cached_identities() {
-    // Memory client not initialised → load_connected_identities returns
-    // Vec::new() → connections are returned unchanged.
+    // Hold the lock so no sibling test can rebind the global to a workspace
+    // that has a profile row matching "c1".  The fresh temp workspace has no
+    // profiles, so load_connected_identities returns Vec::new() and the
+    // connection is returned unchanged.
+    let tmp = tempfile::tempdir().unwrap();
+    let _guard = init_memory_client(tmp.path());
     let resp = make_connections_response(&[("c1", "gmail", "ACTIVE")]);
     let enriched = enrich_connections_with_identity(resp);
     assert_eq!(enriched.connections.len(), 1);

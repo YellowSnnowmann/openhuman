@@ -1513,7 +1513,7 @@ fn parse_sync_reason(raw: Option<&str>) -> OpResult<SyncReason> {
 /// persisted provider profile cache so the UI picker can show
 /// "Gmail · user@example.com" instead of a generic "Account N" label.
 ///
-/// This is best-effort and zero-latency — no live API calls are made.
+/// This is best-effort — no live API calls are made (one SQLite read per poll).
 /// If the memory client is not ready yet (first launch before any sync)
 /// or no profile rows exist for a connection, that connection is returned
 /// unchanged and the UI falls back to its numbered label logic.
@@ -1554,7 +1554,7 @@ fn enrich_connections_with_identity(
         if conn.account_email.is_some() || conn.workspace.is_some() || conn.username.is_some() {
             continue;
         }
-        let toolkit_key = conn.toolkit.trim().to_ascii_lowercase();
+        let toolkit_key = normalize_connection_identifier(&conn.toolkit);
         let conn_id_key = normalize_connection_identifier(&conn.id);
         if let Some(identity) = lookup.get(&(toolkit_key, conn_id_key)) {
             conn.account_email = identity.email.clone();
