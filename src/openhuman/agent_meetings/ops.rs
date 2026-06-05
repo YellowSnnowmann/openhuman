@@ -135,6 +135,50 @@ fn infer_platform(url: &url::Url) -> &'static str {
     "gmeet"
 }
 
+/// Build the `bot:join` Socket.IO payload from a validated request.
+///
+/// Extracted as a pure function so it can be unit-tested independently of the
+/// live socket connection.
+fn build_join_payload(
+    meet_url: &str,
+    display_name: &str,
+    platform: &str,
+    req: &BackendMeetJoinRequest,
+) -> Value {
+    let mut payload = json!({
+        "meetUrl": meet_url,
+        "displayName": display_name,
+        "platform": platform,
+    });
+    if let Some(map) = payload.as_object_mut() {
+        if let Some(agent_name) = &req.agent_name {
+            map.insert("agentName".to_string(), json!(agent_name));
+        }
+        if let Some(system_prompt) = &req.system_prompt {
+            map.insert("systemPrompt".to_string(), json!(system_prompt));
+        }
+        if let Some(mascot_id) = &req.mascot_id {
+            map.insert("mascotId".to_string(), json!(mascot_id));
+        }
+        if let Some(rive_colors) = &req.rive_colors {
+            map.insert(
+                "riveColors".to_string(),
+                json!({
+                    "primaryColor": rive_colors.primary_color,
+                    "secondaryColor": rive_colors.secondary_color,
+                }),
+            );
+        }
+        if let Some(respond_to) = &req.respond_to_participant {
+            map.insert("respondToParticipant".to_string(), json!(respond_to));
+        }
+        if let Some(phrase) = &req.wake_phrase {
+            map.insert("wakePhrase".to_string(), json!(phrase));
+        }
+    }
+    payload
+}
+
 /// Handle `openhuman.agent_meetings_join`.
 pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
     let req: BackendMeetJoinRequest = serde_json::from_value(Value::Object(params))
@@ -173,37 +217,7 @@ pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
         "[agent_meetings] emitting bot:join"
     );
 
-    let mut join_payload = json!({
-        "meetUrl": normalized_url.as_str(),
-        "displayName": display_name,
-        "platform": platform,
-    });
-    if let Some(map) = join_payload.as_object_mut() {
-        if let Some(agent_name) = &req.agent_name {
-            map.insert("agentName".to_string(), json!(agent_name));
-        }
-        if let Some(system_prompt) = &req.system_prompt {
-            map.insert("systemPrompt".to_string(), json!(system_prompt));
-        }
-        if let Some(mascot_id) = &req.mascot_id {
-            map.insert("mascotId".to_string(), json!(mascot_id));
-        }
-        if let Some(rive_colors) = &req.rive_colors {
-            map.insert(
-                "riveColors".to_string(),
-                json!({
-                    "primaryColor": rive_colors.primary_color,
-                    "secondaryColor": rive_colors.secondary_color,
-                }),
-            );
-        }
-        if let Some(respond_to) = &req.respond_to_participant {
-            map.insert("respondToParticipant".to_string(), json!(respond_to));
-        }
-        if let Some(phrase) = &req.wake_phrase {
-            map.insert("wakePhrase".to_string(), json!(phrase));
-        }
-    }
+    let join_payload = build_join_payload(normalized_url.as_str(), &display_name, platform, &req);
 
     mgr.emit("bot:join", join_payload)
         .await
@@ -363,5 +377,147 @@ mod tests {
         let result = handle_harness_response(params).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("must not be empty"));
+    }
+
+    // --- build_join_payload ---
+
+    fn minimal_req(meet_url: &str) -> BackendMeetJoinRequest {
+        serde_json::from_value(json!({ "meet_url": meet_url })).unwrap()
+    }
+
+    #[test]
+    fn build_join_payload_minimal() {
+        let req = minimal_req("https://meet.google.com/abc-defg-hij");
+        let payload = build_join_payload(
+            "https://meet.google.com/abc-defg-hij",
+            "OpenHuman",
+            "gmeet",
+            &req,
+        );
+        assert_eq!(payload["meetUrl"], "https://meet.google.com/abc-defg-hij");
+        assert_eq!(payload["displayName"], "OpenHuman");
+        assert_eq!(payload["platform"], "gmeet");
+        assert!(payload.get("agentName").is_none());
+        assert!(payload.get("systemPrompt").is_none());
+        assert!(payload.get("mascotId").is_none());
+        assert!(payload.get("riveColors").is_none());
+        assert!(payload.get("respondToParticipant").is_none());
+        assert!(payload.get("wakePhrase").is_none());
+    }
+
+    #[test]
+    fn build_join_payload_with_respond_to_participant() {
+        let req: BackendMeetJoinRequest = serde_json::from_value(json!({
+            "meet_url": "https://zoom.us/j/123",
+            "respond_to_participant": "Alice"
+        }))
+        .unwrap();
+        let payload = build_join_payload("https://zoom.us/j/123", "Bot", "zoom", &req);
+        assert_eq!(payload["respondToParticipant"], "Alice");
+        assert!(payload.get("wakePhrase").is_none());
+    }
+
+    #[test]
+    fn build_join_payload_with_wake_phrase() {
+        let req: BackendMeetJoinRequest = serde_json::from_value(json!({
+            "meet_url": "https://zoom.us/j/123",
+            "wake_phrase": "Hey bot"
+        }))
+        .unwrap();
+        let payload = build_join_payload("https://zoom.us/j/123", "Bot", "zoom", &req);
+        assert_eq!(payload["wakePhrase"], "Hey bot");
+        assert!(payload.get("respondToParticipant").is_none());
+    }
+
+    #[test]
+    fn build_join_payload_with_all_optional_fields() {
+        let req: BackendMeetJoinRequest = serde_json::from_value(json!({
+            "meet_url": "https://teams.microsoft.com/l/meet/abc",
+            "agent_name": "MyBot",
+            "system_prompt": "You are a helpful assistant.",
+            "mascot_id": "yellow",
+            "rive_colors": {
+                "primary_color": "#ff0000",
+                "secondary_color": "#00ff00"
+            },
+            "respond_to_participant": "Bob",
+            "wake_phrase": "Hello bot"
+        }))
+        .unwrap();
+        let payload =
+            build_join_payload("https://teams.microsoft.com/l/meet/abc", "MyBot", "teams", &req);
+        assert_eq!(payload["agentName"], "MyBot");
+        assert_eq!(payload["systemPrompt"], "You are a helpful assistant.");
+        assert_eq!(payload["mascotId"], "yellow");
+        assert_eq!(payload["riveColors"]["primaryColor"], "#ff0000");
+        assert_eq!(payload["riveColors"]["secondaryColor"], "#00ff00");
+        assert_eq!(payload["respondToParticipant"], "Bob");
+        assert_eq!(payload["wakePhrase"], "Hello bot");
+    }
+
+    #[test]
+    fn join_request_fields_deserialize_correctly() {
+        let req: BackendMeetJoinRequest = serde_json::from_value(json!({
+            "meet_url": "https://meet.google.com/abc-defg-hij",
+            "respond_to_participant": "Alice",
+            "wake_phrase": "Hey bot"
+        }))
+        .unwrap();
+        assert_eq!(req.respond_to_participant.as_deref(), Some("Alice"));
+        assert_eq!(req.wake_phrase.as_deref(), Some("Hey bot"));
+    }
+
+    #[test]
+    fn join_request_optional_fields_absent_by_default() {
+        let req: BackendMeetJoinRequest =
+            serde_json::from_value(json!({ "meet_url": "https://meet.google.com/abc-defg-hij" }))
+                .unwrap();
+        assert!(req.respond_to_participant.is_none());
+        assert!(req.wake_phrase.is_none());
+        assert!(req.agent_name.is_none());
+        assert!(req.system_prompt.is_none());
+        assert!(req.mascot_id.is_none());
+        assert!(req.rive_colors.is_none());
+    }
+
+    #[test]
+    fn transcript_turns_empty_returns_none() {
+        let result = transcript_turns_to_chat_batch(&[], 1_000);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn transcript_turns_all_blank_content_returns_none() {
+        let result = transcript_turns_to_chat_batch(
+            &[BackendMeetTurn {
+                role: "user".to_string(),
+                content: "   ".to_string(),
+            }],
+            1_000,
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn transcript_turns_zero_duration_no_panic() {
+        let batch = transcript_turns_to_chat_batch(
+            &[BackendMeetTurn {
+                role: "user".to_string(),
+                content: "hello".to_string(),
+            }],
+            0,
+        )
+        .expect("batch");
+        assert_eq!(batch.messages.len(), 1);
+    }
+
+    #[test]
+    fn rive_colors_deserialize() {
+        use crate::openhuman::agent_meetings::types::RiveColors;
+        let rc: RiveColors =
+            serde_json::from_value(json!({"primary_color": "#abc", "secondary_color": "#def"}))
+                .unwrap();
+        assert_eq!(rc.primary_color.as_deref(), Some("#abc"));
+        assert_eq!(rc.secondary_color.as_deref(), Some("#def"));
     }
 }
