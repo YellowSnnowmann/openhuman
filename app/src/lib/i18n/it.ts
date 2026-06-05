@@ -4189,8 +4189,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.liveStatusError': 'Partecipazione fallita',
   'skills.meetingBots.leaveButton': 'Esci',
   'skills.meetingBots.respondToParticipant': 'Il tuo nome in questa riunione',
-  'skills.meetingBots.respondToParticipantHint': 'es. Mario (il tuo nome visualizzato nella chiamata)',
-  'skills.meetingBots.respondToParticipantDesc': 'Il bot risponderà solo a te. Lascia vuoto per permettere a chiunque di attivarlo.',
+  'skills.meetingBots.respondToParticipantHint':
+    'es. Mario (il tuo nome visualizzato nella chiamata)',
+  'skills.meetingBots.respondToParticipantDesc':
+    'Il bot risponderà solo a te. Lascia vuoto per permettere a chiunque di attivarlo.',
   'skills.meetingBots.wakePhrase': 'Frase di attivazione',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Il partecipante deve dirlo prima che il bot risponda.',

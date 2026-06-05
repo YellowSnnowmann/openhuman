@@ -4082,7 +4082,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.leaveButton': '나가기',
   'skills.meetingBots.respondToParticipant': '이 회의에서 내 이름',
   'skills.meetingBots.respondToParticipantHint': '예: 김철수 (통화에서 표시되는 이름)',
-  'skills.meetingBots.respondToParticipantDesc': '봇은 나에게만 응답합니다. 누구나 활성화할 수 있도록 비워 두세요.',
+  'skills.meetingBots.respondToParticipantDesc':
+    '봇은 나에게만 응답합니다. 누구나 활성화할 수 있도록 비워 두세요.',
   'skills.meetingBots.wakePhrase': '웨이크 구문',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': '참가자가 봇이 응답하기 전에 이것을 말해야 합니다.',

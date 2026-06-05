@@ -4138,7 +4138,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.leaveButton': 'Keluar',
   'skills.meetingBots.respondToParticipant': 'Nama Anda di Rapat Ini',
   'skills.meetingBots.respondToParticipantHint': 'mis. Budi (nama tampilan Anda di panggilan)',
-  'skills.meetingBots.respondToParticipantDesc': 'Bot hanya akan membalas Anda. Kosongkan agar siapa saja dapat mengaktifkannya.',
+  'skills.meetingBots.respondToParticipantDesc':
+    'Bot hanya akan membalas Anda. Kosongkan agar siapa saja dapat mengaktifkannya.',
   'skills.meetingBots.wakePhrase': 'Frasa Bangun',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Peserta harus mengucapkan ini sebelum bot merespons.',

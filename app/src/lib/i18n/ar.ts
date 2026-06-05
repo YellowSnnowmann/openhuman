@@ -4044,7 +4044,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.leaveButton': 'مغادرة',
   'skills.meetingBots.respondToParticipant': 'اسمك في هذا الاجتماع',
   'skills.meetingBots.respondToParticipantHint': 'مثال: أحمد (اسمك في المكالمة)',
-  'skills.meetingBots.respondToParticipantDesc': 'لن يستجيب البوت إلا لك. اتركه فارغاً للسماح لأي شخص بتفعيله.',
+  'skills.meetingBots.respondToParticipantDesc':
+    'لن يستجيب البوت إلا لك. اتركه فارغاً للسماح لأي شخص بتفعيله.',
   'skills.meetingBots.wakePhrase': 'عبارة التنشيط',
   'skills.meetingBots.wakePhraseHint': 'مرحباً OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'يجب أن يقول المشارك هذا قبل أن يرد البوت.',

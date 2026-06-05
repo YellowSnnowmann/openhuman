@@ -4192,7 +4192,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.leaveButton': 'Sair',
   'skills.meetingBots.respondToParticipant': 'Seu nome nesta reunião',
   'skills.meetingBots.respondToParticipantHint': 'ex. João (seu nome exibido na chamada)',
-  'skills.meetingBots.respondToParticipantDesc': 'O bot só responderá a você. Deixe em branco para que qualquer pessoa possa ativá-lo.',
+  'skills.meetingBots.respondToParticipantDesc':
+    'O bot só responderá a você. Deixe em branco para que qualquer pessoa possa ativá-lo.',
   'skills.meetingBots.wakePhrase': 'Frase de ativação',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'O participante deve dizer isso antes de o bot responder.',

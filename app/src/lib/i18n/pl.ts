@@ -4190,8 +4190,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.liveStatusError': 'Nie można dołączyć',
   'skills.meetingBots.leaveButton': 'Wyjdź',
   'skills.meetingBots.respondToParticipant': 'Twoje imię na tym spotkaniu',
-  'skills.meetingBots.respondToParticipantHint': 'np. Anna (Twoja nazwa wyświetlana podczas rozmowy)',
-  'skills.meetingBots.respondToParticipantDesc': 'Bot będzie odpowiadał tylko Tobie. Pozostaw puste, aby każdy mógł go aktywować.',
+  'skills.meetingBots.respondToParticipantHint':
+    'np. Anna (Twoja nazwa wyświetlana podczas rozmowy)',
+  'skills.meetingBots.respondToParticipantDesc':
+    'Bot będzie odpowiadał tylko Tobie. Pozostaw puste, aby każdy mógł go aktywować.',
   'skills.meetingBots.wakePhrase': 'Fraza aktywacji',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Uczestnik musi to powiedzieć, zanim bot odpowie.',

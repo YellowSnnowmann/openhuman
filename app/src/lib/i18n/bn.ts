@@ -4120,7 +4120,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.leaveButton': 'ছেড়ে দিন',
   'skills.meetingBots.respondToParticipant': 'এই মিটিংয়ে আপনার নাম',
   'skills.meetingBots.respondToParticipantHint': 'যেমন: রিয়া (কলে আপনার প্রদর্শনী নাম)',
-  'skills.meetingBots.respondToParticipantDesc': 'বট শুধুমাত্র আপনাকে জবাব দেবে। যে কেউ সক্রিয় করতে পারে সে জন্য খালি রাখুন।',
+  'skills.meetingBots.respondToParticipantDesc':
+    'বট শুধুমাত্র আপনাকে জবাব দেবে। যে কেউ সক্রিয় করতে পারে সে জন্য খালি রাখুন।',
   'skills.meetingBots.wakePhrase': 'ওয়েক ফ্রেজ',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'বট সাড়া দেওয়ার আগে অংশগ্রহণকারীকে এটি বলতে হবে।',
