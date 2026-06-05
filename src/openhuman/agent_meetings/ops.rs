@@ -444,8 +444,12 @@ mod tests {
             "wake_phrase": "Hello bot"
         }))
         .unwrap();
-        let payload =
-            build_join_payload("https://teams.microsoft.com/l/meet/abc", "MyBot", "teams", &req);
+        let payload = build_join_payload(
+            "https://teams.microsoft.com/l/meet/abc",
+            "MyBot",
+            "teams",
+            &req,
+        );
         assert_eq!(payload["agentName"], "MyBot");
         assert_eq!(payload["systemPrompt"], "You are a helpful assistant.");
         assert_eq!(payload["mascotId"], "yellow");
