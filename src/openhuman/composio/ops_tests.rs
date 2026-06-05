@@ -2257,3 +2257,183 @@ fn composio_direct_500_does_not_demote() {
         "composio-direct 500 with no auth body must remain an unclassified bug shape"
     );
 }
+
+// ── enrich_connections_with_identity ──────────────────────────────────
+
+/// Helper: bind the process-global memory client to a fresh temp workspace.
+///
+/// The global rebinds whenever the workspace path changes (see
+/// `memory::global::init`), so each test that passes a unique `TempDir`
+/// gets isolated profile storage. Tests that share the global must run
+/// serially — this is consistent with the existing global-client tests in
+/// `memory::global`.
+fn init_memory_client(workspace: &std::path::Path) {
+    let ws = workspace.to_path_buf();
+    let _ = crate::openhuman::memory::global::init(ws);
+}
+
+fn make_connections_response(
+    conns: &[(&str, &str, &str)],
+) -> super::super::types::ComposioConnectionsResponse {
+    let connections = conns
+        .iter()
+        .map(|(id, toolkit, status)| conn(id, toolkit, status))
+        .collect();
+    super::super::types::ComposioConnectionsResponse { connections }
+}
+
+#[test]
+fn enrich_does_nothing_when_no_cached_identities() {
+    // Memory client not initialised → load_connected_identities returns
+    // Vec::new() → connections are returned unchanged.
+    let resp = make_connections_response(&[("c1", "gmail", "ACTIVE")]);
+    let enriched = enrich_connections_with_identity(resp);
+    assert_eq!(enriched.connections.len(), 1);
+    assert!(enriched.connections[0].account_email.is_none());
+    assert!(enriched.connections[0].workspace.is_none());
+    assert!(enriched.connections[0].username.is_none());
+}
+
+#[test]
+fn enrich_populates_email_from_cached_profile() {
+    use crate::openhuman::memory_sync::composio::providers::{
+        profile::persist_provider_profile, ProviderUserProfile,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    init_memory_client(tmp.path());
+
+    persist_provider_profile(&ProviderUserProfile {
+        toolkit: "gmail".to_string(),
+        connection_id: Some("conn-gmail-1".to_string()),
+        email: Some("alice@example.com".to_string()),
+        display_name: Some("Alice Smith".to_string()),
+        ..Default::default()
+    });
+
+    let resp = make_connections_response(&[("conn-gmail-1", "gmail", "ACTIVE")]);
+    let enriched = enrich_connections_with_identity(resp);
+
+    assert_eq!(
+        enriched.connections[0].account_email.as_deref(),
+        Some("alice@example.com"),
+        "email should be populated from cached gmail profile"
+    );
+    assert_eq!(
+        enriched.connections[0].workspace.as_deref(),
+        Some("Alice Smith"),
+        "workspace (display_name) should be populated"
+    );
+    assert!(
+        enriched.connections[0].username.is_none(),
+        "username (handle) should be absent for gmail"
+    );
+}
+
+#[test]
+fn enrich_populates_handle_for_github() {
+    use crate::openhuman::memory_sync::composio::providers::{
+        profile::persist_provider_profile, ProviderUserProfile,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    init_memory_client(tmp.path());
+
+    persist_provider_profile(&ProviderUserProfile {
+        toolkit: "github".to_string(),
+        connection_id: Some("conn-gh-1".to_string()),
+        username: Some("octocat".to_string()),
+        ..Default::default()
+    });
+
+    let resp = make_connections_response(&[("conn-gh-1", "github", "ACTIVE")]);
+    let enriched = enrich_connections_with_identity(resp);
+
+    // GitHub uses `handle` kind (the catch-all branch in expand_identity_rows).
+    assert_eq!(
+        enriched.connections[0].username.as_deref(),
+        Some("octocat"),
+        "username (handle) should be populated for github"
+    );
+    assert!(enriched.connections[0].account_email.is_none());
+}
+
+#[test]
+fn enrich_skips_connection_already_having_identity() {
+    // If the backend-proxied path already populated account_email, the
+    // enricher must NOT overwrite it with a potentially stale cached value.
+    let mut resp = make_connections_response(&[("c-preloaded", "gmail", "ACTIVE")]);
+    resp.connections[0].account_email = Some("preloaded@example.com".to_string());
+
+    let enriched = enrich_connections_with_identity(resp);
+    assert_eq!(
+        enriched.connections[0].account_email.as_deref(),
+        Some("preloaded@example.com"),
+        "pre-populated identity must not be overwritten"
+    );
+}
+
+#[test]
+fn enrich_handles_multiple_connections_same_toolkit() {
+    // Two Gmail accounts — each gets its own identity label, not "Account N".
+    use crate::openhuman::memory_sync::composio::providers::{
+        profile::persist_provider_profile, ProviderUserProfile,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    init_memory_client(tmp.path());
+
+    persist_provider_profile(&ProviderUserProfile {
+        toolkit: "gmail".to_string(),
+        connection_id: Some("g1".to_string()),
+        email: Some("alice@example.com".to_string()),
+        ..Default::default()
+    });
+    persist_provider_profile(&ProviderUserProfile {
+        toolkit: "gmail".to_string(),
+        connection_id: Some("g2".to_string()),
+        email: Some("bob@example.com".to_string()),
+        ..Default::default()
+    });
+
+    let resp = make_connections_response(&[("g1", "gmail", "ACTIVE"), ("g2", "gmail", "ACTIVE")]);
+    let enriched = enrich_connections_with_identity(resp);
+
+    let emails: Vec<_> = enriched
+        .connections
+        .iter()
+        .map(|c| c.account_email.as_deref())
+        .collect();
+    assert!(
+        emails.contains(&Some("alice@example.com")),
+        "first gmail account should carry alice's email"
+    );
+    assert!(
+        emails.contains(&Some("bob@example.com")),
+        "second gmail account should carry bob's email"
+    );
+}
+
+#[test]
+fn enrich_leaves_unmatched_connection_unchanged() {
+    // Connection whose id has no cached profile row is returned with all
+    // identity fields as None — the UI falls back to "Account N".
+    use crate::openhuman::memory_sync::composio::providers::{
+        profile::persist_provider_profile, ProviderUserProfile,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    init_memory_client(tmp.path());
+
+    // Persist a profile for a DIFFERENT connection id.
+    persist_provider_profile(&ProviderUserProfile {
+        toolkit: "gmail".to_string(),
+        connection_id: Some("other-conn".to_string()),
+        email: Some("other@example.com".to_string()),
+        ..Default::default()
+    });
+
+    let resp = make_connections_response(&[("no-profile-conn", "gmail", "ACTIVE")]);
+    let enriched = enrich_connections_with_identity(resp);
+
+    assert!(
+        enriched.connections[0].account_email.is_none(),
+        "connection with no cached profile must remain unenriched"
+    );
+}

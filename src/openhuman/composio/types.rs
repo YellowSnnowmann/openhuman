@@ -126,6 +126,26 @@ pub struct ComposioConnection {
     /// ISO timestamp (backend passes this through from Composio).
     #[serde(rename = "createdAt", default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// Account email — populated from the cached provider profile when
+    /// the toolkit reports an email address (e.g. Gmail, Google Calendar,
+    /// Google Sheets). Lets the UI picker show "Gmail · user@example.com"
+    /// instead of a generic "Account N" label.
+    #[serde(
+        rename = "accountEmail",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub account_email: Option<String>,
+    /// Workspace or team display name — populated for workspace-based
+    /// services (e.g. Slack: user display name / team name, Notion: workspace
+    /// name). Used by the picker when no email is available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    /// Screen name or handle — populated for username-based services
+    /// (e.g. GitHub login, Twitter handle). Used by the picker as a
+    /// last-resort identity hint after email and workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
 }
 
 impl ComposioConnection {
