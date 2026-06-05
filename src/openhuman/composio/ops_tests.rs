@@ -2262,14 +2262,25 @@ fn composio_direct_500_does_not_demote() {
 
 /// Helper: bind the process-global memory client to a fresh temp workspace.
 ///
+/// Initialise the global memory client to an isolated temp workspace and return
+/// a serialisation lock that must be held for the duration of the test.
+///
 /// The global rebinds whenever the workspace path changes (see
-/// `memory::global::init`), so each test that passes a unique `TempDir`
-/// gets isolated profile storage. Tests that share the global must run
-/// serially — this is consistent with the existing global-client tests in
-/// `memory::global`.
-fn init_memory_client(workspace: &std::path::Path) {
-    let ws = workspace.to_path_buf();
-    let _ = crate::openhuman::memory::global::init(ws);
+/// `memory::global::init`), so each test that passes a unique `TempDir` gets
+/// isolated profile storage. The returned guard prevents concurrent tests from
+/// rebinding the singleton while the calling test is running — hold it with
+/// `let _guard = init_memory_client(tmp.path());`.
+fn init_memory_client(
+    workspace: &std::path::Path,
+) -> std::sync::MutexGuard<'static, ()> {
+    static ENRICH_IDENTITY_TEST_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+        std::sync::OnceLock::new();
+    let guard = ENRICH_IDENTITY_TEST_LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _ = crate::openhuman::memory::global::init(workspace.to_path_buf());
+    guard
 }
 
 fn make_connections_response(
@@ -2300,7 +2311,7 @@ fn enrich_populates_email_from_cached_profile() {
         profile::persist_provider_profile, ProviderUserProfile,
     };
     let tmp = tempfile::tempdir().unwrap();
-    init_memory_client(tmp.path());
+    let _guard = init_memory_client(tmp.path());
 
     persist_provider_profile(&ProviderUserProfile {
         toolkit: "gmail".to_string(),
@@ -2335,7 +2346,7 @@ fn enrich_populates_handle_for_github() {
         profile::persist_provider_profile, ProviderUserProfile,
     };
     let tmp = tempfile::tempdir().unwrap();
-    init_memory_client(tmp.path());
+    let _guard = init_memory_client(tmp.path());
 
     persist_provider_profile(&ProviderUserProfile {
         toolkit: "github".to_string(),
@@ -2378,7 +2389,7 @@ fn enrich_handles_multiple_connections_same_toolkit() {
         profile::persist_provider_profile, ProviderUserProfile,
     };
     let tmp = tempfile::tempdir().unwrap();
-    init_memory_client(tmp.path());
+    let _guard = init_memory_client(tmp.path());
 
     persist_provider_profile(&ProviderUserProfile {
         toolkit: "gmail".to_string(),
@@ -2419,7 +2430,7 @@ fn enrich_leaves_unmatched_connection_unchanged() {
         profile::persist_provider_profile, ProviderUserProfile,
     };
     let tmp = tempfile::tempdir().unwrap();
-    init_memory_client(tmp.path());
+    let _guard = init_memory_client(tmp.path());
 
     // Persist a profile for a DIFFERENT connection id.
     persist_provider_profile(&ProviderUserProfile {
