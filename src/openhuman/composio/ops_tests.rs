@@ -2270,9 +2270,7 @@ fn composio_direct_500_does_not_demote() {
 /// isolated profile storage. The returned guard prevents concurrent tests from
 /// rebinding the singleton while the calling test is running — hold it with
 /// `let _guard = init_memory_client(tmp.path());`.
-fn init_memory_client(
-    workspace: &std::path::Path,
-) -> std::sync::MutexGuard<'static, ()> {
+fn init_memory_client(workspace: &std::path::Path) -> std::sync::MutexGuard<'static, ()> {
     static ENRICH_IDENTITY_TEST_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
         std::sync::OnceLock::new();
     let guard = ENRICH_IDENTITY_TEST_LOCK
