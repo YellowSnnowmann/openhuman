@@ -42,7 +42,8 @@ class ApiClient {
     const versionHeaders = await getClientVersionHeaders();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': '1',
+      // Only skip ngrok interstitials in dev (local tunnels). Never send in production.
+      ...(IS_DEV ? { 'ngrok-skip-browser-warning': '1' } : {}),
       ...options.headers,
       ...versionHeaders,
     };

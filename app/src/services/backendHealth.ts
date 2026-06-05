@@ -1,3 +1,4 @@
+import { IS_DEV } from '../utils/config';
 import { getBackendUrl } from './backendUrl';
 
 export const BACKEND_HEALTH_TIMEOUT_MS = 6_000;
@@ -55,7 +56,8 @@ export async function checkBackendHealthy(
       cache: 'no-store',
       credentials: 'omit',
       signal: controller.signal,
-      headers: { 'ngrok-skip-browser-warning': '1' },
+      // Only skip ngrok interstitials in dev (local tunnels). Never send in production.
+      headers: IS_DEV ? { 'ngrok-skip-browser-warning': '1' } : {},
     });
     const latencyMs = Date.now() - start;
 
