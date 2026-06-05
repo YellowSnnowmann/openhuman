@@ -445,6 +445,9 @@ mod tests {
                 toolkit: "slack".into(),
                 status: status.into(),
                 created_at: None,
+                account_email: None,
+                workspace: None,
+                username: None,
             };
             assert!(conn.is_active(), "status {status:?} should be active");
         }
@@ -455,6 +458,9 @@ mod tests {
                 toolkit: "slack".into(),
                 status: status.into(),
                 created_at: None,
+                account_email: None,
+                workspace: None,
+                username: None,
             };
             assert!(!conn.is_active(), "status {status:?} should not be active");
         }
@@ -467,6 +473,9 @@ mod tests {
             toolkit: " Slack ".into(),
             status: "ACTIVE".into(),
             created_at: None,
+            account_email: None,
+            workspace: None,
+            username: None,
         };
         assert_eq!(conn.normalized_toolkit(), "slack");
     }
@@ -514,6 +523,9 @@ mod tests {
             toolkit: "notion".into(),
             status: "PENDING".into(),
             created_at: None,
+            account_email: None,
+            workspace: None,
+            username: None,
         };
         let s = serde_json::to_value(&conn).unwrap();
         assert!(
