@@ -19,6 +19,7 @@ import localeReducer from '../store/localeSlice';
 import mascotReducer from '../store/mascotSlice';
 import personaReducer from '../store/personaSlice';
 import socketReducer from '../store/socketSlice';
+import themeReducer from '../store/themeSlice';
 
 /**
  * Creates a fresh Redux store for testing.
@@ -41,6 +42,7 @@ const testRootReducer = combineReducers({
   mascot: mascotReducer,
   persona: personaReducer,
   socket: socketReducer,
+  theme: themeReducer,
 });
 
 export function createTestStore(preloadedState?: Record<string, unknown>) {
