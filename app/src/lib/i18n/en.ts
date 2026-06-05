@@ -2330,7 +2330,6 @@ const en: TranslationMap = {
   'memorySources.loadingConnections': 'Loading connections…',
   'memorySources.noConnections':
     'No active Composio connections found. Connect an integration first.',
-  'memorySources.connectionAccount': 'Account',
   'memorySources.pickConnection': 'Pick a connection',
   'memorySources.selectConnection': '— Select a connection —',
   'memorySources.composioListFailed': 'Failed to load Composio connections.',
