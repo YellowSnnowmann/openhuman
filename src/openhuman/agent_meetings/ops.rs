@@ -15,7 +15,7 @@ use crate::rpc::RpcOutcome;
 
 use super::types::{
     BackendMeetHarnessResponseRequest, BackendMeetJoinRequest, BackendMeetJoinResponse,
-    BackendMeetLeaveRequest,
+    BackendMeetLeaveRequest, BackendMeetSpeakRequest,
 };
 
 const ALLOWED_HOSTS: &[(&str, &str)] = &[
@@ -75,6 +75,7 @@ fn transcript_turns_to_chat_batch(
 pub async fn ingest_backend_meeting_transcript(
     turns: Vec<BackendMeetTurn>,
     duration_ms: u64,
+    correlation_id: Option<String>,
 ) -> Result<(), String> {
     let Some(batch) = transcript_turns_to_chat_batch(&turns, duration_ms) else {
         tracing::debug!("[agent_meetings] transcript had no ingestible turns");
@@ -84,7 +85,12 @@ pub async fn ingest_backend_meeting_transcript(
     let config = crate::openhuman::config::Config::load_or_init()
         .await
         .map_err(|e| format!("[agent_meetings] config load failed: {e}"))?;
-    let source_id = format!("meet:recall:{}", chrono::Utc::now().timestamp_millis());
+    let cid_suffix = correlation_id.as_deref().unwrap_or("none");
+    let source_id = format!(
+        "meet:recall:{}:{}",
+        chrono::Utc::now().timestamp_millis(),
+        cid_suffix
+    );
     let tags = vec!["meeting".to_string(), "recall_ai".to_string()];
     let result = ingest_pipeline::ingest_chat(&config, &source_id, "user", tags, batch)
         .await
@@ -93,7 +99,99 @@ pub async fn ingest_backend_meeting_transcript(
     tracing::info!(
         source_id = %source_id,
         chunks_written = result.chunks_written,
+        correlation_id = ?correlation_id,
         "[agent_meetings] transcript ingested into memory tree"
+    );
+
+    // Create a meeting thread with the transcript for the thread system.
+    if let Err(e) =
+        create_meeting_thread_with_transcript(&turns, duration_ms, correlation_id).await
+    {
+        tracing::warn!("[agent_meetings] meeting thread creation failed: {e}");
+    }
+
+    Ok(())
+}
+
+/// Create a conversation thread labelled "Meetings" containing the transcript.
+///
+/// Uses the correlation_id (when present) as a stable external reference so
+/// duplicate calls for the same session are idempotent at the application level.
+pub async fn create_meeting_thread_with_transcript(
+    turns: &[BackendMeetTurn],
+    duration_ms: u64,
+    correlation_id: Option<String>,
+) -> Result<(), String> {
+    use crate::openhuman::memory::{
+        AppendConversationMessageRequest, ConversationMessageRecord,
+        CreateConversationThreadRequest,
+    };
+    use crate::openhuman::threads::ops;
+
+    if turns.is_empty() {
+        return Ok(());
+    }
+
+    // Format transcript body.
+    let mut body = String::new();
+    let duration_min = duration_ms / 60_000;
+    body.push_str(&format!("Duration: {duration_min} min\n\n"));
+    if let Some(cid) = &correlation_id {
+        body.push_str(&format!("Correlation ID: {cid}\n\n"));
+    }
+    for turn in turns {
+        let text = turn.content.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let role_label = if turn.role.eq_ignore_ascii_case("assistant") {
+            "Assistant"
+        } else {
+            "Participant"
+        };
+        body.push_str(&format!("**{role_label}**: {text}\n\n"));
+    }
+
+    // 1. Create thread with labels: ["Meetings"]
+    let create_req = CreateConversationThreadRequest {
+        labels: Some(vec!["Meetings".to_string()]),
+        personality_id: None,
+    };
+    let outcome = ops::thread_create_new(create_req)
+        .await
+        .map_err(|e| format!("[agent_meetings] thread creation failed: {e}"))?;
+    let thread_id = outcome
+        .value
+        .data
+        .as_ref()
+        .ok_or_else(|| "[agent_meetings] thread creation returned no data".to_string())?
+        .id
+        .clone();
+
+    // 2. Append the transcript as a message.
+    let msg = ConversationMessageRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        content: body,
+        message_type: "system".to_string(),
+        extra_metadata: serde_json::Value::Null,
+        sender: "system".to_string(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let append_req = AppendConversationMessageRequest {
+        thread_id: thread_id.clone(),
+        message: msg,
+    };
+    if let Err(e) = ops::message_append(append_req).await {
+        tracing::warn!(
+            thread_id = %thread_id,
+            "[agent_meetings] failed to append transcript message: {e}"
+        );
+    }
+
+    tracing::info!(
+        thread_id = %thread_id,
+        turn_count = turns.len(),
+        "[agent_meetings] meeting thread created"
     );
     Ok(())
 }
@@ -174,6 +272,12 @@ fn build_join_payload(
         }
         if let Some(phrase) = &req.wake_phrase {
             map.insert("wakePhrase".to_string(), json!(phrase));
+        }
+        if let Some(cid) = &req.correlation_id {
+            map.insert("correlationId".to_string(), json!(cid));
+        }
+        if let Some(lo) = req.listen_only {
+            map.insert("listenOnly".to_string(), json!(lo));
         }
     }
     payload
@@ -281,6 +385,35 @@ pub async fn handle_harness_response(params: Map<String, Value>) -> Result<Value
     );
 
     mgr.emit("bot:harness:response", json!({ "result": req.result }))
+        .await
+        .map_err(|e| format!("[agent_meetings] emit failed: {e}"))?;
+
+    let outcome = RpcOutcome::new(json!({ "ok": true }), vec![]);
+    outcome.into_cli_compatible_json()
+}
+
+/// Handle `openhuman.agent_meetings_speak`.
+pub async fn handle_speak(params: Map<String, Value>) -> Result<Value, String> {
+    let req: BackendMeetSpeakRequest = serde_json::from_value(Value::Object(params))
+        .map_err(|e| format!("[agent_meetings] invalid speak request: {e}"))?;
+
+    if req.text.trim().is_empty() {
+        return Err("[agent_meetings] text must not be empty".to_string());
+    }
+
+    let mgr = global_socket_manager()
+        .ok_or_else(|| "[agent_meetings] socket not connected to backend".to_string())?;
+
+    if !mgr.is_connected() {
+        return Err("[agent_meetings] socket not connected to backend".to_string());
+    }
+
+    tracing::info!(
+        text_len = req.text.len(),
+        "[agent_meetings] emitting bot:speak"
+    );
+
+    mgr.emit("bot:speak", json!({ "text": req.text }))
         .await
         .map_err(|e| format!("[agent_meetings] emit failed: {e}"))?;
 

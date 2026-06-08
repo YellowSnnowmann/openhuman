@@ -29,6 +29,18 @@ pub struct MeetConfig {
     /// memory — privacy-conservative default.
     #[serde(default = "default_ingest_backend_transcripts")]
     pub ingest_backend_transcripts: bool,
+
+    /// Auto-join policy for calendar meetings with a Google Meet link.
+    /// `"ask"` = prompt user each time, `"always"` = auto-join,
+    /// `"never"` = disabled. Default: `"ask"`.
+    #[serde(default = "default_auto_join_policy")]
+    pub auto_join_policy: String,
+
+    /// Auto-summarize policy after meetings end.
+    /// `"ask"` = prompt user, `"always"` = auto-summarize,
+    /// `"never"` = disabled. Default: `"ask"`.
+    #[serde(default = "default_auto_summarize_policy")]
+    pub auto_summarize_policy: String,
 }
 
 fn default_auto_orchestrator_handoff() -> bool {
@@ -39,11 +51,26 @@ fn default_ingest_backend_transcripts() -> bool {
     false
 }
 
+fn default_auto_join_policy() -> String {
+    "ask".to_string()
+}
+
+fn default_auto_summarize_policy() -> String {
+    "ask".to_string()
+}
+
+/// Recognised values for `auto_join_policy` and `auto_summarize_policy`.
+pub const POLICY_ASK: &str = "ask";
+pub const POLICY_ALWAYS: &str = "always";
+pub const POLICY_NEVER: &str = "never";
+
 impl Default for MeetConfig {
     fn default() -> Self {
         Self {
             auto_orchestrator_handoff: false,
             ingest_backend_transcripts: false,
+            auto_join_policy: default_auto_join_policy(),
+            auto_summarize_policy: default_auto_summarize_policy(),
         }
     }
 }
@@ -113,10 +140,35 @@ mod tests {
         let original = MeetConfig {
             auto_orchestrator_handoff: true,
             ingest_backend_transcripts: true,
+            auto_join_policy: "always".to_string(),
+            auto_summarize_policy: "never".to_string(),
         };
         let s = serde_json::to_string(&original).unwrap();
         let back: MeetConfig = serde_json::from_str(&s).unwrap();
         assert!(back.auto_orchestrator_handoff);
         assert!(back.ingest_backend_transcripts);
+        assert_eq!(back.auto_join_policy, "always");
+        assert_eq!(back.auto_summarize_policy, "never");
+    }
+
+    #[test]
+    fn default_auto_join_policy_is_ask() {
+        let cfg = MeetConfig::default();
+        assert_eq!(cfg.auto_join_policy, "ask");
+    }
+
+    #[test]
+    fn default_auto_summarize_policy_is_ask() {
+        let cfg = MeetConfig::default();
+        assert_eq!(cfg.auto_summarize_policy, "ask");
+    }
+
+    #[test]
+    fn deserialize_respects_auto_join_policy() {
+        let cfg: MeetConfig = serde_json::from_value(json!({
+            "auto_join_policy": "always"
+        }))
+        .unwrap();
+        assert_eq!(cfg.auto_join_policy, "always");
     }
 }

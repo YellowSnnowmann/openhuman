@@ -41,6 +41,12 @@ pub struct BackendMeetJoinRequest {
     /// The phrase is stripped from the text before it reaches the LLM.
     #[serde(default)]
     pub wake_phrase: Option<String>,
+    /// Opaque correlation id echoed on all `bot:*` events for this session.
+    #[serde(default)]
+    pub correlation_id: Option<String>,
+    /// When `true`, the bot joins in listen-only mode (no microphone, no replies).
+    #[serde(default)]
+    pub listen_only: Option<bool>,
 }
 
 /// Outputs from `openhuman.agent_meetings_join`.
@@ -62,4 +68,12 @@ pub struct BackendMeetLeaveRequest {
 #[derive(Debug, Clone, Deserialize)]
 pub struct BackendMeetHarnessResponseRequest {
     pub result: String,
+}
+
+/// Inputs to `openhuman.agent_meetings_speak`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackendMeetSpeakRequest {
+    pub text: String,
+    #[serde(default)]
+    pub correlation_id: Option<String>,
 }

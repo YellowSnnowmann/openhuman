@@ -12,6 +12,7 @@
 //! - [`ops`]     — RPC handlers that emit Socket.IO events
 //! - [`schemas`] — controller schema + registered handler wrappers
 
+pub mod calendar;
 pub mod ops;
 pub mod schemas;
 pub mod types;
