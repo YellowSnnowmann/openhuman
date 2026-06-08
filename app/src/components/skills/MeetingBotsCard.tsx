@@ -248,6 +248,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const { t } = useT();
   const dispatch = useAppDispatch();
   const [meetUrl, setMeetUrl] = useState('');
+  const [respondTo, setRespondTo] = useState('');
   const personaDisplayName = useAppSelector(selectPersonaDisplayName);
   const personaDescription = useAppSelector(selectPersonaDescription);
   const selectedMascotId = useAppSelector(selectSelectedMascotId);
@@ -324,6 +325,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
         mascotId,
         riveColors,
         correlationId: meetingId,
+        respondToParticipant: respondTo.trim() || undefined,
       });
       onToast?.({
         type: 'success',
@@ -388,6 +390,25 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
                 className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
                 required
               />
+            </label>
+
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+                {t('skills.meetingBots.respondToParticipant')}
+              </span>
+              <input
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={respondTo}
+                onChange={e => setRespondTo(e.target.value)}
+                placeholder={t('skills.meetingBots.respondToParticipantHint')}
+                disabled={submitting}
+                className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
+              />
+              <p className="mt-1 text-[10px] text-stone-400 dark:text-neutral-500">
+                {t('skills.meetingBots.respondToParticipantDesc')}
+              </p>
             </label>
 
             {error && (
