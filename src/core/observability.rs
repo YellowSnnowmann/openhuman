@@ -1164,9 +1164,15 @@ fn is_local_ai_capability_unavailable_message(lower: &str) -> bool {
 /// prefix that cannot appear in any other error path. Anchored to the exact
 /// strings emitted by `prompt_guard_user_message` in
 /// `src/openhuman/inference/local/ops.rs`.
+///
+/// A third variant is emitted by the web channel provider
+/// (`src/openhuman/channels/providers/web/ops.rs`) which uses the phrasing
+/// "message was flagged for security review" rather than "prompt flagged".
+/// See TAURI-RUST-1J.
 fn is_prompt_injection_blocked_message(lower: &str) -> bool {
     lower.contains("prompt flagged for security review")
         || lower.contains("prompt blocked by security policy")
+        || lower.contains("message was flagged for security review")
 }
 
 /// Detect an RPC-level filesystem path validation failure from user input.
@@ -2384,6 +2390,9 @@ mod tests {
         for raw in [
             "Prompt flagged for security review and was not processed. Please rephrase clearly.",
             "Prompt blocked by security policy. Please rephrase without instruction overrides or exfiltration requests.",
+            // TAURI-RUST-1J — web channel variant uses "message was flagged"
+            // rather than "prompt flagged".
+            "Your message was flagged for security review and was not processed. Please rephrase the request in a direct, task-focused way.",
         ] {
             assert_eq!(
                 expected_error_kind(raw),
