@@ -253,17 +253,31 @@ fn is_meeting_imminent(payload: &serde_json::Value) -> bool {
     true
 }
 
-/// Extract a Google Meet URL from a Composio Google Calendar trigger payload.
+/// Supported meeting URL host patterns. A string is considered a meeting
+/// link when it contains any of these substrings.
+const MEETING_HOST_PATTERNS: &[&str] = &[
+    "meet.google.com",
+    "zoom.us",
+    "teams.microsoft.com",
+    "webex.com",
+];
+
+fn is_meeting_url(s: &str) -> bool {
+    MEETING_HOST_PATTERNS.iter().any(|pat| s.contains(pat))
+}
+
+/// Extract a meeting URL from a Composio Google Calendar trigger payload.
 ///
-/// Composio calendar event payloads can nest the meet link in several places:
+/// Supports Google Meet, Zoom, Teams, and Webex links. Searches:
 /// - `hangoutLink` (top level or inside `data`)
 /// - `conferenceData.entryPoints[].uri`
-/// - deep inside nested `data.*` wrappers
+/// - `location` field (Zoom/Teams links are often placed here)
+/// - recursive fallback across all string values
 fn extract_meet_url(payload: &serde_json::Value) -> Option<String> {
-    // Try top-level and data-nested hangoutLink first.
     for root in [payload, payload.get("data").unwrap_or(payload)] {
+        // hangoutLink (Google Meet)
         if let Some(link) = root.get("hangoutLink").and_then(|v| v.as_str()) {
-            if link.contains("meet.google.com") {
+            if is_meeting_url(link) {
                 return Some(link.to_string());
             }
         }
@@ -276,21 +290,28 @@ fn extract_meet_url(payload: &serde_json::Value) -> Option<String> {
         {
             for entry in entries {
                 if let Some(uri) = entry.get("uri").and_then(|v| v.as_str()) {
-                    if uri.contains("meet.google.com") {
+                    if is_meeting_url(uri) {
                         return Some(uri.to_string());
                     }
                 }
             }
         }
+
+        // location field (Zoom/Teams links are often pasted here)
+        if let Some(loc) = root.get("location").and_then(|v| v.as_str()) {
+            if is_meeting_url(loc) {
+                return Some(loc.to_string());
+            }
+        }
     }
 
-    // Fallback: scan all string values for a meet.google.com URL.
+    // Fallback: scan all string values for any meeting URL.
     find_meet_url_recursive(payload)
 }
 
 fn find_meet_url_recursive(val: &serde_json::Value) -> Option<String> {
     match val {
-        serde_json::Value::String(s) if s.contains("meet.google.com") => Some(s.clone()),
+        serde_json::Value::String(s) if is_meeting_url(s) => Some(s.clone()),
         serde_json::Value::Object(map) => {
             for v in map.values() {
                 if let Some(url) = find_meet_url_recursive(v) {
@@ -485,6 +506,48 @@ mod tests {
         assert_eq!(
             extract_meet_url(&payload).as_deref(),
             Some("https://meet.google.com/deep-nest-url")
+        );
+    }
+
+    #[test]
+    fn extracts_zoom_from_location() {
+        let payload = json!({
+            "summary": "Team sync",
+            "location": "https://zoom.us/j/123456789"
+        });
+        assert_eq!(
+            extract_meet_url(&payload).as_deref(),
+            Some("https://zoom.us/j/123456789")
+        );
+    }
+
+    #[test]
+    fn extracts_teams_from_conference_data() {
+        let payload = json!({
+            "conferenceData": {
+                "entryPoints": [
+                    { "entryPointType": "video", "uri": "https://teams.microsoft.com/l/meetup-join/abc" }
+                ]
+            }
+        });
+        assert_eq!(
+            extract_meet_url(&payload).as_deref(),
+            Some("https://teams.microsoft.com/l/meetup-join/abc")
+        );
+    }
+
+    #[test]
+    fn extracts_webex_recursively() {
+        let payload = json!({
+            "data": {
+                "info": {
+                    "link": "https://meet.webex.com/meet/abc"
+                }
+            }
+        });
+        assert_eq!(
+            extract_meet_url(&payload).as_deref(),
+            Some("https://meet.webex.com/meet/abc")
         );
     }
 }
