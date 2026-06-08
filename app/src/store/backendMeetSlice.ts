@@ -29,6 +29,8 @@ export interface BackendMeetTranscriptEvent {
 export interface BackendMeetState {
   status: BackendMeetStatus;
   meetUrl: string | null;
+  meetingId: string | null;
+  listenOnly: boolean;
   lastReply: BackendMeetReplyEvent | null;
   lastHarness: BackendMeetHarnessEvent | null;
   transcript: BackendMeetTranscriptEvent | null;
@@ -38,6 +40,8 @@ export interface BackendMeetState {
 const initialState: BackendMeetState = {
   status: 'idle',
   meetUrl: null,
+  meetingId: null,
+  listenOnly: false,
   lastReply: null,
   lastHarness: null,
   transcript: null,
@@ -48,9 +52,18 @@ const backendMeetSlice = createSlice({
   name: 'backendMeet',
   initialState,
   reducers: {
-    setBackendMeetJoining(state, action: PayloadAction<{ meetUrl: string }>) {
+    setBackendMeetJoining(
+      state,
+      action: PayloadAction<{
+        meetUrl: string;
+        meetingId?: string | null;
+        listenOnly?: boolean;
+      }>
+    ) {
       state.status = 'joining';
       state.meetUrl = action.payload.meetUrl;
+      state.meetingId = action.payload.meetingId ?? null;
+      state.listenOnly = action.payload.listenOnly ?? false;
       state.error = null;
       state.lastReply = null;
       state.lastHarness = null;
@@ -105,5 +118,9 @@ export const selectBackendMeetLastReply = (state: { backendMeet: BackendMeetStat
   state.backendMeet.lastReply;
 export const selectBackendMeetLastHarness = (state: { backendMeet: BackendMeetState }) =>
   state.backendMeet.lastHarness;
+export const selectBackendMeetMeetingId = (state: { backendMeet: BackendMeetState }): string | null =>
+  state.backendMeet.meetingId;
+export const selectBackendMeetListenOnly = (state: { backendMeet: BackendMeetState }): boolean =>
+  state.backendMeet.listenOnly;
 
 export default backendMeetSlice.reducer;

@@ -1028,6 +1028,13 @@ pub enum DomainEvent {
         meet_url: String,
         event_title: String,
     },
+    /// Reserved for PR-4: a post-meeting summary was generated from the
+    /// transcript (action items, key decisions, etc.).
+    MeetingSummaryGenerated {
+        thread_id: String,
+        correlation_id: Option<String>,
+        summary: String,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1170,7 +1177,8 @@ impl DomainEvent {
             | Self::BackendMeetTranscript { .. }
             | Self::BackendMeetError { .. }
             | Self::BackendMeetInCallRequest { .. }
-            | Self::MeetAutoJoinPrompt { .. } => "agent_meetings",
+            | Self::MeetAutoJoinPrompt { .. }
+            | Self::MeetingSummaryGenerated { .. } => "agent_meetings",
         }
     }
 
@@ -1288,6 +1296,7 @@ impl DomainEvent {
             Self::BackendMeetError { .. } => "BackendMeetError",
             Self::BackendMeetInCallRequest { .. } => "BackendMeetInCallRequest",
             Self::MeetAutoJoinPrompt { .. } => "MeetAutoJoinPrompt",
+            Self::MeetingSummaryGenerated { .. } => "MeetingSummaryGenerated",
             Self::Voice(_) => "Voice",
         }
     }

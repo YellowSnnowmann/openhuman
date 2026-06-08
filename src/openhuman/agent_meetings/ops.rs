@@ -618,6 +618,63 @@ mod tests {
     }
 
     #[test]
+    fn build_join_payload_with_correlation_id() {
+        let req: BackendMeetJoinRequest = serde_json::from_value(json!({
+            "meet_url": "https://meet.google.com/abc-defg-hij",
+            "correlation_id": "meeting-123"
+        }))
+        .unwrap();
+        let payload = build_join_payload(
+            "https://meet.google.com/abc-defg-hij",
+            "OpenHuman",
+            "gmeet",
+            &req,
+        );
+        assert_eq!(payload["correlationId"], "meeting-123");
+    }
+
+    #[test]
+    fn build_join_payload_with_listen_only() {
+        let req: BackendMeetJoinRequest = serde_json::from_value(json!({
+            "meet_url": "https://meet.google.com/abc-defg-hij",
+            "listen_only": true
+        }))
+        .unwrap();
+        let payload = build_join_payload(
+            "https://meet.google.com/abc-defg-hij",
+            "OpenHuman",
+            "gmeet",
+            &req,
+        );
+        assert_eq!(payload["listenOnly"], true);
+    }
+
+    #[test]
+    fn build_join_payload_correlation_and_listen_only_absent_by_default() {
+        let req = minimal_req("https://meet.google.com/abc-defg-hij");
+        let payload = build_join_payload(
+            "https://meet.google.com/abc-defg-hij",
+            "OpenHuman",
+            "gmeet",
+            &req,
+        );
+        assert!(payload.get("correlationId").is_none());
+        assert!(payload.get("listenOnly").is_none());
+    }
+
+    #[test]
+    fn join_request_correlation_and_listen_only_deserialize() {
+        let req: BackendMeetJoinRequest = serde_json::from_value(json!({
+            "meet_url": "https://meet.google.com/abc-defg-hij",
+            "correlation_id": "sess-456",
+            "listen_only": true
+        }))
+        .unwrap();
+        assert_eq!(req.correlation_id.as_deref(), Some("sess-456"));
+        assert_eq!(req.listen_only, Some(true));
+    }
+
+    #[test]
     fn transcript_turns_empty_returns_none() {
         let result = transcript_turns_to_chat_batch(&[], 1_000);
         assert!(result.is_none());

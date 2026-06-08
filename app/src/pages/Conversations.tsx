@@ -103,6 +103,7 @@ import {
 import {
   GENERAL_TAB_VALUE,
   isThreadVisibleInTab,
+  MEETINGS_TAB_VALUE,
   SUBCONSCIOUS_TAB_VALUE,
   TASKS_TAB_VALUE,
 } from './conversations/utils/threadFilter';
@@ -400,9 +401,11 @@ const Conversations = ({
           setSelectedLabel(
             isThreadVisibleInTab(openThread, TASKS_TAB_VALUE)
               ? TASKS_TAB_VALUE
-              : isThreadVisibleInTab(openThread, SUBCONSCIOUS_TAB_VALUE)
-                ? SUBCONSCIOUS_TAB_VALUE
-                : GENERAL_TAB_VALUE
+              : isThreadVisibleInTab(openThread, MEETINGS_TAB_VALUE)
+                ? MEETINGS_TAB_VALUE
+                : isThreadVisibleInTab(openThread, SUBCONSCIOUS_TAB_VALUE)
+                  ? SUBCONSCIOUS_TAB_VALUE
+                  : GENERAL_TAB_VALUE
           );
           dispatch(setSelectedThread(openThread.id));
           void dispatch(loadThreadMessages(openThread.id));
@@ -1250,6 +1253,7 @@ const Conversations = ({
   // filter state remains unambiguous regardless of what threads exist.
   const labelTabs = [
     { label: t('chat.filter.general'), value: GENERAL_TAB_VALUE },
+    { label: t('chat.filter.meetings'), value: MEETINGS_TAB_VALUE },
     { label: t('chat.filter.subconscious'), value: SUBCONSCIOUS_TAB_VALUE },
     { label: t('chat.filter.tasks'), value: TASKS_TAB_VALUE },
   ];

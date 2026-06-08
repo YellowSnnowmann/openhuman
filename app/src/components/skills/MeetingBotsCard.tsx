@@ -21,6 +21,7 @@ import {
   resetBackendMeet,
   selectBackendMeetLastHarness,
   selectBackendMeetLastReply,
+  selectBackendMeetListenOnly,
   selectBackendMeetStatus,
   selectBackendMeetUrl,
   setBackendMeetJoining,
@@ -83,6 +84,7 @@ function ActiveMeetingView({ onToast }: Props) {
   const dispatch = useAppDispatch();
   const status = useAppSelector(selectBackendMeetStatus);
   const meetUrl = useAppSelector(selectBackendMeetUrl);
+  const listenOnly = useAppSelector(selectBackendMeetListenOnly);
   const lastReply = useAppSelector(selectBackendMeetLastReply);
   const lastHarness = useAppSelector(selectBackendMeetLastHarness);
   const face = faceFromMeetState(status, lastReply, lastHarness);
@@ -114,14 +116,18 @@ function ActiveMeetingView({ onToast }: Props) {
     }
   };
 
-  const statusText =
-    {
+  const statusText = (() => {
+    const base: Record<string, string> = {
       joining: t('skills.meetingBots.liveStatusJoining'),
-      active: t('skills.meetingBots.liveStatusActive'),
+      active: listenOnly
+        ? t('skills.meetingBots.liveStatusListening')
+        : t('skills.meetingBots.liveStatusActive'),
       ended: t('skills.meetingBots.liveStatusEnded'),
       error: t('skills.meetingBots.liveStatusError'),
       idle: '',
-    }[status] ?? '';
+    };
+    return base[status] ?? '';
+  })();
 
   const canLeave = status === 'active' || status === 'joining';
   const isDone = status === 'ended' || status === 'error';
