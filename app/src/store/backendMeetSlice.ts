@@ -13,17 +13,20 @@ export interface BackendMeetReplyEvent {
   transcript: string;
   reply: string;
   emotion: string;
+  correlationId?: string;
 }
 
 export interface BackendMeetHarnessEvent {
   transcript: string;
   instruction: string;
   emotion: string;
+  correlationId?: string;
 }
 
 export interface BackendMeetTranscriptEvent {
   turns: BackendMeetTurn[];
   duration_ms: number;
+  correlationId?: string;
 }
 
 export interface BackendMeetState {
@@ -81,7 +84,10 @@ const backendMeetSlice = createSlice({
         state.meetingId = action.payload.meetingId;
       }
     },
-    setBackendMeetLeft(state, _action: PayloadAction<{ reason: string }>) {
+    setBackendMeetLeft(
+      state,
+      _action: PayloadAction<{ reason: string; correlationId?: string }>
+    ) {
       state.status = 'ended';
     },
     setBackendMeetReply(state, action: PayloadAction<BackendMeetReplyEvent>) {
@@ -93,7 +99,10 @@ const backendMeetSlice = createSlice({
     setBackendMeetTranscript(state, action: PayloadAction<BackendMeetTranscriptEvent>) {
       state.transcript = action.payload;
     },
-    setBackendMeetError(state, action: PayloadAction<{ error: string }>) {
+    setBackendMeetError(
+      state,
+      action: PayloadAction<{ error: string; correlationId?: string }>
+    ) {
       state.status = 'error';
       state.error = action.payload.error;
     },

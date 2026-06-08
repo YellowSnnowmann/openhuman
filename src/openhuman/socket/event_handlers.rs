@@ -339,35 +339,13 @@ pub(super) fn handle_sio_event(
                 turns.len(),
                 duration_ms
             );
+            // Thread creation + memory ingest are handled by the
+            // MeetingEventSubscriber (agent_meetings/bus.rs) reacting to
+            // this event — no inline spawn needed.
             publish_global(DomainEvent::BackendMeetTranscript {
-                turns: turns.clone(),
+                turns,
                 duration_ms,
-                correlation_id: correlation_id.clone(),
-            });
-            tokio::spawn(async move {
-                // Only ingest into memory when the user has opted in via
-                // config.meet.ingest_backend_transcripts (default: false).
-                let enabled = crate::openhuman::config::Config::load_or_init()
-                    .await
-                    .map(|c| c.meet.ingest_backend_transcripts)
-                    .unwrap_or(false);
-                if !enabled {
-                    tracing::debug!(
-                        "[socket] bot:transcript memory ingest skipped \
-                         (config.meet.ingest_backend_transcripts = false)"
-                    );
-                    return;
-                }
-                if let Err(e) =
-                    crate::openhuman::agent_meetings::ops::ingest_backend_meeting_transcript(
-                        turns,
-                        duration_ms,
-                        correlation_id,
-                    )
-                    .await
-                {
-                    log::warn!("[socket] bot:transcript memory ingest failed: {e}");
-                }
+                correlation_id,
             });
         }
         "bot:in_call_request" => {
