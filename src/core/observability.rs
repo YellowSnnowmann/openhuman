@@ -747,6 +747,14 @@ fn is_ollama_user_config_rejection(lower: &str) -> bool {
         return true;
     }
 
+    // TAURI-RUST-AZ — Ollama returns 500 with `unsupported value: NaN` when the
+    // model produces NaN for some input in the batch. The embed provider already
+    // recovers via per-text fallback; the initial batch-level error is upstream
+    // state (model bug / numerically degenerate input), not actionable in Sentry.
+    if lower.contains("ollama embed failed") && lower.contains("unsupported value: nan") {
+        return true;
+    }
+
     false
 }
 
@@ -2263,6 +2271,9 @@ mod tests {
             r#"ollama embed failed with status 501 Not Implemented: {"error":"this model does not support embeddings"}"#,
             // TAURI-RUST-3E — 401 unauthorized embed (auth required at ollama endpoint).
             r#"ollama embed failed with status 401 Unauthorized: {"error": "unauthorized"}"#,
+            // TAURI-RUST-AZ — Ollama 500 NaN-encoding error (model produces NaN
+            // for some input; embed provider already recovers via per-text fallback).
+            r#"ollama embed failed with status 500 Internal Server Error: {"error":"failed to encode response: json: unsupported value: NaN"}"#,
         ] {
             assert_eq!(
                 expected_error_kind(raw),
