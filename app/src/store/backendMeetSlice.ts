@@ -69,9 +69,17 @@ const backendMeetSlice = createSlice({
       state.lastHarness = null;
       state.transcript = null;
     },
-    setBackendMeetJoined(state, action: PayloadAction<{ meetUrl: string }>) {
+    setBackendMeetJoined(
+      state,
+      action: PayloadAction<{ meetUrl: string; meetingId?: string }>
+    ) {
       state.status = 'active';
       state.meetUrl = action.payload.meetUrl;
+      // Backfill meetingId from the backend's correlation_id echo if the
+      // optimistic setBackendMeetJoining didn't set one.
+      if (action.payload.meetingId) {
+        state.meetingId = action.payload.meetingId;
+      }
     },
     setBackendMeetLeft(state, _action: PayloadAction<{ reason: string }>) {
       state.status = 'ended';

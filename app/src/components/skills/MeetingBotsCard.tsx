@@ -305,9 +305,12 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
     setError(null);
     setSubmitting(true);
     try {
+      // Generate a correlation ID so every backend event for this session
+      // can be tied back to this meeting.
+      const meetingId = crypto.randomUUID();
       // Optimistically update Redux state so the banner transitions to
       // the ActiveMeetingView immediately, before the backend responds.
-      dispatch(setBackendMeetJoining({ meetUrl: meetUrl.trim() }));
+      dispatch(setBackendMeetJoining({ meetUrl: meetUrl.trim(), meetingId }));
       // Backend Recall.ai bot: sends the mascot into the meeting via
       // the backend's Recall.ai integration. The backend joins as a
       // participant, renders the mascot as the bot's camera feed, and
@@ -320,6 +323,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
         systemPrompt,
         mascotId,
         riveColors,
+        correlationId: meetingId,
       });
       onToast?.({
         type: 'success',

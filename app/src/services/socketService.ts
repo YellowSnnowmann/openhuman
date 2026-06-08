@@ -428,8 +428,10 @@ class SocketService {
     this.socket.on('agent_meetings:joined', (data: unknown) => {
       const obj = data as Record<string, unknown> | null;
       const meetUrl = typeof obj?.meet_url === 'string' ? obj.meet_url : '';
-      socketLog('agent_meetings:joined meet_url_len=%d', meetUrl.length);
-      store.dispatch(setBackendMeetJoined({ meetUrl }));
+      const correlationId =
+        typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
+      socketLog('agent_meetings:joined meet_url_len=%d correlation_id=%s', meetUrl.length, correlationId ?? 'none');
+      store.dispatch(setBackendMeetJoined({ meetUrl, meetingId: correlationId }));
     });
     this.socket.on('agent_meetings:left', (data: unknown) => {
       const obj = data as Record<string, unknown> | null;
