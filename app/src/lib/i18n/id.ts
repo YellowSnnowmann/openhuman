@@ -4281,7 +4281,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.liveTitle': 'Dalam Rapat',
   'skills.meetingBots.liveStatusJoining': 'Bergabung\u2026',
   'skills.meetingBots.liveStatusActive': 'Langsung dalam rapat',
-  'skills.meetingBots.liveStatusListening': 'Mendengarkan (bisukan)',
+  'skills.meetingBots.liveStatusListening': 'Mendengarkan (dibisukan)',
   'skills.meetingBots.liveStatusEnded': 'Rapat selesai',
   'skills.meetingBots.liveStatusError': 'Gagal bergabung',
   'skills.meetingBots.leaveButton': 'Keluar',

@@ -161,7 +161,7 @@ impl EventHandler for MeetCalendarSubscriber {
                     meet_url,
                     event_title,
                     correlation_id,
-                    config.meet.ingest_backend_transcripts,
+                    true, // calendar auto-join bots are passive listeners by default
                 ));
                 return;
             }

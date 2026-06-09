@@ -409,10 +409,18 @@ pub async fn handle_speak(params: Map<String, Value>) -> Result<Value, String> {
 
     tracing::info!(
         text_len = req.text.len(),
+        correlation_id = ?req.correlation_id,
         "[agent_meetings] emitting bot:speak"
     );
 
-    mgr.emit("bot:speak", json!({ "text": req.text }))
+    let mut speak_payload = json!({ "text": req.text });
+    if let Some(map) = speak_payload.as_object_mut() {
+        if let Some(cid) = &req.correlation_id {
+            map.insert("correlationId".to_string(), json!(cid));
+        }
+    }
+
+    mgr.emit("bot:speak", speak_payload)
         .await
         .map_err(|e| format!("[agent_meetings] emit failed: {e}"))?;
 
