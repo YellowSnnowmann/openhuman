@@ -114,8 +114,9 @@ pub async fn ingest_backend_meeting_transcript(
 
 /// Create a conversation thread labelled "Meetings" containing the transcript.
 ///
-/// Uses the correlation_id (when present) as a stable external reference so
-/// duplicate calls for the same session are idempotent at the application level.
+/// The correlation_id (when present) is embedded in the transcript body as an
+/// external reference for tracing — it does not deduplicate; each call creates
+/// a new thread.
 pub async fn create_meeting_thread_with_transcript(
     turns: &[BackendMeetTurn],
     duration_ms: u64,
