@@ -146,11 +146,11 @@ impl EventHandler for MeetCalendarSubscriber {
         };
 
         match config.meet.auto_join_policy {
-            crate::openhuman::config::schema::meet::AutoJoinPolicy::Never => {
+            crate::openhuman::config::schema::AutoJoinPolicy::Never => {
                 tracing::debug!("[meet:calendar] auto_join_policy=never, dropping");
                 return;
             }
-            crate::openhuman::config::schema::meet::AutoJoinPolicy::Always => {
+            crate::openhuman::config::schema::AutoJoinPolicy::Always => {
                 tracing::info!(
                     meet_url = %meet_url,
                     title = %event_title,
@@ -165,7 +165,7 @@ impl EventHandler for MeetCalendarSubscriber {
                 ));
                 return;
             }
-            crate::openhuman::config::schema::meet::AutoJoinPolicy::AskEachTime => {
+            crate::openhuman::config::schema::AutoJoinPolicy::AskEachTime => {
                 // Default: ask — publish a prompt for the UI.
                 tracing::info!(
                     meet_url = %meet_url,
