@@ -1865,7 +1865,9 @@ const messages: TranslationMap = {
   'chat.attachment.tooManyFiles': 'प्रति संदेश अधिकतम {max} फ़ाइलें',
   'chat.attachment.tooLarge': 'छवि {max} आकार सीमा से अधिक है',
   'chat.attachment.unsupportedType':
-    'असमर्थित फ़ाइल प्रकार। PNG, JPEG, WebP, GIF, या BMP का उपयोग करें।',
+    'असमर्थित फ़ाइल प्रकार। कोई छवि (PNG, JPEG, WebP, GIF, BMP) या PDF, TXT, या Markdown फ़ाइल का उपयोग करें।',
+  'chat.attachment.imageNotSupported':
+    'यह मॉडल छवियाँ नहीं पढ़ सकता। अपनी छवि संलग्न करने के लिए प्रो तर्क पर स्विच करें।',
   'chat.attachment.readFailed': 'फ़ाइल पढ़ नहीं सकी',
   'memory.searchAria': 'मेमोरी सर्च करें',
   'memory.searchPlaceholder': 'मेमोरी एंट्रीज़ सर्च करें...',
@@ -3121,6 +3123,9 @@ const messages: TranslationMap = {
   'settings.ai.temperatureOverrideValue': 'तापमान ओवरराइड (मान)',
   'settings.ai.temperatureOverrideDesc':
     'लोअर = अधिक नियतिवादी। प्रदाता डिफ़ॉल्ट का उपयोग करने के लिए अनचेक छोड़ दें।',
+  'settings.ai.modelVision': 'विज़न समर्थित है (छवि इनपुट)',
+  'settings.ai.modelVisionDesc':
+    'यदि यह मॉडल छवियाँ स्वीकार करता है तो सक्षम करें। यह मॉडल चुने जाने पर चैट में छवियाँ संलग्न करने देता है।',
   'settings.ai.testFailed': 'परीक्षण विफल रहा',
   'settings.ai.testingModel': 'परीक्षण मॉडल...',
   'settings.ai.modelResponse': 'मॉडल प्रतिक्रिया',
@@ -4420,6 +4425,7 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': 'एजेंट प्रोफ़ाइल',
   'chat.agentProfile.quick': 'त्वरित',
   'chat.agentProfile.reasoning': 'तर्क',
+  'chat.agentProfile.proReasoning': 'प्रो तर्क',
   'chat.agentProfile.namePlaceholder': 'प्रोफ़ाइल नाम',
   'chat.agentProfile.promptStylePlaceholder': 'शीघ्र शैली',
   'chat.agentProfile.allowedToolsPlaceholder': 'अनुमत उपकरण',

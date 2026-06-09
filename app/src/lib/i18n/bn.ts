@@ -1866,7 +1866,9 @@ const messages: TranslationMap = {
   'chat.attachment.tooManyFiles': 'প্রতি বার্তায় সর্বোচ্চ {max}টি ফাইল',
   'chat.attachment.tooLarge': 'ছবি {max} আকারের সীমা অতিক্রম করেছে',
   'chat.attachment.unsupportedType':
-    'অসমর্থিত ফাইল প্রকার। PNG, JPEG, WebP, GIF, বা BMP ব্যবহার করুন।',
+    'অসমর্থিত ফাইল প্রকার। একটি ছবি (PNG, JPEG, WebP, GIF, BMP) অথবা একটি PDF, TXT, বা Markdown ফাইল ব্যবহার করুন।',
+  'chat.attachment.imageNotSupported':
+    'এই মডেলটি ছবি পড়তে পারে না। আপনার ছবি সংযুক্ত করতে প্রো যুক্তিতে স্যুইচ করুন।',
   'chat.attachment.readFailed': 'ফাইল পড়া যায়নি',
   'memory.searchAria': 'মেমোরি খুঁজুন',
   'memory.searchPlaceholder': 'মেমোরি এন্ট্রি খুঁজুন...',
@@ -3113,6 +3115,9 @@ const messages: TranslationMap = {
   'settings.ai.temperatureOverrideValue': 'তাপমাত্রা ওভাররাইড (মান)',
   'settings.ai.temperatureOverrideDesc':
     'নিচে = আরও বুদ্ধিমান. পরিসেবা উপলব্ধকারীর ডিফল্ট ব্যবহারের জন্য সীমা ধার্য না করা হলে, বন্ধ করুন ।',
+  'settings.ai.modelVision': 'ভিশন সমর্থন করে (ছবি ইনপুট)',
+  'settings.ai.modelVisionDesc':
+    'এই মডেল ছবি গ্রহণ করলে সক্ষম করুন। এই মডেল নির্বাচিত থাকলে চ্যাটে ছবি সংযুক্ত করতে দেয়।',
   'settings.ai.testFailed': 'পরীক্ষা ব্যর্থ হয়েছে',
   'settings.ai.testingModel': 'পরীক্ষার মডেল...',
   'settings.ai.modelResponse': 'মডেল প্রতিক্রিয়া',
@@ -4410,6 +4415,7 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': 'এজেন্ট প্রোফাইল',
   'chat.agentProfile.quick': 'দ্রুত',
   'chat.agentProfile.reasoning': 'যুক্তি',
+  'chat.agentProfile.proReasoning': 'প্রো যুক্তি',
   'chat.agentProfile.namePlaceholder': 'প্রোফাইল নাম',
   'chat.agentProfile.promptStylePlaceholder': 'প্রম্পট স্টাইল',
   'chat.agentProfile.allowedToolsPlaceholder': 'অনুমোদিত টুল',

@@ -145,39 +145,39 @@ impl EventHandler for MeetCalendarSubscriber {
             }
         };
 
-        let policy = config.meet.auto_join_policy.as_str();
-
-        if policy == "never" {
-            tracing::debug!("[meet:calendar] auto_join_policy=never, dropping");
-            return;
+        match config.meet.auto_join_policy {
+            crate::openhuman::config::schema::meet::AutoJoinPolicy::Never => {
+                tracing::debug!("[meet:calendar] auto_join_policy=never, dropping");
+                return;
+            }
+            crate::openhuman::config::schema::meet::AutoJoinPolicy::Always => {
+                tracing::info!(
+                    meet_url = %meet_url,
+                    title = %event_title,
+                    "[meet:calendar] auto_join_policy=always, joining automatically"
+                );
+                let correlation_id = uuid::Uuid::new_v4().to_string();
+                tokio::spawn(auto_join_meeting(
+                    meet_url,
+                    event_title,
+                    correlation_id,
+                    config.meet.ingest_backend_transcripts,
+                ));
+                return;
+            }
+            crate::openhuman::config::schema::meet::AutoJoinPolicy::AskEachTime => {
+                // Default: ask — publish a prompt for the UI.
+                tracing::info!(
+                    meet_url = %meet_url,
+                    title = %event_title,
+                    "[meet:calendar] auto_join_policy=ask_each_time, prompting user"
+                );
+                publish_global(DomainEvent::MeetAutoJoinPrompt {
+                    meet_url,
+                    event_title,
+                });
+            }
         }
-
-        if policy == "always" {
-            tracing::info!(
-                meet_url = %meet_url,
-                title = %event_title,
-                "[meet:calendar] auto_join_policy=always, joining automatically"
-            );
-            let correlation_id = uuid::Uuid::new_v4().to_string();
-            tokio::spawn(auto_join_meeting(
-                meet_url,
-                event_title,
-                correlation_id,
-                config.meet.ingest_backend_transcripts,
-            ));
-            return;
-        }
-
-        // Default: "ask" — publish a prompt for the UI.
-        tracing::info!(
-            meet_url = %meet_url,
-            title = %event_title,
-            "[meet:calendar] auto_join_policy=ask, prompting user"
-        );
-        publish_global(DomainEvent::MeetAutoJoinPrompt {
-            meet_url,
-            event_title,
-        });
     }
 }
 
