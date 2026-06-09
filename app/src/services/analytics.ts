@@ -100,6 +100,8 @@ export const ALLOWED_EVENTS = new Set([
   'account_connect_start',
   'account_connect_success',
   'chat_message_sent',
+  'chat_turn_ttft',
+  'chat_turn_complete',
   'skill_install',
   'skill_uninstall',
   'tab_bar_change',

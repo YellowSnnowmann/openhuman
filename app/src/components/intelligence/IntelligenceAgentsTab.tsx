@@ -8,6 +8,7 @@ import { threadApi } from '../../services/api/threadApi';
 import { chatSend } from '../../services/chatService';
 import { selectActiveAgentProfileId } from '../../store/agentProfileSlice';
 import { beginInferenceTurn, setToolTimelineForThread } from '../../store/chatRuntimeSlice';
+import { markChatSubmit } from '../../utils/chatTurnTiming';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   loadThreadMessages,
@@ -80,6 +81,7 @@ export default function IntelligenceAgentsTab() {
         dispatch(setToolTimelineForThread({ threadId: thread.id, entries: [] }));
         dispatch(beginInferenceTurn({ threadId: thread.id }));
         dispatch(setActiveThread(thread.id));
+        markChatSubmit(thread.id);
         void dispatch(loadThreads());
         void dispatch(loadThreadMessages(thread.id));
         navigate('/chat');

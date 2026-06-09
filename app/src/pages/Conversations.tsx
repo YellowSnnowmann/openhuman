@@ -26,6 +26,7 @@ import {
 } from '../lib/attachments';
 import { useT } from '../lib/i18n/I18nContext';
 import { trackEvent } from '../services/analytics';
+import { markChatSubmit } from '../utils/chatTurnTiming';
 import { applyOpenRouterFreeModels } from '../services/api/openrouterFreeModels';
 import { threadApi } from '../services/api/threadApi';
 import { chatCancel, chatSend, useRustChat } from '../services/chatService';
@@ -841,6 +842,7 @@ const Conversations = ({
     dispatch(setToolTimelineForThread({ threadId: sendingThreadId, entries: [] }));
     dispatch(beginInferenceTurn({ threadId: sendingThreadId }));
     dispatch(setActiveThread(sendingThreadId));
+    markChatSubmit(sendingThreadId);
 
     // ── Cloud socket path ─────────────────────────────────────────────────────
     // Always route primary chat through the cloud backend via socket.

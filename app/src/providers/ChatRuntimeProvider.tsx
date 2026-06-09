@@ -50,6 +50,7 @@ import {
   setActiveThread,
   setSelectedThread,
 } from '../store/threadSlice';
+import { markChatDone, markChatFirstToken } from '../utils/chatTurnTiming';
 import { IS_PROD } from '../utils/config';
 import { formatTimelineEntry, promptFromArgsBuffer } from '../utils/toolTimelineFormatting';
 
@@ -694,6 +695,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         );
       },
       onTextDelta: event => {
+        markChatFirstToken(event.thread_id);
         const cr = store.getState().chatRuntime;
         const existing = cr.streamingAssistantByThread[event.thread_id];
         let streaming: StreamingAssistantState;
@@ -709,6 +711,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         dispatch(setStreamingAssistantForThread({ threadId: event.thread_id, streaming }));
       },
       onThinkingDelta: event => {
+        markChatFirstToken(event.thread_id);
         const cr = store.getState().chatRuntime;
         const existing = cr.streamingAssistantByThread[event.thread_id];
         let streaming: StreamingAssistantState;
@@ -876,6 +879,11 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           segments: event.segment_total,
           input_tokens: event.total_input_tokens,
           output_tokens: event.total_output_tokens,
+        });
+
+        markChatDone(event.thread_id, {
+          inputTokens: event.total_input_tokens,
+          outputTokens: event.total_output_tokens,
         });
 
         const deliveryKey = segmentDeliveryKey(event.thread_id, event.request_id);
