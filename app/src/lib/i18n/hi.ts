@@ -4274,7 +4274,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.respondToParticipant': 'इस मीटिंग में आपका नाम',
   'skills.meetingBots.respondToParticipantHint': 'जैसे: अनीता (कॉल में आपका प्रदर्शन नाम)',
   'skills.meetingBots.respondToParticipantDesc':
-    'बॉट केवल आपको जवाब देगा। किसी को भी सक्रिय करने देने के लिए खाली छोड़ें।',
+    'मीटिंग में अपना सटीक डिस्प्ले नाम दर्ज करें। बॉट केवल तभी जवाब देता है जब आप उसका नाम बोलते हैं (वेक फ्रेज़)।',
   'skills.meetingBots.wakePhrase': 'वेक फ्रेज़',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'बोट के जवाब देने से पहले प्रतिभागी को यह कहना होगा।',

@@ -404,6 +404,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
                 onChange={e => setRespondTo(e.target.value)}
                 placeholder={t('skills.meetingBots.respondToParticipantHint')}
                 disabled={submitting}
+                required
                 className="mt-1 w-full rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-stone-50 dark:disabled:bg-neutral-800/60"
               />
               <p className="mt-1 text-[10px] text-stone-400 dark:text-neutral-500">
@@ -428,7 +429,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               </button>
               <button
                 type="submit"
-                disabled={submitting || !meetUrl.trim()}
+                disabled={submitting || !meetUrl.trim() || !respondTo.trim()}
                 className="rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-stone-200 dark:disabled:bg-neutral-700 disabled:text-stone-400 dark:disabled:text-neutral-500">
                 {submitting
                   ? t('skills.meetingBots.starting')

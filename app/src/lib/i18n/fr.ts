@@ -4366,7 +4366,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.respondToParticipant': 'Votre nom dans cette réunion',
   'skills.meetingBots.respondToParticipantHint': 'ex. Alice (votre nom affiché dans l\u2019appel)',
   'skills.meetingBots.respondToParticipantDesc':
-    'Le bot ne répondra qu\u2019à vous. Laissez vide pour que n\u2019importe qui puisse l\u2019activer.',
+    'Saisissez votre nom d\u2019affichage exact dans la réunion. Le bot ne répond que lorsque vous prononcez son nom (phrase de réveil).',
   'skills.meetingBots.wakePhrase': 'Phrase de réveil',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Le participant doit dire ceci avant que le bot réponde.',

@@ -4181,7 +4181,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.respondToParticipant': 'اسمك في هذا الاجتماع',
   'skills.meetingBots.respondToParticipantHint': 'مثال: أحمد (اسمك في المكالمة)',
   'skills.meetingBots.respondToParticipantDesc':
-    'لن يستجيب البوت إلا لك. اتركه فارغاً للسماح لأي شخص بتفعيله.',
+    'أدخل اسمك الظاهر بالضبط في الاجتماع. لن يستجيب البوت إلا عندما تنطق باسمه (عبارة التنشيط).',
   'skills.meetingBots.wakePhrase': 'عبارة التنشيط',
   'skills.meetingBots.wakePhraseHint': 'مرحباً OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'يجب أن يقول المشارك هذا قبل أن يرد البوت.',

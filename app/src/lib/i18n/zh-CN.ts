@@ -4056,7 +4056,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.leaveButton': '离开',
   'skills.meetingBots.respondToParticipant': '您在此会议中的姓名',
   'skills.meetingBots.respondToParticipantHint': '例如：小明（通话中的显示名称）',
-  'skills.meetingBots.respondToParticipantDesc': '机器人只会回应您。留空以允许任何人激活它。',
+  'skills.meetingBots.respondToParticipantDesc':
+    '输入您在会议中的确切显示名称。机器人仅在您说出其名称（唤醒词）时才会响应。',
   'skills.meetingBots.wakePhrase': '唤醒词',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': '参与者必须先说出此词，机器人才会回复。',

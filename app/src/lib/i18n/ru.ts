@@ -4303,7 +4303,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.respondToParticipant': 'Ваше имя на этой встрече',
   'skills.meetingBots.respondToParticipantHint': 'напр. Иван (ваше отображаемое имя в звонке)',
   'skills.meetingBots.respondToParticipantDesc':
-    'Бот будет отвечать только вам. Оставьте пустым, чтобы любой мог его активировать.',
+    'Введите своё точное отображаемое имя из встречи. Бот реагирует только когда вы произносите его имя (фраза активации).',
   'skills.meetingBots.wakePhrase': 'Фраза активации',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Участник должен произнести это, прежде чем бот ответит.',
