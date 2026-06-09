@@ -24,17 +24,13 @@ pub fn register_meeting_event_subscriber() {
         return;
     }
 
-    match crate::core::event_bus::subscribe_global(std::sync::Arc::new(
-        MeetingEventSubscriber,
-    )) {
+    match crate::core::event_bus::subscribe_global(std::sync::Arc::new(MeetingEventSubscriber)) {
         Some(handle) => {
             let _ = MEETING_EVENT_HANDLE.set(handle);
             tracing::info!("{LOG_PREFIX} registered");
         }
         None => {
-            tracing::warn!(
-                "{LOG_PREFIX} failed to register — event bus not initialized"
-            );
+            tracing::warn!("{LOG_PREFIX} failed to register — event bus not initialized");
         }
     }
 }

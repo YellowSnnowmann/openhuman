@@ -253,7 +253,10 @@ mod tests {
             .map(|c| c.schema.function)
             .collect();
         assert_eq!(schema_fns, handler_fns);
-        assert_eq!(schema_fns, vec!["join", "leave", "harness_response", "speak"]);
+        assert_eq!(
+            schema_fns,
+            vec!["join", "leave", "harness_response", "speak"]
+        );
     }
 
     #[test]

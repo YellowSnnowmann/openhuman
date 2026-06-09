@@ -60,9 +60,7 @@ describe('isThreadVisibleInTab', () => {
       expect(
         isThreadVisibleInTab(thread({ labels: [MEETINGS_TAB_VALUE] }), GENERAL_TAB_VALUE)
       ).toBe(false);
-      expect(isThreadVisibleInTab(thread({ labels: ['Meetings'] }), GENERAL_TAB_VALUE)).toBe(
-        false
-      );
+      expect(isThreadVisibleInTab(thread({ labels: ['Meetings'] }), GENERAL_TAB_VALUE)).toBe(false);
     });
   });
 
@@ -125,21 +123,17 @@ describe('isThreadVisibleInTab', () => {
     });
 
     it('keeps threads with Rust-generated "Meetings" (capitalized) label', () => {
-      expect(
-        isThreadVisibleInTab(thread({ labels: ['Meetings'] }), MEETINGS_TAB_VALUE)
-      ).toBe(true);
+      expect(isThreadVisibleInTab(thread({ labels: ['Meetings'] }), MEETINGS_TAB_VALUE)).toBe(true);
     });
 
     it('excludes ordinary and task threads', () => {
       expect(
         isThreadVisibleInTab(thread({ labels: [GENERAL_TAB_VALUE] }), MEETINGS_TAB_VALUE)
       ).toBe(false);
-      expect(
-        isThreadVisibleInTab(thread({ labels: [TASKS_TAB_VALUE] }), MEETINGS_TAB_VALUE)
-      ).toBe(false);
-      expect(
-        isThreadVisibleInTab(thread({ labels: [] }), MEETINGS_TAB_VALUE)
-      ).toBe(false);
+      expect(isThreadVisibleInTab(thread({ labels: [TASKS_TAB_VALUE] }), MEETINGS_TAB_VALUE)).toBe(
+        false
+      );
+      expect(isThreadVisibleInTab(thread({ labels: [] }), MEETINGS_TAB_VALUE)).toBe(false);
     });
   });
 

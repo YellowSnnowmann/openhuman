@@ -430,7 +430,11 @@ class SocketService {
       const meetUrl = typeof obj?.meet_url === 'string' ? obj.meet_url : '';
       const correlationId =
         typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
-      socketLog('agent_meetings:joined meet_url_len=%d correlation_id=%s', meetUrl.length, correlationId ?? 'none');
+      socketLog(
+        'agent_meetings:joined meet_url_len=%d correlation_id=%s',
+        meetUrl.length,
+        correlationId ?? 'none'
+      );
       store.dispatch(setBackendMeetJoined({ meetUrl, meetingId: correlationId }));
     });
     this.socket.on('agent_meetings:left', (data: unknown) => {
@@ -444,8 +448,7 @@ class SocketService {
     this.socket.on('agent_meetings:reply', (data: unknown) => {
       const obj = data as Record<string, unknown> | null;
       if (!obj) return;
-      const correlationId =
-        typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
+      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
       socketLog('agent_meetings:reply correlation_id=%s', correlationId ?? 'none');
       store.dispatch(
         setBackendMeetReply({
@@ -459,8 +462,7 @@ class SocketService {
     this.socket.on('agent_meetings:harness', (data: unknown) => {
       const obj = data as Record<string, unknown> | null;
       if (!obj) return;
-      const correlationId =
-        typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
+      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
       socketLog('agent_meetings:harness correlation_id=%s', correlationId ?? 'none');
       store.dispatch(
         setBackendMeetHarness({
@@ -474,8 +476,7 @@ class SocketService {
     this.socket.on('agent_meetings:transcript', (data: unknown) => {
       const obj = data as Record<string, unknown> | null;
       if (!obj) return;
-      const correlationId =
-        typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
+      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
       socketLog('agent_meetings:transcript correlation_id=%s', correlationId ?? 'none');
       store.dispatch(
         setBackendMeetTranscript({

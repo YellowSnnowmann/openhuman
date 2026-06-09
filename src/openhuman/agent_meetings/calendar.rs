@@ -148,9 +148,7 @@ impl EventHandler for MeetCalendarSubscriber {
         let policy = config.meet.auto_join_policy.as_str();
 
         if policy == "never" {
-            tracing::debug!(
-                "[meet:calendar] auto_join_policy=never, dropping"
-            );
+            tracing::debug!("[meet:calendar] auto_join_policy=never, dropping");
             return;
         }
 
@@ -345,9 +343,7 @@ async fn auto_join_meeting(
     let mgr = match global_socket_manager() {
         Some(mgr) if mgr.is_connected() => mgr,
         _ => {
-            tracing::warn!(
-                "[meet:calendar] cannot auto-join: socket not connected to backend"
-            );
+            tracing::warn!("[meet:calendar] cannot auto-join: socket not connected to backend");
             return;
         }
     };

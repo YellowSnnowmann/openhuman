@@ -255,9 +255,15 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let correlation_id = data.get("correlationId").and_then(|v| v.as_str()).map(String::from);
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             log::info!("[socket] bot:joined meet_url_len={}", meet_url.len());
-            publish_global(DomainEvent::BackendMeetJoined { meet_url, correlation_id });
+            publish_global(DomainEvent::BackendMeetJoined {
+                meet_url,
+                correlation_id,
+            });
         }
         "bot:left" => {
             let reason = data
@@ -265,9 +271,15 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
                 .to_string();
-            let correlation_id = data.get("correlationId").and_then(|v| v.as_str()).map(String::from);
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             log::info!("[socket] bot:left reason={}", reason);
-            publish_global(DomainEvent::BackendMeetLeft { reason, correlation_id });
+            publish_global(DomainEvent::BackendMeetLeft {
+                reason,
+                correlation_id,
+            });
         }
         "bot:reply" => {
             let transcript = data
@@ -285,7 +297,10 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .unwrap_or("neutral")
                 .to_string();
-            let correlation_id = data.get("correlationId").and_then(|v| v.as_str()).map(String::from);
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             log::info!(
                 "[socket] bot:reply reply_len={} emotion={}",
                 reply.len(),
@@ -314,7 +329,10 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .unwrap_or("neutral")
                 .to_string();
-            let correlation_id = data.get("correlationId").and_then(|v| v.as_str()).map(String::from);
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             log::info!(
                 "[socket] bot:harness instruction_len={} emotion={}",
                 instruction.len(),
@@ -333,7 +351,10 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default();
             let duration_ms = data.get("durationMs").and_then(|v| v.as_u64()).unwrap_or(0);
-            let correlation_id = data.get("correlationId").and_then(|v| v.as_str()).map(String::from);
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             log::info!(
                 "[socket] bot:transcript turns={} duration_ms={}",
                 turns.len(),
@@ -349,14 +370,28 @@ pub(super) fn handle_sio_event(
             });
         }
         "bot:in_call_request" => {
-            let correlation_id = data.get("correlationId").and_then(|v| v.as_str()).map(String::from);
-            let speaker = data.get("speaker").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-            let command_text = data.get("commandText").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let speaker = data
+                .get("speaker")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let command_text = data
+                .get("commandText")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let recent_transcript: Vec<BackendMeetTurn> = data
                 .get("recentTranscript")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default();
-            let timestamp_ms = data.get("timestampMs").and_then(|v| v.as_u64()).unwrap_or(0);
+            let timestamp_ms = data
+                .get("timestampMs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             log::info!(
                 "[socket] bot:in_call_request speaker={} cmd_len={}",
                 speaker,
@@ -376,9 +411,15 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown error")
                 .to_string();
-            let correlation_id = data.get("correlationId").and_then(|v| v.as_str()).map(String::from);
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             log::error!("[socket] bot:error: {}", error);
-            publish_global(DomainEvent::BackendMeetError { error, correlation_id });
+            publish_global(DomainEvent::BackendMeetError {
+                error,
+                correlation_id,
+            });
         }
 
         // Channel inbound message — publish to event bus for ChannelInboundSubscriber

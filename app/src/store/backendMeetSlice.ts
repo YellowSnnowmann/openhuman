@@ -57,11 +57,7 @@ const backendMeetSlice = createSlice({
   reducers: {
     setBackendMeetJoining(
       state,
-      action: PayloadAction<{
-        meetUrl: string;
-        meetingId?: string | null;
-        listenOnly?: boolean;
-      }>
+      action: PayloadAction<{ meetUrl: string; meetingId?: string | null; listenOnly?: boolean }>
     ) {
       state.status = 'joining';
       state.meetUrl = action.payload.meetUrl;
@@ -72,10 +68,7 @@ const backendMeetSlice = createSlice({
       state.lastHarness = null;
       state.transcript = null;
     },
-    setBackendMeetJoined(
-      state,
-      action: PayloadAction<{ meetUrl: string; meetingId?: string }>
-    ) {
+    setBackendMeetJoined(state, action: PayloadAction<{ meetUrl: string; meetingId?: string }>) {
       state.status = 'active';
       state.meetUrl = action.payload.meetUrl;
       // Backfill meetingId from the backend's correlation_id echo if the
@@ -84,10 +77,7 @@ const backendMeetSlice = createSlice({
         state.meetingId = action.payload.meetingId;
       }
     },
-    setBackendMeetLeft(
-      state,
-      _action: PayloadAction<{ reason: string; correlationId?: string }>
-    ) {
+    setBackendMeetLeft(state, _action: PayloadAction<{ reason: string; correlationId?: string }>) {
       state.status = 'ended';
     },
     setBackendMeetReply(state, action: PayloadAction<BackendMeetReplyEvent>) {
@@ -99,10 +89,7 @@ const backendMeetSlice = createSlice({
     setBackendMeetTranscript(state, action: PayloadAction<BackendMeetTranscriptEvent>) {
       state.transcript = action.payload;
     },
-    setBackendMeetError(
-      state,
-      action: PayloadAction<{ error: string; correlationId?: string }>
-    ) {
+    setBackendMeetError(state, action: PayloadAction<{ error: string; correlationId?: string }>) {
       state.status = 'error';
       state.error = action.payload.error;
     },
@@ -135,8 +122,9 @@ export const selectBackendMeetLastReply = (state: { backendMeet: BackendMeetStat
   state.backendMeet.lastReply;
 export const selectBackendMeetLastHarness = (state: { backendMeet: BackendMeetState }) =>
   state.backendMeet.lastHarness;
-export const selectBackendMeetMeetingId = (state: { backendMeet: BackendMeetState }): string | null =>
-  state.backendMeet.meetingId;
+export const selectBackendMeetMeetingId = (state: {
+  backendMeet: BackendMeetState;
+}): string | null => state.backendMeet.meetingId;
 export const selectBackendMeetListenOnly = (state: { backendMeet: BackendMeetState }): boolean =>
   state.backendMeet.listenOnly;
 

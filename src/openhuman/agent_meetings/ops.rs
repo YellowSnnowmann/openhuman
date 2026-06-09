@@ -104,8 +104,7 @@ pub async fn ingest_backend_meeting_transcript(
     );
 
     // Create a meeting thread with the transcript for the thread system.
-    if let Err(e) =
-        create_meeting_thread_with_transcript(&turns, duration_ms, correlation_id).await
+    if let Err(e) = create_meeting_thread_with_transcript(&turns, duration_ms, correlation_id).await
     {
         tracing::warn!("[agent_meetings] meeting thread creation failed: {e}");
     }
