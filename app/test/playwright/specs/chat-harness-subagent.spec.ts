@@ -266,6 +266,31 @@ function formatDiagnostics(snapshot: DiagnosticsSnapshot): string {
 }
 
 test.describe('Chat Harness - Subagent', () => {
+  // On any test failure, attach the harness state (mock request log, matched
+  // keywords, selected thread, chat-runtime phase + tool timeline + last
+  // assistant text) as a Playwright artifact. Keeps the original Playwright
+  // assertion error intact while satisfying issue #3469's RCA requirement
+  // that future failures expose request counts, consumed forced/keyword
+  // responses, active thread id, and final chat-runtime state.
+  test.afterEach(async ({ page }, testInfo) => {
+    if (testInfo.status === 'passed' || testInfo.status === 'skipped') return;
+    if (page.isClosed()) return;
+    try {
+      const snapshot = await diagnosticsSnapshot(page);
+      await testInfo.attach('subagent-harness-diagnostics.txt', {
+        contentType: 'text/plain',
+        body: formatDiagnostics(snapshot),
+      });
+      await testInfo.attach('subagent-harness-diagnostics.json', {
+        contentType: 'application/json',
+        body: JSON.stringify(snapshot, null, 2),
+      });
+    } catch {
+      // Diagnostics are best-effort — never mask the real failure if the
+      // page/mock is already torn down (e.g. core crash mid-test).
+    }
+  });
+
   test('delegates to a subagent and persists the final orchestrator text', async ({ page }) => {
     test.setTimeout(150_000);
 
@@ -283,26 +308,8 @@ test.describe('Chat Harness - Subagent', () => {
     // The orchestrator no longer eagerly invokes the memory agent (PR #3521),
     // so this is the full sequence — no extra calls should consume keyword
     // rules out from under the next-expected matcher.
-    try {
-      await expect.poll(completionRequestCount, { timeout: 90_000 }).toBeGreaterThanOrEqual(3);
-    } catch (err) {
-      const snapshot = await diagnosticsSnapshot(page);
-      throw new Error(
-        `completionRequestCount stayed below 3 after 90s.\n  ${formatDiagnostics(snapshot)}\n` +
-          `Original error: ${(err as Error).message}`
-      );
-    }
-
-    try {
-      await expect(page.getByText(CANARY_FINAL)).toBeVisible({ timeout: 30_000 });
-    } catch (err) {
-      const snapshot = await diagnosticsSnapshot(page);
-      throw new Error(
-        `Final orchestrator canary "${CANARY_FINAL}" never rendered.\n  ${formatDiagnostics(
-          snapshot
-        )}\n` + `Original error: ${(err as Error).message}`
-      );
-    }
+    await expect.poll(completionRequestCount, { timeout: 90_000 }).toBeGreaterThanOrEqual(3);
+    await expect(page.getByText(CANARY_FINAL)).toBeVisible({ timeout: 30_000 });
 
     const runtimeSnapshot = await diagnosticsSnapshot(page);
     expect(
