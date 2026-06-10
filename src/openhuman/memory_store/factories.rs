@@ -181,6 +181,75 @@ pub(crate) async fn probe_ollama_reachable(base_url: &str) -> bool {
     }
 }
 
+/// Stronger probe than [`probe_ollama_reachable`]: returns `true` only when the
+/// Ollama daemon answers `/api/tags` **and** the response lists `model` as a
+/// pulled model. A bare daemon-reachability check is not enough to switch the
+/// active embedder onto Ollama (#3312): a host where the daemon is up but the
+/// model was never pulled would otherwise move indexing onto a provider that
+/// immediately fails with "model not found".
+///
+/// Ollama tags are reported as `"<model>:<tag>"` (e.g. `bge-m3:latest`), so a
+/// configured model of `bge-m3` matches either an exact name or any `bge-m3:*`
+/// entry. 2s timeout mirrors [`probe_ollama_reachable`].
+pub(crate) async fn probe_ollama_model_available(base_url: &str, model: &str) -> bool {
+    let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log::debug!(
+                "[memory::factory] probe_ollama_model_available: failed to build http client: {e}"
+            );
+            return false;
+        }
+    };
+    let resp = match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => resp,
+        Ok(resp) => {
+            log::debug!(
+                "[memory::factory] probe_ollama_model_available: {url} returned status {}",
+                resp.status()
+            );
+            return false;
+        }
+        Err(e) => {
+            log::debug!("[memory::factory] probe_ollama_model_available: {url} unreachable: {e}");
+            return false;
+        }
+    };
+    let json: serde_json::Value = match resp.json().await {
+        Ok(j) => j,
+        Err(e) => {
+            log::debug!("[memory::factory] probe_ollama_model_available: bad /api/tags body: {e}");
+            return false;
+        }
+    };
+    let Some(models) = json.get("models").and_then(|m| m.as_array()) else {
+        return false;
+    };
+    let available = models.iter().any(|entry| {
+        entry
+            .get("name")
+            .and_then(|n| n.as_str())
+            .is_some_and(|name| ollama_tag_matches_model(name, model))
+    });
+    if !available {
+        log::debug!(
+            "[memory::factory] probe_ollama_model_available: daemon up but model '{model}' not pulled"
+        );
+    }
+    available
+}
+
+/// Whether an Ollama `/api/tags` entry name (e.g. `bge-m3:latest`) satisfies a
+/// configured model id (e.g. `bge-m3`): exact match, or the same base before the
+/// `:<tag>` suffix. Pure so the matching rule is unit-tested directly.
+fn ollama_tag_matches_model(tag_name: &str, model: &str) -> bool {
+    tag_name == model || tag_name.split(':').next() == Some(model)
+}
+
 /// Returns the effective `(provider, model, dimensions)` triple for the
 /// embedding backend.
 ///
@@ -696,6 +765,52 @@ mod tests {
         });
         let url = format!("http://127.0.0.1:{}", addr.port());
         assert!(!probe_ollama_reachable(&url).await);
+    }
+
+    #[test]
+    fn ollama_tag_matches_model_handles_tag_suffixes() {
+        assert!(ollama_tag_matches_model("bge-m3", "bge-m3"));
+        assert!(ollama_tag_matches_model("bge-m3:latest", "bge-m3"));
+        assert!(ollama_tag_matches_model("bge-m3:f16", "bge-m3"));
+        assert!(!ollama_tag_matches_model("bge-large", "bge-m3"));
+        assert!(!ollama_tag_matches_model(
+            "nomic-embed-text:latest",
+            "bge-m3"
+        ));
+    }
+
+    /// Spin up a mock Ollama `/api/tags` returning the given model names.
+    async fn start_mock_ollama_with_models(names: &[&str]) -> String {
+        let models: Vec<serde_json::Value> = names
+            .iter()
+            .map(|n| serde_json::json!({ "name": n }))
+            .collect();
+        let body = serde_json::json!({ "models": models });
+        let app = Router::new().route("/api/tags", get(move || async move { Json(body) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr: SocketAddr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://127.0.0.1:{}", addr.port())
+    }
+
+    #[tokio::test]
+    async fn model_available_true_when_model_is_pulled() {
+        let url = start_mock_ollama_with_models(&["bge-m3:latest", "llama3:8b"]).await;
+        assert!(probe_ollama_model_available(&url, "bge-m3").await);
+    }
+
+    #[tokio::test]
+    async fn model_available_false_when_daemon_up_but_model_missing() {
+        // The #3312 hazard: daemon reachable, target model not pulled.
+        let url = start_mock_ollama_with_models(&["llama3:8b"]).await;
+        assert!(!probe_ollama_model_available(&url, "bge-m3").await);
+    }
+
+    #[tokio::test]
+    async fn model_available_false_when_unreachable() {
+        assert!(!probe_ollama_model_available("http://127.0.0.1:1", "bge-m3").await);
     }
 
     #[tokio::test]

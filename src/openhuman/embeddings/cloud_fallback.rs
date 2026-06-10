@@ -29,7 +29,7 @@
 //! If any guard fails the gate is a no-op: the cloud failure stays surfaced
 //! (graceful skip) rather than switching into a dead provider or wiping memory.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::ollama::{DEFAULT_OLLAMA_DIMENSIONS, DEFAULT_OLLAMA_MODEL};
 use crate::openhuman::config::Config;
@@ -69,19 +69,43 @@ pub fn clear_embedding_auth_gate() {
     EMBEDDING_AUTH_FAILED.store(false, Ordering::SeqCst);
 }
 
+/// Process-global monotonic counter bumped whenever the embedding provider is
+/// switched and persisted by [`maybe_switch_cloud_to_local`]. Every memory-queue
+/// worker tracks the last generation it has reloaded; when this differs it
+/// reloads its `Config` from disk. This is what makes a persisted switch reach
+/// *all* workers (each owns its own `Config` clone), not just the one task that
+/// happened to perform the switch.
+static CONFIG_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Current config generation. Workers compare this against the generation they
+/// last reloaded at to decide whether to re-read `Config` from disk.
+pub fn config_generation() -> u64 {
+    CONFIG_GENERATION.load(Ordering::SeqCst)
+}
+
+/// Bump the config generation, signalling all workers to reload from disk.
+fn bump_config_generation() {
+    CONFIG_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
+
 /// Pure decision core: should the active embedder be switched from managed
 /// cloud to local? Split out so the truth table is unit-testable without a
 /// live config, credential store, or Ollama daemon.
+///
+/// `local_available` must mean the target model is actually *usable* (daemon up
+/// **and** the model pulled), not merely that the daemon answered — switching
+/// onto a reachable daemon that lacks the model would just move indexing onto a
+/// provider that immediately fails with "model not found".
 fn should_switch(
     auth_failed: bool,
     current_provider: &str,
     current_dims: usize,
-    local_reachable: bool,
+    local_available: bool,
     local_dims: usize,
 ) -> bool {
     auth_failed
         && matches!(current_provider, "cloud" | "managed")
-        && local_reachable
+        && local_available
         && local_dims == current_dims
 }
 
@@ -93,9 +117,9 @@ fn should_switch(
 /// Idempotent and safe to call every worker tick: it returns immediately when
 /// the latch is clear, and clears the latch once a switch is applied so
 /// concurrent workers don't switch twice.
-pub async fn maybe_switch_cloud_to_local(config: &Config) -> Option<Config> {
+pub async fn maybe_switch_cloud_to_local(config: &Config) -> bool {
     if !embedding_auth_failed() {
-        return None;
+        return false;
     }
 
     let provider = config.memory.embedding_provider.as_str();
@@ -104,34 +128,41 @@ pub async fn maybe_switch_cloud_to_local(config: &Config) -> Option<Config> {
         // from a BYO 401 (or a switch already happened). Clear it; nothing to
         // do here.
         clear_embedding_auth_gate();
-        return None;
+        return false;
     }
 
     let current_dims = config.memory.embedding_dimensions;
     let base_url = crate::openhuman::inference::local::ollama_base_url();
-    let local_reachable =
-        crate::openhuman::memory_store::factories::probe_ollama_reachable(&base_url).await;
+    // Availability means the daemon is up AND the target model is pulled — a
+    // reachable daemon missing the model would just move indexing onto a
+    // provider that immediately fails with "model not found".
+    let local_available = crate::openhuman::memory_store::factories::probe_ollama_model_available(
+        &base_url,
+        DEFAULT_OLLAMA_MODEL,
+    )
+    .await;
 
     if !should_switch(
         true,
         provider,
         current_dims,
-        local_reachable,
+        local_available,
         DEFAULT_OLLAMA_DIMENSIONS,
     ) {
         log::debug!(
             "[embeddings::cloud_fallback] cloud embedding auth failing but local fallback \
-             unavailable (reachable={local_reachable}, local_dims={}, current_dims={current_dims}); \
-             leaving cloud provider in place — indexing degrades gracefully until re-auth (#3312)",
+             unavailable (model '{DEFAULT_OLLAMA_MODEL}' available={local_available}, \
+             local_dims={}, current_dims={current_dims}); leaving cloud provider in place — \
+             indexing degrades gracefully until re-auth (#3312)",
             DEFAULT_OLLAMA_DIMENSIONS
         );
-        return None;
+        return false;
     }
 
     log::warn!(
         "[embeddings::cloud_fallback] managed cloud session auth persistently failing and local \
-         embedder reachable at matching dims ({current_dims}); switching memory embeddings to \
-         local '{DEFAULT_OLLAMA_MODEL}' to keep indexing alive (#3312)"
+         model '{DEFAULT_OLLAMA_MODEL}' available at matching dims ({current_dims}); switching \
+         memory embeddings to local to keep indexing alive (#3312)"
     );
 
     match crate::openhuman::embeddings::rpc::update_settings(
@@ -145,28 +176,20 @@ pub async fn maybe_switch_cloud_to_local(config: &Config) -> Option<Config> {
     .await
     {
         Ok(_) => {
-            // Latch cleared only after the switch is durably persisted, so a
-            // mid-switch crash leaves the latch set for a retry next tick.
+            // The switch is now durably persisted to disk. Bump the generation
+            // so *every* worker reloads its `Config` from disk (each owns its
+            // own clone), then clear the latch. Clearing only after a successful
+            // persist means a failed persist (below) leaves the latch set for a
+            // retry on the next tick.
+            bump_config_generation();
             clear_embedding_auth_gate();
-            match crate::openhuman::config::ops::load_config_with_timeout().await {
-                Ok(fresh) => {
-                    log::info!(
-                        "[embeddings::cloud_fallback] switched memory embeddings to local \
-                         '{DEFAULT_OLLAMA_MODEL}'; re-embed backfill scheduled under new signature"
-                    );
-                    Some(fresh)
-                }
-                Err(e) => {
-                    // The switch persisted but reloading the config failed.
-                    // The on-disk change still takes effect on next restart;
-                    // surface it but don't crash the worker.
-                    log::warn!(
-                        "[embeddings::cloud_fallback] switch persisted but config reload failed: {e}; \
-                         worker keeps stale config until next restart"
-                    );
-                    None
-                }
-            }
+            log::info!(
+                "[embeddings::cloud_fallback] switched memory embeddings to local \
+                 '{DEFAULT_OLLAMA_MODEL}'; re-embed backfill scheduled under new signature; \
+                 workers will reload config (generation={})",
+                config_generation()
+            );
+            true
         }
         Err(e) => {
             // Persisting the switch is an unexpected system failure (config
@@ -178,7 +201,7 @@ pub async fn maybe_switch_cloud_to_local(config: &Config) -> Option<Config> {
                 "cloud_fallback_switch",
                 &[],
             );
-            None
+            false
         }
     }
 }
@@ -219,7 +242,7 @@ mod tests {
         clear_embedding_auth_gate();
         // Gate clear → returns immediately, no I/O, regardless of provider.
         let cfg = Config::default();
-        assert!(maybe_switch_cloud_to_local(&cfg).await.is_none());
+        assert!(!maybe_switch_cloud_to_local(&cfg).await);
     }
 
     #[tokio::test]
@@ -231,7 +254,7 @@ mod tests {
         note_embedding_auth_failure();
         let mut cfg = Config::default();
         cfg.memory.embedding_provider = "openai".to_string();
-        assert!(maybe_switch_cloud_to_local(&cfg).await.is_none());
+        assert!(!maybe_switch_cloud_to_local(&cfg).await);
         assert!(
             !embedding_auth_failed(),
             "non-cloud provider path must clear the stale latch"

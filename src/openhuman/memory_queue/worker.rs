@@ -104,22 +104,45 @@ pub fn start(config: Config) {
         for idx in 0..WORKER_COUNT {
             let notify = notify.clone();
             let mut cfg = config.clone();
+            // Generation this worker last reloaded its `Config` at. When a cloud
+            // → local embedding switch is persisted (#3312) the global
+            // generation bumps; every worker — not just the one that performed
+            // the switch — then reloads from disk so the whole pool moves to the
+            // new provider instead of staying split across an expired cloud
+            // session and the new local one.
+            let mut cfg_generation =
+                crate::openhuman::embeddings::cloud_fallback::config_generation();
             tokio::spawn(async move {
                 loop {
-                    // #3312: if the managed cloud session has persistently
-                    // failed auth and a local embedder is preloaded at matching
-                    // dims, this persists a switch to local and returns the
-                    // reloaded config so subsequent jobs build the local
-                    // embedder live — no process restart. Cheap no-op when the
-                    // auth latch is clear.
-                    if let Some(fresh) =
-                        crate::openhuman::embeddings::cloud_fallback::maybe_switch_cloud_to_local(
-                            &cfg,
-                        )
-                        .await
-                    {
-                        cfg = fresh;
+                    // #3312: if the managed cloud session has persistently failed
+                    // auth and the local model is preloaded at matching dims,
+                    // this persists a switch to local and bumps the config
+                    // generation. Cheap no-op when the auth latch is clear.
+                    crate::openhuman::embeddings::cloud_fallback::maybe_switch_cloud_to_local(&cfg)
+                        .await;
+
+                    // Adopt a persisted config change (from this worker's switch
+                    // or another's) by reloading from disk. On reload failure we
+                    // leave `cfg_generation` unchanged so the next tick retries.
+                    let current_generation =
+                        crate::openhuman::embeddings::cloud_fallback::config_generation();
+                    if current_generation != cfg_generation {
+                        match crate::openhuman::config::ops::load_config_with_timeout().await {
+                            Ok(fresh) => {
+                                cfg = fresh;
+                                cfg_generation = current_generation;
+                                log::info!(
+                                    "[memory::jobs] worker {idx} reloaded config (generation={current_generation}) after embedding provider switch"
+                                );
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "[memory::jobs] worker {idx} config reload failed (generation={current_generation}); retrying next tick: {e}"
+                                );
+                            }
+                        }
                     }
+
                     match run_once(&cfg).await {
                         Ok(true) => continue,
                         Ok(false) => {
