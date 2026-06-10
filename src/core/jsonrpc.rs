@@ -2244,6 +2244,20 @@ pub async fn bootstrap_core_runtime(host_kind: crate::core::types::HostKind) {
         });
     }
 
+    // --- MCP registry reconnect supervisor (#3312) -----------------------
+    // Keep installed MCP servers connected for the life of the process:
+    // transports drop silently over long uptimes (subprocess exits, HTTP
+    // session expires) and the boot spawn above only runs once. The
+    // supervisor periodically probes each connection and reconnects dropped
+    // ones with per-server backoff. First tick is delayed so it doesn't race
+    // the boot spawn.
+    {
+        let cfg = cfg.clone();
+        tokio::spawn(async move {
+            crate::openhuman::mcp_registry::supervisor::run(cfg).await;
+        });
+    }
+
     // --- Socket manager bootstrap ---
     let socket_mgr = Arc::new(SocketManager::new());
     set_global_socket_manager(socket_mgr.clone());
