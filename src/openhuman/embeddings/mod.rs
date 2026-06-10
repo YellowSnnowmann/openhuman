@@ -14,6 +14,7 @@
 
 pub mod catalog;
 pub mod cloud;
+pub mod cloud_fallback;
 pub mod cohere;
 mod factory;
 pub mod noop;

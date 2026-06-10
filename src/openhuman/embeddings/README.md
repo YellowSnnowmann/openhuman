@@ -10,6 +10,7 @@ Embedding providers for the OpenHuman memory system. Converts text into numerica
 - Maintain the static provider/model catalog (slugs, labels, API-key/endpoint requirements, dimension presets) consumed by the frontend picker.
 - Throttle outbound cloud-embedding HTTP requests with a process-global, per-endpoint token bucket (loopback exempt).
 - Parse `Retry-After` and apply 429/503 exponential backoff in HTTP-based providers.
+- Auto-fall back from the managed cloud embedder to a local one when the backend session expires mid-run (#3312): latch confirmed 401/403 auth failures and, when a local embedder is preloaded at matching dimensions, persist a provider switch (no destructive wipe) so indexing survives without a restart.
 - Expose RPC handlers for settings, API-key management, embed, and connection testing; trigger memory wipe / re-embed backfill when the embedding signature changes.
 
 ## Key files
@@ -22,6 +23,7 @@ Embedding providers for the OpenHuman memory system. Converts text into numerica
 | `src/openhuman/embeddings/catalog.rs` | Static catalog of `EmbeddingProviderEntry` + `EmbeddingModelPreset`; slug constants; `all_providers` / `find_provider` / `find_model` / `default_model_for`. |
 | `src/openhuman/embeddings/cloud.rs` | `OpenHumanCloudEmbedding` — default provider; resolves session JWT + API URL per call, delegates HTTP to `OpenAiEmbedding` against `<api>/openai/v1`. `DEFAULT_CLOUD_EMBEDDING_MODEL` = `embedding-v1`, dims 1024. |
 | `src/openhuman/embeddings/openai.rs` | `OpenAiEmbedding` — OpenAI-compatible `POST /v1/embeddings`; URL inference, 429/503 retry, rate-limit gating, dimension/count validation. Used directly by cloud, voyage, and custom paths. |
+| `src/openhuman/embeddings/cloud_fallback.rs` | Process-global auth-failure latch + `maybe_switch_cloud_to_local` — on a confirmed cloud 401/403 with a reachable, dimension-matched local embedder, persists a managed-cloud → local switch (signature-safe, no wipe) so a session expiry can't permanently brick indexing (#3312). Consumed by the memory-queue worker each tick. |
 | `src/openhuman/embeddings/voyage.rs` | `VoyageEmbedding` — thin wrapper delegating to `OpenAiEmbedding` against `api.voyageai.com`. |
 | `src/openhuman/embeddings/cohere.rs` | `CohereEmbedding` — Cohere-native `POST /v2/embed` wire format (`texts`, `embedding_types`, nested `embeddings.float`) with its own 429/503 retry loop. |
 | `src/openhuman/embeddings/ollama.rs` | `OllamaEmbedding` — local Ollama `POST /api/embed`; base-url/model normalization, blank-input zero-vector preservation, NaN-encoding 500 per-text recovery (TAURI-RUST-AZ). Defaults `bge-m3`/1024. |

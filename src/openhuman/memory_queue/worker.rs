@@ -103,9 +103,23 @@ pub fn start(config: Config) {
 
         for idx in 0..WORKER_COUNT {
             let notify = notify.clone();
-            let cfg = config.clone();
+            let mut cfg = config.clone();
             tokio::spawn(async move {
                 loop {
+                    // #3312: if the managed cloud session has persistently
+                    // failed auth and a local embedder is preloaded at matching
+                    // dims, this persists a switch to local and returns the
+                    // reloaded config so subsequent jobs build the local
+                    // embedder live — no process restart. Cheap no-op when the
+                    // auth latch is clear.
+                    if let Some(fresh) =
+                        crate::openhuman::embeddings::cloud_fallback::maybe_switch_cloud_to_local(
+                            &cfg,
+                        )
+                        .await
+                    {
+                        cfg = fresh;
+                    }
                     match run_once(&cfg).await {
                         Ok(true) => continue,
                         Ok(false) => {

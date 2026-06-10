@@ -207,6 +207,15 @@ impl EmbeddingProvider for OpenAiEmbedding {
                     target: "openai::embed",
                     "[openai] embed error: status={status}, body={text}"
                 );
+                // Latch a confirmed embedding auth failure (#3312). This is the
+                // shared chokepoint every cloud and BYO embed bottoms out in, so
+                // detecting here covers both the embeddings RPC path and the
+                // memory-tree write path. The cloud→local switch is gated on the
+                // *configured* provider downstream, so a 401 from a user's own
+                // key sets the latch but can never flip their provider.
+                if status.as_u16() == 401 || status.as_u16() == 403 {
+                    super::cloud_fallback::note_embedding_auth_failure();
+                }
                 let message = format!("Embedding API error ({status}): {text}");
                 // Use `report_error_or_expected` so transient upstream HTTP
                 // failures (e.g. 429 Too Many Requests after retry cap) log a
@@ -275,6 +284,10 @@ impl EmbeddingProvider for OpenAiEmbedding {
                 self.model, embeddings.len(),
                 embeddings.first().map(|v| v.len()).unwrap_or(0)
             );
+
+            // A successful embed means the session is valid again — clear any
+            // stale auth latch so a transient 401 blip doesn't trigger a switch.
+            super::cloud_fallback::clear_embedding_auth_gate();
 
             return Ok(embeddings);
         }
