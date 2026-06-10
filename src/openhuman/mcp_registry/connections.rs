@@ -246,6 +246,7 @@ pub async fn is_connected(server_id: &str) -> bool {
 /// Returns `false` (rather than erroring) for a missing connection, a transport
 /// error, or a timeout — all of which mean "not usable, reconnect".
 pub async fn probe_alive(server_id: &str, timeout: std::time::Duration) -> bool {
+    tracing::trace!("[mcp-registry] probe_alive server_id={server_id} timeout={timeout:?}");
     let conn = {
         let map = connections().read().await;
         map.get(server_id).cloned()
@@ -254,7 +255,10 @@ pub async fn probe_alive(server_id: &str, timeout: std::time::Duration) -> bool 
         return false;
     };
     match tokio::time::timeout(timeout, conn.client.list_tools()).await {
-        Ok(Ok(_)) => true,
+        Ok(Ok(_)) => {
+            tracing::trace!("[mcp-registry] probe_alive server_id={server_id} alive");
+            true
+        }
         Ok(Err(err)) => {
             tracing::debug!(
                 "[mcp-registry] probe_alive server_id={server_id} transport error: {err}"
