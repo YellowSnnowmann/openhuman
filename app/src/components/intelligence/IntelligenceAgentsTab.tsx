@@ -8,7 +8,6 @@ import { threadApi } from '../../services/api/threadApi';
 import { chatSend } from '../../services/chatService';
 import { selectActiveAgentProfileId } from '../../store/agentProfileSlice';
 import { beginInferenceTurn, setToolTimelineForThread } from '../../store/chatRuntimeSlice';
-import { markChatSubmit } from '../../utils/chatTurnTiming';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   loadThreadMessages,
@@ -17,6 +16,7 @@ import {
   setSelectedThread,
 } from '../../store/threadSlice';
 import type { ThreadMessage } from '../../types/thread';
+import { markChatSubmit } from '../../utils/chatTurnTiming';
 import AgentsLibraryPanel from './AgentsLibraryPanel';
 
 const log = debug('intelligence:agents-tab');

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { trackEvent } from '../services/analytics';
-
 import {
   __resetChatTurnTimingForTest,
   markChatDone,
@@ -35,10 +34,7 @@ describe('chatTurnTiming', () => {
     markChatFirstToken('t1'); // duplicate — ignored
 
     expect(trackEventMock).toHaveBeenCalledTimes(1);
-    expect(trackEventMock).toHaveBeenCalledWith('chat_turn_ttft', {
-      thread: 't1',
-      ttft_ms: 350,
-    });
+    expect(trackEventMock).toHaveBeenCalledWith('chat_turn_ttft', { thread: 't1', ttft_ms: 350 });
   });
 
   it('emits chat_turn_complete with total, ttft, and token counts', () => {

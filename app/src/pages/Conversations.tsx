@@ -26,7 +26,6 @@ import {
 } from '../lib/attachments';
 import { useT } from '../lib/i18n/I18nContext';
 import { trackEvent } from '../services/analytics';
-import { markChatSubmit } from '../utils/chatTurnTiming';
 import { applyOpenRouterFreeModels } from '../services/api/openrouterFreeModels';
 import { threadApi } from '../services/api/threadApi';
 import { chatCancel, chatSend, useRustChat } from '../services/chatService';
@@ -65,6 +64,7 @@ import type { ConfirmationModal as ConfirmationModalType } from '../types/intell
 import type { ThreadMessage } from '../types/thread';
 import type { TaskBoardCard, TaskBoardCardStatus } from '../types/turnState';
 import { splitAgentMessageIntoBubbles } from '../utils/agentMessageBubbles';
+import { markChatSubmit } from '../utils/chatTurnTiming';
 import { CHAT_ATTACHMENTS_ENABLED } from '../utils/config';
 import { BILLING_DASHBOARD_URL } from '../utils/links';
 import { openUrl } from '../utils/openUrl';

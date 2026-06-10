@@ -38,7 +38,6 @@ import {
 import { chatSend } from '../../services/chatService';
 import { selectActiveAgentProfileId } from '../../store/agentProfileSlice';
 import { beginInferenceTurn, setToolTimelineForThread } from '../../store/chatRuntimeSlice';
-import { markChatSubmit } from '../../utils/chatTurnTiming';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   loadThreadMessages,
@@ -48,6 +47,7 @@ import {
 } from '../../store/threadSlice';
 import type { ThreadMessage } from '../../types/thread';
 import type { TaskBoard, TaskBoardCard, TaskBoardCardStatus } from '../../types/turnState';
+import { markChatSubmit } from '../../utils/chatTurnTiming';
 import { UserTaskComposer } from './UserTaskComposer';
 
 const log = debug('intelligence:tasks');
