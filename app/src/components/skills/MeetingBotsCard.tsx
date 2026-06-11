@@ -253,7 +253,11 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const { t } = useT();
   const dispatch = useAppDispatch();
   const [meetUrl, setMeetUrl] = useState('');
-  const [respondTo, setRespondTo] = useState('');
+  // PASSIVE MODE: the respondTo state is retained for the
+  // joinMeetViaBackendBot payload (always passed undefined now since the
+  // backend ignores it) but the setter is unused while the input field
+  // is hidden. Restore `[respondTo, setRespondTo]` if the field returns.
+  const [respondTo] = useState('');
   const personaDisplayName = useAppSelector(selectPersonaDisplayName);
   const personaDescription = useAppSelector(selectPersonaDescription);
   const selectedMascotId = useAppSelector(selectSelectedMascotId);
@@ -428,7 +432,12 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               />
             </label>
 
-            <label className="block">
+            {/* PASSIVE MODE: the bot doesn't listen for a wake phrase or
+                respond to a single participant — it just transcribes. The
+                "Your Name in This Meeting" field is hidden so users aren't
+                prompted for input that no longer affects behavior. Restore
+                this block if the responsive bot is ever re-enabled. */}
+            {/* <label className="block">
               <span className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
                 {t('skills.meetingBots.respondToParticipant')}
               </span>
@@ -446,7 +455,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               <p className="mt-1 text-[10px] text-stone-400 dark:text-neutral-500">
                 {t('skills.meetingBots.respondToParticipantDesc')}
               </p>
-            </label>
+            </label> */}
 
             {error && (
               <div
@@ -465,7 +474,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               </button>
               <button
                 type="submit"
-                disabled={submitting || !meetUrl.trim() || !respondTo.trim()}
+                disabled={submitting || !meetUrl.trim()}
                 className="rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-stone-200 dark:disabled:bg-neutral-700 disabled:text-stone-400 dark:disabled:text-neutral-500">
                 {submitting
                   ? t('skills.meetingBots.starting')
