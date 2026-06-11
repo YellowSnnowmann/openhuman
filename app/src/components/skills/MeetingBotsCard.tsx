@@ -19,6 +19,7 @@ import {
   type BackendMeetReplyEvent,
   type BackendMeetStatus,
   resetBackendMeet,
+  selectBackendMeetError,
   selectBackendMeetLastHarness,
   selectBackendMeetLastReply,
   selectBackendMeetListenOnly,
@@ -45,7 +46,11 @@ export default function MeetingBotsCard({ onToast }: Props) {
   const [open, setOpen] = useState(false);
   const status = useAppSelector(selectBackendMeetStatus);
 
-  const showActive = status === 'active' || status === 'joining';
+  // Only switch to ActiveMeetingView once the backend has actually admitted
+  // the bot. The 'joining' state still leaves the user on the modal so a
+  // synchronous backend rejection (e.g. paid-plan gate) surfaces in the
+  // modal's error alert instead of flashing through ActiveMeetingView.
+  const showActive = status === 'active';
 
   return (
     <>
@@ -257,6 +262,11 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const customSecondaryColor = useAppSelector(selectCustomSecondaryColor);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const meetStatus = useAppSelector(selectBackendMeetStatus);
+  const meetError = useAppSelector(selectBackendMeetError);
+  // True once the user has clicked Join in this modal session — guards the
+  // status-watching effect against stale redux state from a prior attempt.
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   // Recent-calls history loaded from core when the modal opens.
   // `null` means "not yet fetched"; `[]` means "fetched, no rows".
   // Separating the two lets the UI render a "Loading…" hint on
@@ -301,16 +311,47 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // After Join is clicked, watch the backend meet status. The RPC returns
+  // as soon as the join request reaches the core, but the actual admit /
+  // reject from the bot service arrives asynchronously over the socket.
+  //  - 'active' → bot was admitted; surface success toast and close.
+  //  - 'error'  → bot was rejected (paid-plan gate, capacity, etc); leave
+  //               the modal open with the backend's message in the alert
+  //               so the user is blocked from joining and sees why.
+  useEffect(() => {
+    if (!hasSubmitted) return;
+    if (meetStatus === 'active') {
+      onToast?.({
+        type: 'success',
+        title: t('skills.meetingBots.joiningTitle'),
+        message: t('skills.meetingBots.joiningMessage'),
+      });
+      setMeetUrl('');
+      onClose();
+      return;
+    }
+    if (meetStatus === 'error') {
+      const message = meetError?.trim() || t('skills.meetingBots.failedToStart');
+      setError(message);
+      setSubmitting(false);
+      setHasSubmitted(false);
+      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
+    }
+  }, [hasSubmitted, meetStatus, meetError, onClose, onToast, t]);
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
+    setHasSubmitted(true);
     try {
       // Generate a correlation ID so every backend event for this session
       // can be tied back to this meeting.
       const meetingId = crypto.randomUUID();
-      // Optimistically update Redux state so the banner transitions to
-      // the ActiveMeetingView immediately, before the backend responds.
+      // Mark the meet slice as "joining" so the rest of the app reflects
+      // the in-flight state. The modal stays open until the backend either
+      // admits the bot (status → 'active', useEffect closes the modal) or
+      // rejects it (status → 'error', useEffect surfaces the message).
       dispatch(setBackendMeetJoining({ meetUrl: meetUrl.trim(), meetingId }));
       // Backend Recall.ai bot: sends the mascot into the meeting via
       // the backend's Recall.ai integration. The backend joins as a
@@ -327,19 +368,14 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
         correlationId: meetingId,
         respondToParticipant: respondTo.trim() || undefined,
       });
-      onToast?.({
-        type: 'success',
-        title: t('skills.meetingBots.joiningTitle'),
-        message: t('skills.meetingBots.joiningMessage'),
-      });
-      setMeetUrl('');
-      onClose();
+      // Don't close the modal here — wait for status === 'active' or 'error'
+      // via the watcher useEffect above.
     } catch (err) {
       const message = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
       setError(message);
-      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
-    } finally {
       setSubmitting(false);
+      setHasSubmitted(false);
+      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
     }
   };
 

@@ -2,6 +2,10 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MeetCallRecord } from '../../../services/meetCallService';
+import {
+  setBackendMeetError,
+  setBackendMeetJoined,
+} from '../../../store/backendMeetSlice';
 import { renderWithProviders } from '../../../test/test-utils';
 import MeetingBotsCard, { MeetingBotsModal } from '../MeetingBotsCard';
 
@@ -62,7 +66,7 @@ describe('MeetingBotsCard', () => {
       platform: 'gmeet',
     });
     const onToast = vi.fn();
-    renderWithProviders(<MeetingBotsCard onToast={onToast} />);
+    const { store } = renderWithProviders(<MeetingBotsCard onToast={onToast} />);
 
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
@@ -85,12 +89,18 @@ describe('MeetingBotsCard', () => {
         })
       );
     });
+    // The modal now waits for the backend's admit signal — simulate it by
+    // dispatching the same slice action the socket layer fires on
+    // bot:joined / agent_meetings:joined.
+    store.dispatch(
+      setBackendMeetJoined({ meetUrl: 'https://meet.google.com/abc-defg-hij' })
+    );
     await vi.waitFor(() => {
       expect(onToast).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'success', title: expect.stringMatching(/joining/i) })
       );
     });
-    // Modal closes on success
+    // Modal closes after the backend admits the bot.
     await vi.waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
@@ -161,6 +171,45 @@ describe('MeetingBotsCard', () => {
       );
     });
     expect(screen.getByRole('alert')).toHaveTextContent('Bad URL');
+  });
+
+  it('keeps the modal open with the backend message when the bot is paid-gated', async () => {
+    joinMock.mockResolvedValueOnce({
+      meetUrl: 'https://meet.google.com/abc-defg-hij',
+      platform: 'gmeet',
+    });
+    const onToast = vi.fn();
+    const { store } = renderWithProviders(<MeetingBotsCard onToast={onToast} />);
+
+    fireEvent.click(screen.getByTestId('meeting-bots-banner'));
+    fireEvent.change(screen.getByLabelText(/meeting link/i), {
+      target: { value: 'https://meet.google.com/abc-defg-hij' },
+    });
+    fireEvent.change(screen.getByLabelText(/your name in this meeting/i), {
+      target: { value: 'Alice' },
+    });
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+
+    await vi.waitFor(() => expect(joinMock).toHaveBeenCalled());
+    // Simulate the backend rejecting the bot (paid-plan gate, capacity, etc).
+    store.dispatch(
+      setBackendMeetError({ error: 'Meeting bot is a paid-plan feature.' })
+    );
+
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Meeting bot is a paid-plan feature.'
+      );
+    });
+    // Modal stays open so the user is blocked rather than being dropped into
+    // an ActiveMeetingView that immediately collapses.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        title: expect.stringMatching(/not start/i),
+      })
+    );
   });
 
   it('does not show meeting platform choices in the Google Meet CTA', () => {
@@ -245,13 +294,18 @@ describe('MeetingBotsCard — ActiveMeetingView', () => {
     expect(screen.getByText(/hi there/i)).toBeInTheDocument();
   });
 
-  it('shows joining status text when status is joining', () => {
+  it('keeps the banner (not ActiveMeetingView) while status is joining', () => {
+    // The 'joining' status no longer flips to ActiveMeetingView — the
+    // modal stays open over the banner until the backend either admits
+    // (status → 'active') or rejects (status → 'error'). When the modal
+    // is closed and status is 'joining', the banner remains.
     renderWithProviders(<MeetingBotsCard />, {
       preloadedState: {
         backendMeet: { ...activeMeetState.backendMeet, status: 'joining' as const },
       },
     });
-    expect(screen.getByText(/joining/i)).toBeInTheDocument();
+    expect(screen.getByTestId('meeting-bots-banner')).toBeInTheDocument();
+    expect(screen.queryByText(/live in meeting/i)).not.toBeInTheDocument();
   });
 
   it('shows banner (not ActiveMeetingView) when status is ended', () => {
