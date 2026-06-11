@@ -4,7 +4,7 @@
 // backend to send a Recall.ai-hosted mascot bot into the meeting. The
 // backend streams replies, harness requests, and the final transcript
 // back through the core Socket.IO bridge.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type MascotFace, RiveMascot } from '../../features/human/Mascot';
 import { useT } from '../../lib/i18n/I18nContext';
@@ -270,7 +270,9 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const meetError = useAppSelector(selectBackendMeetError);
   // True once the user has clicked Join in this modal session — guards the
   // status-watching effect against stale redux state from a prior attempt.
-  const [hasSubmitted, setHasSubmitted] = useState(false);
+  // Held as a ref (not state) so toggling it inside the effect doesn't
+  // trigger a re-render cascade — see react-hooks/set-state-in-effect.
+  const hasSubmittedRef = useRef(false);
   // Recent-calls history loaded from core when the modal opens.
   // `null` means "not yet fetched"; `[]` means "fetched, no rows".
   // Separating the two lets the UI render a "Loading…" hint on
@@ -323,8 +325,9 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   //               the modal open with the backend's message in the alert
   //               so the user is blocked from joining and sees why.
   useEffect(() => {
-    if (!hasSubmitted) return;
+    if (!hasSubmittedRef.current) return;
     if (meetStatus === 'active') {
+      hasSubmittedRef.current = false;
       onToast?.({
         type: 'success',
         title: t('skills.meetingBots.joiningTitle'),
@@ -335,19 +338,19 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       return;
     }
     if (meetStatus === 'error') {
+      hasSubmittedRef.current = false;
       const message = meetError?.trim() || t('skills.meetingBots.failedToStart');
       setError(message);
       setSubmitting(false);
-      setHasSubmitted(false);
       onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
     }
-  }, [hasSubmitted, meetStatus, meetError, onClose, onToast, t]);
+  }, [meetStatus, meetError, onClose, onToast, t]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
-    setHasSubmitted(true);
+    hasSubmittedRef.current = true;
     try {
       // Generate a correlation ID so every backend event for this session
       // can be tied back to this meeting.
@@ -378,7 +381,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       const message = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
       setError(message);
       setSubmitting(false);
-      setHasSubmitted(false);
+      hasSubmittedRef.current = false;
       onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
     }
   };
