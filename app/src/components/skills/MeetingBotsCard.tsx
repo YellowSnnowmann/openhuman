@@ -308,14 +308,19 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       ? { primaryColor: customPrimaryColor, secondaryColor: customSecondaryColor }
       : undefined;
 
+  // The modal blocks dismissal while a join request is in flight so the
+  // backend's admit/reject verdict (success toast + close, or inline
+  // error) isn't skipped by an early Escape / backdrop click / X / Cancel.
+  const canDismiss = !submitting;
+
   // Esc closes the modal — matches the OpenhumanLinkModal pattern.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && canDismiss) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [canDismiss, onClose]);
 
   // After Join is clicked, watch the backend meet status. The RPC returns
   // as soon as the join request reaches the core, but the actual admit /
@@ -392,7 +397,9 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       aria-modal="true"
       aria-label={t('skills.meetingBots.modalAriaLabel')}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}>
+      onClick={() => {
+        if (canDismiss) onClose();
+      }}>
       <div
         className="w-full max-w-md overflow-hidden rounded-2xl bg-white dark:bg-neutral-900 shadow-xl"
         onClick={e => e.stopPropagation()}>
@@ -403,7 +410,8 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="absolute right-3 top-3 rounded-full p-1 text-stone-500 dark:text-neutral-400 hover:bg-white/80 dark:hover:bg-neutral-800/60 hover:text-stone-800 dark:hover:text-neutral-100">
+            disabled={!canDismiss}
+            className="absolute right-3 top-3 rounded-full p-1 text-stone-500 dark:text-neutral-400 hover:bg-white/80 dark:hover:bg-neutral-800/60 hover:text-stone-800 dark:hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-40">
             ✕
           </button>
           <h2 className="text-base font-semibold text-stone-900 dark:text-neutral-100">
@@ -472,7 +480,8 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl px-3 py-2 text-sm font-medium text-stone-600 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800">
+                disabled={!canDismiss}
+                className="rounded-xl px-3 py-2 text-sm font-medium text-stone-600 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
                 {t('common.cancel')}
               </button>
               <button

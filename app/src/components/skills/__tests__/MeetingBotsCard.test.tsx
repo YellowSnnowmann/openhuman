@@ -207,6 +207,33 @@ describe('MeetingBotsCard', () => {
     expect(screen.getByRole('button', { name: /send to google meet/i })).toBeInTheDocument();
   });
 
+  it('blocks Escape / Cancel / X / backdrop dismissals while a join is in flight', async () => {
+    // Make the join RPC hang so we stay in the in-flight state.
+    let resolveJoin: ((v: unknown) => void) | undefined;
+    joinMock.mockImplementationOnce(() => new Promise(r => (resolveJoin = r)));
+    renderWithProviders(<MeetingBotsCard />);
+
+    fireEvent.click(screen.getByTestId('meeting-bots-banner'));
+    fireEvent.change(screen.getByLabelText(/meeting link/i), {
+      target: { value: 'https://meet.google.com/abc-defg-hij' },
+    });
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+    await waitFor(() => expect(joinMock).toHaveBeenCalled());
+
+    // Cancel + X are visually disabled while in flight.
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /close/i })).toBeDisabled();
+
+    // Escape, backdrop click, Cancel click — modal stays open.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('dialog'));
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Release the RPC so other tests' state doesn't leak.
+    resolveJoin?.({ meetUrl: 'https://meet.google.com/abc-defg-hij', platform: 'gmeet' });
+  });
+
   it('only asks for the meeting link in passive mode', () => {
     renderWithProviders(<MeetingBotsCard />);
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
