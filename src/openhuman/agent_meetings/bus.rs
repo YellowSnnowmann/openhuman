@@ -114,6 +114,63 @@ impl EventHandler for MeetingEventSubscriber {
                     correlation_id = ?correlation_id,
                     "{LOG_PREFIX} bot left meeting"
                 );
+                // Free the per-meeting orchestrator built for in-call agency.
+                super::in_call::clear_meeting_agent(correlation_id.as_deref()).await;
+            }
+
+            DomainEvent::InCallApprovalRequested {
+                request_id,
+                tool_name,
+                action_summary,
+                correlation_id,
+            } => {
+                tracing::info!(
+                    request_id = %request_id,
+                    tool = %tool_name,
+                    correlation_id = ?correlation_id,
+                    "{LOG_PREFIX} in-call approval parked — speaking prompt into call"
+                );
+                let action_summary = action_summary.clone();
+                let correlation_id = correlation_id.clone();
+                tokio::spawn(async move {
+                    super::in_call::speak_approval_prompt(
+                        &action_summary,
+                        correlation_id.as_deref(),
+                    )
+                    .await;
+                });
+            }
+
+            DomainEvent::BackendMeetInCallRequest {
+                correlation_id,
+                speaker,
+                command_text,
+                recent_transcript,
+                timestamp_ms,
+            } => {
+                tracing::info!(
+                    correlation_id = ?correlation_id,
+                    speaker = %speaker,
+                    cmd_len = command_text.len(),
+                    "{LOG_PREFIX} in-call request received"
+                );
+                // The orchestrator turn can run for tens of seconds (tools,
+                // integrations) — spawn so the event bus isn't blocked.
+                let correlation_id = correlation_id.clone();
+                let speaker = speaker.clone();
+                let command_text = command_text.clone();
+                let recent_transcript = recent_transcript.clone();
+                let timestamp_ms = *timestamp_ms;
+                tokio::spawn(async move {
+                    super::in_call::handle_in_call_request(
+                        correlation_id,
+                        speaker,
+                        command_text,
+                        recent_transcript,
+                        timestamp_ms,
+                    )
+                    .await;
+                });
             }
 
             _ => {}
