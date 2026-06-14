@@ -15,9 +15,11 @@
 //!   spoken ack ("On it — one moment.") bridges the silence so the
 //!   participant knows the bot heard them.
 //!
-//! Gated by `config.meet.enable_in_call_agency` (default `false`).
+//! Gated by either the per-meeting active-mode toggle (`listen_only = false`
+//! at join, tracked in [`ACTIVE_MEETINGS`]) or the global
+//! `config.meet.enable_in_call_agency` master override (default `false`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -89,6 +91,33 @@ fn thread_cache() -> &'static TokioMutex<HashMap<String, String>> {
     THREAD_CACHE.get_or_init(|| TokioMutex::new(HashMap::new()))
 }
 
+/// Meetings explicitly joined in active mode (`listen_only = false`, set via
+/// the "respond when addressed" toggle in the join modal). A meeting in this
+/// set dispatches in-call commands even when the global
+/// `config.meet.enable_in_call_agency` default is off — the per-meeting toggle
+/// is the source of truth, with the global flag acting as an always-on master
+/// override. Populated by `handle_join`, cleared on `BackendMeetLeft`.
+static ACTIVE_MEETINGS: OnceLock<TokioMutex<HashSet<String>>> = OnceLock::new();
+
+fn active_meetings() -> &'static TokioMutex<HashSet<String>> {
+    ACTIVE_MEETINGS.get_or_init(|| TokioMutex::new(HashSet::new()))
+}
+
+/// Mark a meeting as active-mode so its in-call commands are dispatched
+/// regardless of the global agency default. Idempotent.
+pub(super) async fn mark_meeting_active(correlation_id: Option<&str>) {
+    let key = cache_key(correlation_id);
+    if active_meetings().lock().await.insert(key.clone()) {
+        tracing::info!("{LOG_PREFIX} meeting marked active (in-call agency enabled) meeting={key}");
+    }
+}
+
+/// True when the meeting was joined in active mode (`listen_only = false`).
+pub(super) async fn is_meeting_active(correlation_id: Option<&str>) -> bool {
+    let key = cache_key(correlation_id);
+    active_meetings().lock().await.contains(&key)
+}
+
 /// Drop the cached orchestrator + thread id for a finished meeting.
 /// Called from the bus on `BackendMeetLeft` so a long-lived process
 /// doesn't accumulate one Agent per meeting forever.
@@ -98,6 +127,23 @@ pub async fn clear_meeting_agent(correlation_id: Option<&str>) {
         tracing::info!("{LOG_PREFIX} dropped cached agent for meeting={key}");
     }
     thread_cache().lock().await.remove(&key);
+    active_meetings().lock().await.remove(&key);
+}
+
+/// Pre-build the per-meeting orchestrator when the bot joins, so the first
+/// wake-phrase command doesn't pay the 5-10s cold build. Best-effort: a
+/// failure just means the first turn falls back to building it lazily. Safe
+/// to race with the first request — `get_or_build_agent` is idempotent
+/// (whoever inserts last wins; an orphaned build is simply dropped).
+pub(super) async fn prewarm_agent(correlation_id: Option<&str>) {
+    let key = cache_key(correlation_id);
+    if agent_cache().lock().await.contains_key(&key) {
+        return; // already built (e.g. a fast first command beat us to it)
+    }
+    match get_or_build_agent(correlation_id).await {
+        Ok(_) => tracing::info!("{LOG_PREFIX} pre-warmed orchestrator for meeting={key}"),
+        Err(e) => tracing::warn!("{LOG_PREFIX} pre-warm failed for meeting={key}: {e}"),
+    }
 }
 
 fn cache_key(correlation_id: Option<&str>) -> String {
@@ -123,21 +169,28 @@ pub async fn handle_in_call_request(
     }
 
     let cfg = crate::openhuman::config::Config::load_or_init().await.ok();
-    let enabled = cfg
+    let global_agency = cfg
         .as_ref()
         .map(|c| c.meet.enable_in_call_agency)
         .unwrap_or(false);
+    // The per-meeting "respond when addressed" toggle (listen_only = false)
+    // enables agency for just this call; the global flag is an always-on
+    // master override. Either path lets the command through.
+    let enabled = global_agency || is_meeting_active(correlation_id.as_deref()).await;
     if !enabled {
         tracing::info!(
-            "{LOG_PREFIX} in-call request dropped (config.meet.enable_in_call_agency = false) \
-             speaker={speaker} cmd_len={}",
+            "{LOG_PREFIX} in-call request dropped (listen-only meeting and \
+             config.meet.enable_in_call_agency = false) speaker={speaker} cmd_len={}",
             command.len()
         );
         return;
     }
     // Stream the reply sentence-by-sentence as the LLM generates it (default)
     // so the bot starts speaking on sentence one, vs one buffered emit.
-    let streaming = cfg.as_ref().map(|c| c.meet.in_call_streaming).unwrap_or(true);
+    let streaming = cfg
+        .as_ref()
+        .map(|c| c.meet.in_call_streaming)
+        .unwrap_or(true);
 
     // Voice approval channel (issue #3513): when an approval is parked on
     // this meeting and the wake-phrase command parses as a yes/no, route
@@ -440,8 +493,14 @@ async fn stream_sentences(
         if let AgentProgress::TextDelta { delta, .. } = ev {
             buf.push_str(&delta);
             for sentence in drain_sentences(&mut buf) {
-                speak_stream_chunk(&sentence, correlation_id.as_deref(), &mut seq, &ack_cancel, &mut spoke)
-                    .await;
+                speak_stream_chunk(
+                    &sentence,
+                    correlation_id.as_deref(),
+                    &mut seq,
+                    &ack_cancel,
+                    &mut spoke,
+                )
+                .await;
             }
         }
         // ThinkingDelta + all other progress events: ignored. Only visible
@@ -450,7 +509,14 @@ async fn stream_sentences(
     // Flush the trailing partial sentence (no terminator) as the tail.
     let tail = strip_for_speech(buf.trim());
     if !tail.is_empty() {
-        speak_stream_chunk(&tail, correlation_id.as_deref(), &mut seq, &ack_cancel, &mut spoke).await;
+        speak_stream_chunk(
+            &tail,
+            correlation_id.as_deref(),
+            &mut seq,
+            &ack_cancel,
+            &mut spoke,
+        )
+        .await;
     }
 }
 
@@ -533,7 +599,7 @@ fn next_sentence_end(s: &str) -> Option<usize> {
         if ch == '.' || ch == '!' || ch == '?' {
             match chars.get(i + 1) {
                 Some((_, next)) if next.is_whitespace() => return Some(idx + ch.len_utf8()),
-                Some(_) => {} // e.g. "3.14" — not a boundary
+                Some(_) => {}        // e.g. "3.14" — not a boundary
                 None => return None, // terminator at end — wait for more
             }
         }
@@ -962,5 +1028,21 @@ mod tests {
             !agent_cache().lock().await.contains_key("meet-flag-off"),
             "agent must not be built when the flag is off"
         );
+    }
+
+    #[tokio::test]
+    async fn mark_and_clear_active_meeting_toggles_membership() {
+        // The per-meeting active set is what lets a listen_only=false join
+        // dispatch in-call commands even with the global flag off.
+        assert!(!is_meeting_active(Some("meet-active-1")).await);
+        mark_meeting_active(Some("meet-active-1")).await;
+        assert!(is_meeting_active(Some("meet-active-1")).await);
+        // mark is idempotent.
+        mark_meeting_active(Some("meet-active-1")).await;
+        assert!(is_meeting_active(Some("meet-active-1")).await);
+        // clear_meeting_agent must also drop the active marker so a later
+        // meeting reusing the same correlation id starts passive.
+        clear_meeting_agent(Some("meet-active-1")).await;
+        assert!(!is_meeting_active(Some("meet-active-1")).await);
     }
 }

@@ -327,6 +327,14 @@ pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
         .await
         .map_err(|e| format!("[agent_meetings] emit failed: {e}"))?;
 
+    // Active mode (listen_only = false, the modal's "respond when addressed"
+    // toggle) enables in-call agency for just this meeting, so the toggle
+    // "just works" without flipping the global config. Passive joins leave
+    // the meeting unmarked (default: listen-only / transcribe-only).
+    if req.listen_only == Some(false) {
+        super::in_call::mark_meeting_active(req.correlation_id.as_deref()).await;
+    }
+
     let response = BackendMeetJoinResponse {
         ok: true,
         meet_url: normalized_url.to_string(),

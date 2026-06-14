@@ -249,6 +249,10 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const dispatch = useAppDispatch();
   const [meetUrl, setMeetUrl] = useState('');
   const [respondTo, setRespondTo] = useState('');
+  // Active mode (respond when addressed) vs listen-only (transcribe only).
+  // Defaults to active: the bot still only replies after the wake phrase from
+  // the named participant, so this is a safe, opt-in-by-modal default.
+  const [listenOnly, setListenOnly] = useState(false);
   const personaDisplayName = useAppSelector(selectPersonaDisplayName);
   const personaDescription = useAppSelector(selectPersonaDescription);
   const selectedMascotId = useAppSelector(selectSelectedMascotId);
@@ -311,7 +315,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       const meetingId = crypto.randomUUID();
       // Optimistically update Redux state so the banner transitions to
       // the ActiveMeetingView immediately, before the backend responds.
-      dispatch(setBackendMeetJoining({ meetUrl: meetUrl.trim(), meetingId }));
+      dispatch(setBackendMeetJoining({ meetUrl: meetUrl.trim(), meetingId, listenOnly }));
       // Backend Recall.ai bot: sends the mascot into the meeting via
       // the backend's Recall.ai integration. The backend joins as a
       // participant, renders the mascot as the bot's camera feed, and
@@ -326,6 +330,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
         riveColors,
         correlationId: meetingId,
         respondToParticipant: respondTo.trim() || undefined,
+        listenOnly,
       });
       onToast?.({
         type: 'success',
@@ -410,6 +415,24 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               <p className="mt-1 text-[10px] text-stone-400 dark:text-neutral-500">
                 {t('skills.meetingBots.respondToParticipantDesc')}
               </p>
+            </label>
+
+            <label className="flex items-start gap-3 rounded-xl border border-stone-200 dark:border-neutral-800 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={!listenOnly}
+                onChange={e => setListenOnly(!e.target.checked)}
+                disabled={submitting}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-stone-300 text-primary-500 focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-stone-800 dark:text-neutral-100">
+                  {t('skills.meetingBots.activeMode')}
+                </span>
+                <span className="mt-0.5 block text-[10px] leading-relaxed text-stone-400 dark:text-neutral-500">
+                  {t('skills.meetingBots.activeModeDesc')}
+                </span>
+              </span>
             </label>
 
             {error && (
