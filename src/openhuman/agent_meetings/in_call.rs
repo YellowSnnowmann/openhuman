@@ -22,10 +22,11 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use serde_json::json;
-use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::{mpsc, Mutex as TokioMutex, Notify};
 
 use crate::core::event_bus::BackendMeetTurn;
 use crate::openhuman::agent::harness::session::Agent;
+use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::approval::{
     parse_approval_reply, ApprovalChatContext, ApprovalDecision, ApprovalGate,
     InCallApprovalContext, APPROVAL_CHAT_CONTEXT, APPROVAL_IN_CALL_CONTEXT,
@@ -121,8 +122,9 @@ pub async fn handle_in_call_request(
         return;
     }
 
-    let enabled = crate::openhuman::config::Config::load_or_init()
-        .await
+    let cfg = crate::openhuman::config::Config::load_or_init().await.ok();
+    let enabled = cfg
+        .as_ref()
         .map(|c| c.meet.enable_in_call_agency)
         .unwrap_or(false);
     if !enabled {
@@ -133,6 +135,9 @@ pub async fn handle_in_call_request(
         );
         return;
     }
+    // Stream the reply sentence-by-sentence as the LLM generates it (default)
+    // so the bot starts speaking on sentence one, vs one buffered emit.
+    let streaming = cfg.as_ref().map(|c| c.meet.in_call_streaming).unwrap_or(true);
 
     // Voice approval channel (issue #3513): when an approval is parked on
     // this meeting and the wake-phrase command parses as a yes/no, route
@@ -152,11 +157,13 @@ pub async fn handle_in_call_request(
         "{LOG_PREFIX} dispatching in-call command to orchestrator"
     );
 
-    // Speculative ack: if the orchestrator outlives ACK_AFTER_SECS, speak
-    // a short filler so the participant knows the bot heard. The oneshot
-    // cancels the ack when the real reply lands first.
-    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+    // Speculative ack: if the orchestrator outlives ACK_AFTER_SECS without
+    // speaking, a short filler bridges the silence so the participant knows
+    // the bot heard. Cancelled by the first spoken chunk (streaming) or by
+    // the turn completing.
+    let ack_cancel = Arc::new(Notify::new());
     let ack_cid = correlation_id.clone();
+    let ack_cancel_task = ack_cancel.clone();
     let ack_task = tokio::spawn(async move {
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(ACK_AFTER_SECS)) => {
@@ -164,7 +171,7 @@ pub async fn handle_in_call_request(
                     tracing::debug!("[agent_meetings::in_call] ack emit failed: {e}");
                 }
             }
-            _ = done_rx => {}
+            _ = ack_cancel_task.notified() => {}
         }
     });
 
@@ -173,10 +180,13 @@ pub async fn handle_in_call_request(
         &speaker,
         command,
         &recent_transcript,
+        streaming,
+        ack_cancel.clone(),
     )
     .await;
 
-    let _ = done_tx.send(());
+    // Turn finished — stop the ack from firing late.
+    ack_cancel.notify_one();
     ack_task.abort();
 
     match reply {
@@ -184,10 +194,15 @@ pub async fn handle_in_call_request(
             tracing::info!(
                 correlation_id = ?correlation_id,
                 reply_chars = text.chars().count(),
-                "{LOG_PREFIX} orchestrator replied — speaking into call"
+                streaming,
+                "{LOG_PREFIX} orchestrator replied"
             );
-            if let Err(e) = emit_bot_speak(&text, correlation_id.as_deref()).await {
-                tracing::warn!("{LOG_PREFIX} bot:speak emit failed: {e}");
+            // In streaming mode the reply was already spoken sentence-by-
+            // sentence during the turn; only the buffered path emits here.
+            if !streaming {
+                if let Err(e) = emit_bot_speak(&text, correlation_id.as_deref()).await {
+                    tracing::warn!("{LOG_PREFIX} bot:speak emit failed: {e}");
+                }
             }
             post_exchange_to_thread(correlation_id.as_deref(), &speaker, command, &text).await;
         }
@@ -306,6 +321,8 @@ async fn run_orchestrator_turn(
     speaker: &str,
     command: &str,
     recent_transcript: &[BackendMeetTurn],
+    streaming: bool,
+    ack_cancel: Arc<Notify>,
 ) -> Result<String, String> {
     let agent_lock = get_or_build_agent(correlation_id).await?;
     let mut agent = agent_lock.lock().await;
@@ -327,6 +344,19 @@ async fn run_orchestrator_turn(
     let approval_thread_id = get_or_create_meeting_thread(correlation_id, &key)
         .await
         .ok();
+
+    // Streaming: attach a progress sink so the reply is spoken sentence-by-
+    // sentence as it generates. The consumer reads deltas concurrently with
+    // the run; dropping the sink (set_on_progress(None)) after the run ends
+    // closes the channel so the consumer flushes its tail and exits.
+    let consumer = if streaming {
+        let (tx, rx) = mpsc::channel::<AgentProgress>(64);
+        agent.set_on_progress(Some(tx));
+        let cid_owned = correlation_id.map(String::from);
+        Some(tokio::spawn(stream_sentences(rx, cid_owned, ack_cancel)))
+    } else {
+        None
+    };
 
     // Live-call speech is externally-sourced channel input: the approval
     // gate routes external_effect tools through the parking path. The two
@@ -367,6 +397,15 @@ async fn run_orchestrator_turn(
         None => tokio::time::timeout(timeout, fut).await,
     };
 
+    // Detach the progress sink and let the consumer drain the remaining
+    // deltas + flush its tail sentence before we return.
+    if streaming {
+        agent.set_on_progress(None);
+    }
+    if let Some(handle) = consumer {
+        let _ = handle.await;
+    }
+
     let reply = match run {
         Ok(Ok(text)) => text,
         Ok(Err(e)) => return Err(format!("orchestrator run_single failed: {e}")),
@@ -378,6 +417,128 @@ async fn run_orchestrator_turn(
     };
 
     Ok(strip_for_speech(&reply))
+}
+
+/// Minimum characters before a complete sentence is flushed for speech.
+/// Avoids choppy single-word emits and speaking abbreviations ("Mr.") as
+/// their own sentence; short leading clauses are merged into the next one.
+const MIN_SPEAK_CHARS: usize = 12;
+
+/// Consume the agent's progress stream, speaking the visible answer one
+/// sentence at a time as it arrives. `ThinkingDelta` (reasoning) is dropped
+/// so the chain-of-thought is never spoken. On the first spoken chunk the
+/// speculative ack is cancelled.
+async fn stream_sentences(
+    mut rx: mpsc::Receiver<AgentProgress>,
+    correlation_id: Option<String>,
+    ack_cancel: Arc<Notify>,
+) {
+    let mut buf = String::new();
+    let mut seq: u32 = 0;
+    let mut spoke = false;
+    while let Some(ev) = rx.recv().await {
+        if let AgentProgress::TextDelta { delta, .. } = ev {
+            buf.push_str(&delta);
+            for sentence in drain_sentences(&mut buf) {
+                speak_stream_chunk(&sentence, correlation_id.as_deref(), &mut seq, &ack_cancel, &mut spoke)
+                    .await;
+            }
+        }
+        // ThinkingDelta + all other progress events: ignored. Only visible
+        // answer text is spoken.
+    }
+    // Flush the trailing partial sentence (no terminator) as the tail.
+    let tail = strip_for_speech(buf.trim());
+    if !tail.is_empty() {
+        speak_stream_chunk(&tail, correlation_id.as_deref(), &mut seq, &ack_cancel, &mut spoke).await;
+    }
+}
+
+async fn speak_stream_chunk(
+    text: &str,
+    correlation_id: Option<&str>,
+    seq: &mut u32,
+    ack_cancel: &Arc<Notify>,
+    spoke: &mut bool,
+) {
+    if text.is_empty() {
+        return;
+    }
+    if !*spoke {
+        *spoke = true;
+        ack_cancel.notify_one(); // first real audio — no need for the filler ack
+    }
+    if let Err(e) = emit_bot_speak_inner(text, correlation_id, Some(*seq)).await {
+        tracing::debug!("{LOG_PREFIX} streamed chunk emit failed: {e}");
+    }
+    *seq += 1;
+}
+
+/// Pull complete, speech-sanitized sentences from `buf`, leaving the trailing
+/// partial sentence behind for the next delta. Short leading clauses are
+/// merged into the next sentence (`MIN_SPEAK_CHARS`). Everything is held back
+/// while an unclosed `<think>` tag is present so untagged reasoning from
+/// models that inline it isn't spoken.
+fn drain_sentences(buf: &mut String) -> Vec<String> {
+    // Drop any COMPLETE reasoning blocks first, so their internal sentence
+    // punctuation is never drained and spoken.
+    loop {
+        let (Some(open), Some(close)) = (buf.find("<think>"), buf.find("</think>")) else {
+            break;
+        };
+        if close < open {
+            break; // malformed ordering — leave it for strip_for_speech
+        }
+        buf.replace_range(open..close + "</think>".len(), "");
+    }
+    // A reasoning block is still open (no close yet) — hold everything back
+    // until it closes rather than risk speaking the chain-of-thought.
+    if buf.contains("<think>") {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    loop {
+        // Find a flush point: the earliest sentence end whose prefix is long
+        // enough, merging short leading clauses into the following sentence.
+        let mut flush_at = None;
+        let mut search_from = 0;
+        while let Some(rel) = next_sentence_end(&buf[search_from..]) {
+            let abs = search_from + rel;
+            if buf[..abs].trim().chars().count() >= MIN_SPEAK_CHARS {
+                flush_at = Some(abs);
+                break;
+            }
+            search_from = abs; // too short — merge with the next sentence
+        }
+        let Some(end) = flush_at else { break };
+        let sentence: String = buf.drain(..end).collect();
+        let cleaned = strip_for_speech(sentence.trim());
+        if !cleaned.is_empty() {
+            out.push(cleaned);
+        }
+    }
+    out
+}
+
+/// Byte index just past the first sentence terminator (`.`/`!`/`?` followed
+/// by whitespace, or a newline). Returns `None` when no boundary is present
+/// yet — a terminator at the very end of the buffer waits for the next delta
+/// (so "3.14" or a mid-word "." isn't treated as a boundary).
+fn next_sentence_end(s: &str) -> Option<usize> {
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    for (i, &(idx, ch)) in chars.iter().enumerate() {
+        if ch == '\n' {
+            return Some(idx + ch.len_utf8());
+        }
+        if ch == '.' || ch == '!' || ch == '?' {
+            match chars.get(i + 1) {
+                Some((_, next)) if next.is_whitespace() => return Some(idx + ch.len_utf8()),
+                Some(_) => {} // e.g. "3.14" — not a boundary
+                None => return None, // terminator at end — wait for more
+            }
+        }
+    }
+    None
 }
 
 /// Compose the per-turn user message: live clock + meeting context +
@@ -568,6 +729,17 @@ async fn get_or_create_meeting_thread(
 /// The backend's SpeakOrchestrator handles streaming TTS + the audio
 /// politeness gate from there.
 async fn emit_bot_speak(text: &str, correlation_id: Option<&str>) -> Result<(), String> {
+    emit_bot_speak_inner(text, correlation_id, None).await
+}
+
+/// As [`emit_bot_speak`], plus an optional `seq` so the backend can order
+/// the per-sentence chunks of a streamed reply (additive; older backends
+/// ignore it).
+async fn emit_bot_speak_inner(
+    text: &str,
+    correlation_id: Option<&str>,
+    seq: Option<u32>,
+) -> Result<(), String> {
     let mgr = global_socket_manager()
         .ok_or_else(|| format!("{LOG_PREFIX} socket manager not initialized"))?;
     if !mgr.is_connected() {
@@ -575,9 +747,12 @@ async fn emit_bot_speak(text: &str, correlation_id: Option<&str>) -> Result<(), 
     }
 
     let mut payload = json!({ "text": text });
-    if let Some(cid) = correlation_id {
-        if let Some(map) = payload.as_object_mut() {
+    if let Some(map) = payload.as_object_mut() {
+        if let Some(cid) = correlation_id {
             map.insert("correlationId".to_string(), json!(cid));
+        }
+        if let Some(s) = seq {
+            map.insert("seq".to_string(), json!(s));
         }
     }
 
@@ -608,6 +783,49 @@ mod tests {
             role: role.to_string(),
             content: content.to_string(),
         }
+    }
+
+    #[test]
+    fn next_sentence_end_finds_terminator_before_whitespace() {
+        assert_eq!(next_sentence_end("Hello there. More"), Some(12));
+        assert_eq!(next_sentence_end("Done!\nNext"), Some(5));
+        assert_eq!(next_sentence_end("Question? Yes"), Some(9));
+    }
+
+    #[test]
+    fn next_sentence_end_waits_on_trailing_or_mid_word_dot() {
+        assert_eq!(next_sentence_end("It is pi 3.14"), None); // mid-number, no boundary
+        assert_eq!(next_sentence_end("No boundary yet"), None);
+        assert_eq!(next_sentence_end("Trailing terminator."), None); // wait for next delta
+    }
+
+    #[test]
+    fn drain_sentences_flushes_complete_sentences_and_keeps_the_tail() {
+        let mut buf = String::from("The meeting is at three. We can start the");
+        let out = drain_sentences(&mut buf);
+        assert_eq!(out, vec!["The meeting is at three.".to_string()]);
+        assert_eq!(buf, " We can start the"); // partial tail retained
+    }
+
+    #[test]
+    fn drain_sentences_merges_a_short_leading_clause_into_the_next() {
+        // "Yes." alone is under MIN_SPEAK_CHARS, so it merges forward.
+        let mut buf = String::from("Yes. The follow-up is booked for tomorrow. ");
+        let out = drain_sentences(&mut buf);
+        assert_eq!(
+            out,
+            vec!["Yes. The follow-up is booked for tomorrow.".to_string()]
+        );
+    }
+
+    #[test]
+    fn drain_sentences_holds_back_unclosed_reasoning() {
+        let mut buf = String::from("<think>the user wants the time. let me check.");
+        assert!(drain_sentences(&mut buf).is_empty());
+        // Once the tag closes, normal flushing resumes.
+        buf.push_str("</think> It is three o'clock now. ");
+        let out = drain_sentences(&mut buf);
+        assert_eq!(out, vec!["It is three o'clock now.".to_string()]);
     }
 
     #[test]
