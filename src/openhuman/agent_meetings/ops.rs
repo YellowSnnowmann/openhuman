@@ -48,7 +48,7 @@ fn transcript_turns_to_chat_batch(
             continue;
         }
         let author = if turn.role.eq_ignore_ascii_case("assistant") {
-            "OpenHuman"
+            "Tiny"
         } else {
             "Meeting participant"
         };
@@ -293,7 +293,7 @@ pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
 
     let display_name = match &req.display_name {
         Some(name) => validate_display_name(name).map_err(|e| format!("[agent_meetings] {e}"))?,
-        None => "OpenHuman".to_string(),
+        None => "Tiny".to_string(),
     };
 
     let inferred = infer_platform(&normalized_url);
@@ -652,7 +652,7 @@ mod tests {
         assert_eq!(batch.platform, "backend_meet");
         assert_eq!(batch.messages.len(), 2);
         assert_eq!(batch.messages[0].author, "Meeting participant");
-        assert_eq!(batch.messages[1].author, "OpenHuman");
+        assert_eq!(batch.messages[1].author, "Tiny");
         assert!(batch.messages[0].text.contains("summarize"));
     }
 

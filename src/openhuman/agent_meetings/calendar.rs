@@ -418,7 +418,7 @@ async fn auto_join_meeting(
 
     let payload = json!({
         "meetUrl": meet_url,
-        "displayName": "OpenHuman",
+        "displayName": "Tiny",
         "correlationId": correlation_id,
         "listenOnly": listen_only,
     });
