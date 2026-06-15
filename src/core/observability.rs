@@ -302,6 +302,21 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if crate::openhuman::inference::provider::managed_error_skips_sentry(message) {
         return Some(ExpectedErrorKind::BackendErrorCodeOwned);
     }
+    // A managed-backend client-guard-leak code (`PAYLOAD_TOO_LARGE` /
+    // `CONTEXT_LENGTH_EXCEEDED`) must PAGE — the client enforces these limits
+    // before sending, so a backend rejection is our guard leaking. Force
+    // capture (return `None`) here, BEFORE the substring matchers below: a real
+    // managed `CONTEXT_LENGTH_EXCEEDED` body carries "context length
+    // exceeded"-style text that `is_context_window_exceeded_message` (further
+    // down) would otherwise re-demote into the suppressed
+    // `ContextWindowExceeded` bucket (CodeRabbit). Gated on the managed envelope
+    // so a BYO provider's own context-overflow — genuine user-state, not our
+    // guard — still flows to that matcher and stays demoted.
+    if crate::openhuman::inference::provider::is_managed_backend_envelope(message)
+        && crate::openhuman::inference::provider::is_backend_client_guard_leak(message)
+    {
+        return None;
+    }
     // Check the Codex-CLI import envelope first: it is highly specific
     // (literal `codex cli auth` / `.codex/auth.json`) and carries no overlap
     // with the generic matchers below, so ordering is for clarity, not
@@ -401,6 +416,16 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     }
     if is_embedding_backend_auth_failure(&lower) {
         return Some(ExpectedErrorKind::SessionExpired);
+    }
+    // TAURI-RUST-5JR — a custom embeddings endpoint with no embeddings route
+    // (the user pointed the Custom (OpenAI-compatible) provider at a chat-only
+    // base URL, e.g. DeepSeek, which 404s every `/embeddings` POST).
+    // Deterministic user-config state, re-emitted on every memory re-embed;
+    // the embeddings settings UI surfaces an actionable "pick an
+    // embeddings-capable provider" message. Demote to info. Scoped to 404/405
+    // only so a real 500 from a valid embeddings endpoint stays in Sentry.
+    if is_embedding_endpoint_absent(&lower) {
+        return Some(ExpectedErrorKind::ProviderConfigRejection);
     }
     // Provider config-rejection (unknown model / abstract tier leaked to a
     // custom provider / model-specific temperature). Body-shape based and
@@ -540,6 +565,32 @@ fn is_embedding_backend_auth_failure(lower: &str) -> bool {
     lower.contains("embedding api error")
         && lower.contains("401")
         && lower.contains("invalid token")
+}
+
+/// Detect a custom embeddings endpoint that exposes **no embeddings API** —
+/// the `OpenAiEmbedding` client POSTed `/embeddings` and the host answered
+/// `404 Not Found` (route absent) or `405 Method Not Allowed`. Canonical wire
+/// shape from `src/openhuman/embeddings/openai.rs`:
+///
+/// ```text
+/// Embedding API error (404 Not Found): <body>
+/// Embedding API error (405 Method Not Allowed): <body>
+/// ```
+///
+/// Deterministic user-config state: the user pointed the Custom
+/// (OpenAI-compatible) embeddings provider at a base URL whose host has no
+/// embeddings endpoint (e.g. a chat-only provider like DeepSeek). Every memory
+/// re-embed re-emits it (TAURI-RUST-5JR, ~2685 events / 9 users) and the
+/// settings UI surfaces an actionable remediation — Sentry has no fix to make.
+///
+/// Polarity (important): scoped to **404/405 only**. A `500` from a valid
+/// embeddings endpoint is a real server fault and must keep reaching Sentry; a
+/// `400` (e.g. oversized input) is prevented at source by the chunk cap
+/// (#3598) and likewise stays visible. Reused by
+/// `embeddings::rpc::update_settings` as the save-time hard-block signal so the
+/// two never drift.
+pub(crate) fn is_embedding_endpoint_absent(lower: &str) -> bool {
+    lower.contains("embedding api error") && (lower.contains("(404") || lower.contains("(405"))
 }
 
 /// Detect the memory-store chunk DB's circuit-breaker-open message that
@@ -3757,6 +3808,49 @@ mod tests {
     }
 
     #[test]
+    fn classifies_embedding_endpoint_absent_as_config_rejection() {
+        // TAURI-RUST-5JR — custom embeddings provider pointed at a chat-only
+        // base URL (DeepSeek) that has no `/embeddings` route. Verbatim shape
+        // produced by `src/openhuman/embeddings/openai.rs` (prefix preserved
+        // even after the actionable-hint suffix is appended).
+        assert_eq!(
+            expected_error_kind(
+                "Embedding API error (404 Not Found): <html>not found</html> \
+                 — this endpoint has no embeddings API; pick an embeddings-capable \
+                 provider in Settings → Memory"
+            ),
+            Some(ExpectedErrorKind::ProviderConfigRejection)
+        );
+        // 405 Method Not Allowed — route exists for GET only / wrong verb.
+        assert_eq!(
+            expected_error_kind("Embedding API error (405 Method Not Allowed): {}"),
+            Some(ExpectedErrorKind::ProviderConfigRejection)
+        );
+    }
+
+    #[test]
+    fn does_not_demote_real_embedding_server_faults() {
+        // Polarity guard: a 500 from a VALID embeddings endpoint is a real
+        // server fault and must keep reaching Sentry — not demoted.
+        assert_eq!(
+            expected_error_kind("Embedding API error (500 Internal Server Error): upstream boom"),
+            None,
+            "embedding 500 is a real fault and must stay in Sentry"
+        );
+        // A 400 (e.g. oversized input — TAURI-RUST-4SA) is prevented at source
+        // by the chunk cap (#3598); a residual 400 must stay visible, NOT be
+        // swallowed by the 404/405-scoped endpoint-absent arm.
+        assert_eq!(
+            expected_error_kind(
+                "Embedding API error (400 Bad Request): {\"error\":{\"message\":\
+                 \"maximum input length is 8192 tokens.\"}}"
+            ),
+            None,
+            "embedding 400 must NOT be demoted by the endpoint-absent (404/405) arm"
+        );
+    }
+
+    #[test]
     fn does_not_classify_unrelated_provider_failures_as_config_rejection() {
         // Inverted polarity / scope guard: a 5xx or a generic 4xx with no
         // config-rejection body must still reach Sentry as actionable.
@@ -5330,8 +5424,6 @@ mod tests {
             ("402", "USER_INSUFFICIENT_CREDITS"),
             ("503", "UPSTREAM_UNAVAILABLE"),
             ("404", "MODEL_UNAVAILABLE"),
-            ("413", "PAYLOAD_TOO_LARGE"),
-            ("400", "CONTEXT_LENGTH_EXCEEDED"),
             ("400", "BAD_REQUEST"),
             ("500", "INTERNAL_ERROR"),
         ] {
@@ -5342,6 +5434,37 @@ mod tests {
                 "errorCode={code} must be backend-owned (no FE Sentry)"
             );
         }
+
+        // Client-guard-leak codes page (None = capture), even with realistic
+        // explanatory text that a later substring matcher would otherwise
+        // re-demote into a suppressed bucket.
+        let payload = "OpenHuman API error (413 Payload Too Large): \
+             {\"error\":{\"errorCode\":\"PAYLOAD_TOO_LARGE\",\"message\":\"request entity too large\"}}";
+        assert_eq!(
+            expected_error_kind(payload),
+            None,
+            "PAYLOAD_TOO_LARGE is a client guard leak and must page"
+        );
+
+        // This body's message matches `is_context_window_exceeded_message`, so
+        // without the early guard-leak bypass it would re-demote to the
+        // suppressed `ContextWindowExceeded` bucket (CodeRabbit).
+        let context = "OpenHuman API error (400 Bad Request): \
+             {\"error\":{\"errorCode\":\"CONTEXT_LENGTH_EXCEEDED\",\"message\":\"This model's maximum context length is 128000 tokens, however you requested more\"}}";
+        assert_eq!(
+            expected_error_kind(context),
+            None,
+            "CONTEXT_LENGTH_EXCEEDED must page even with context-window wording"
+        );
+
+        // Proof the bypass is load-bearing, not a no-op: this body's text DOES
+        // match the context-window matcher, so without the early guard-leak
+        // bypass `expected_error_kind` would have re-demoted it to the
+        // suppressed `ContextWindowExceeded` bucket.
+        assert!(
+            crate::openhuman::inference::provider::is_context_window_exceeded_message(context),
+            "test body must actually trigger the matcher the bypass guards against"
+        );
     }
 
     #[test]
@@ -5390,7 +5513,6 @@ mod tests {
             "RATE_LIMITED",
             "UPSTREAM_UNAVAILABLE",
             "MODEL_UNAVAILABLE",
-            "PAYLOAD_TOO_LARGE",
             "INTERNAL_ERROR",
             "BAD_REQUEST",
         ] {
@@ -5398,6 +5520,22 @@ mod tests {
             assert!(
                 is_backend_error_code_event(&event),
                 "errorCode={code} event must be dropped by before_send"
+            );
+        }
+
+        // Client-guard-leak codes survive before_send and page (the client
+        // should have caught the limit before sending) — including a realistic
+        // CONTEXT_LENGTH_EXCEEDED body whose wording matches the context-window
+        // substring matcher (the filter keys on the errorCode, not the text).
+        let payload = "OpenHuman API error (413 Payload Too Large): \
+             {\"error\":{\"errorCode\":\"PAYLOAD_TOO_LARGE\",\"message\":\"request entity too large\"}}";
+        let context = "OpenHuman API error (400 Bad Request): \
+             {\"error\":{\"errorCode\":\"CONTEXT_LENGTH_EXCEEDED\",\"message\":\"This model's maximum context length is 128000 tokens\"}}";
+        for body in [payload, context] {
+            let event = event_with_message(body);
+            assert!(
+                !is_backend_error_code_event(&event),
+                "client guard leak must survive before_send: {body}"
             );
         }
     }

@@ -139,6 +139,9 @@ impl PromptSection for DynamicPromptSection {
 pub struct IdentitySection;
 pub struct ToolsSection;
 pub struct SafetySection;
+/// Renders the canonical grounding / anti-hallucination contract
+/// ([`GROUNDING_BODY`]). Always included; never gated.
+pub struct GroundingSection;
 // `WorkflowsSection` and `ConnectedIntegrationsSection` previously lived
 // here and branched on `ctx.agent_id` to pick between the skill-
 // executor and delegator voice. They've been removed — each agent's
@@ -395,6 +398,45 @@ impl PromptSection for SafetySection {
     }
 }
 
+/// Canonical grounding / anti-hallucination contract.
+///
+/// This is the **single source of truth** for the tool-use and
+/// anti-fabrication rules every agent inherits. Before this block existed,
+/// the same "never invent ids / a tool not in your list does not exist"
+/// paragraph was copy-pasted (and slowly drifting) across crypto, markets,
+/// integrations, account-admin, mcp-setup, morning-briefing, researcher, …
+/// agent prompts. Centralising it kills that drift and guarantees a uniform
+/// floor of grounding discipline.
+///
+/// Inspired by Hermes's named guidance blocks (`TOOL_USE_ENFORCEMENT_GUIDANCE`
+/// "use tools to act, never end a turn with a promise", `TASK_COMPLETION_GUIDANCE`
+/// "never substitute fabricated output for results you couldn't produce").
+///
+/// Deliberately **generic**: every clause must be true for *every* agent,
+/// including the integrations executor. Agent-specific routing (e.g. "delegate
+/// external services", "pull slugs from `composio_list_tools`") stays in that
+/// agent's own `prompt.md`, not here.
+///
+/// Byte-stable (no time / RNG / host) so it lives in the KV-cache-friendly
+/// prefix. Must contain no em-dashes per [`super::builder::GLOBAL_STYLE_SUFFIX`].
+pub const GROUNDING_BODY: &str = "## Grounding and tool use\n\n\
+    - Your tools are exactly the ones listed in this prompt. You can only act through them. If a capability is not one of your tools, say so plainly rather than pretending it exists.\n\
+    - Never invent tool names, arguments, ids, slugs, file paths, URLs, chain ids, addresses, quotes, metrics, or any other value. If you do not have it from a tool result or the user, ask for it or look it up with a tool.\n\
+    - Use your tools to act. Do not just describe what you would do and stop, and never end a turn with a promise of future action: do it now, or hand back a concrete result.\n\
+    - Never substitute plausible looking but fabricated output (made up data, invented file contents, synthesised tool or API responses) for results you could not actually produce. If a step failed, say it failed.\n\
+    - Ground every factual claim in evidence you actually observed: a tool result, the user's message, or cited memory. If the evidence is missing, partial, or truncated, say so or fetch more instead of guessing.\n\
+    - Skills run only via `run_workflow`, and only the skills listed as installed exist. Do not invent skill ids.";
+
+impl PromptSection for GroundingSection {
+    fn name(&self) -> &str {
+        "grounding"
+    }
+
+    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
+        Ok(GROUNDING_BODY.into())
+    }
+}
+
 impl PromptSection for WorkspaceSection {
     fn name(&self) -> &str {
         "workspace"
@@ -549,7 +591,7 @@ impl PromptSection for DateTimeSection {
         "datetime"
     }
 
-    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
+    fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
         // IANA zone first because it's the unambiguous machine-readable
         // form (`America/Los_Angeles`) — agents that need to reason about
         // timezone rules should grep this, not the locale-dependent
@@ -557,13 +599,32 @@ impl PromptSection for DateTimeSection {
         // resolve a zone (CI, stripped containers).
         let iana = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string());
         let now = chrono::Local::now();
-        Ok(format!(
+        let mut out = format!(
             "## Current Date & Time\n\n{} {} ({}, UTC{})",
             now.format("%Y-%m-%d %H:%M:%S"),
             iana,
             now.format("%Z"),
             now.format("%:z"),
-        ))
+        );
+        // Time-discipline rule, gated on the agent actually having the
+        // `resolve_time` tool. LLMs are unreliable at epoch arithmetic — a
+        // real incident had an agent compute "24h ago" ~10 months off, then
+        // fetch Slack history ascending from that wrong floor and never reach
+        // the latest messages. Telling agents to lean on the tool (rather
+        // than hand-computing) is the fix; rendered right under the volatile
+        // time block so the two are read together. Auto-scopes: agents
+        // without the tool never see the rule.
+        if ctx.tools.iter().any(|t| t.name == "resolve_time") {
+            out.push_str(
+                "\n\n> For any date/time you pass as a tool argument \
+                 (`oldest`/`latest`/`since`/`after`, cron times, etc.), call \
+                 `resolve_time` and use its exact value — never hand-compute \
+                 epoch/Unix seconds. For \"recent / last N\" lookups, prefer \
+                 newest-first (omit `oldest`) so a wrong floor can't bury the \
+                 latest data.",
+            );
+        }
+        Ok(out)
     }
 }
 

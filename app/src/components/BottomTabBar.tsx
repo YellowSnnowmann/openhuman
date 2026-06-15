@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { AVATAR_MENU_ITEMS, BRAIN_TAB, NAV_TABS } from '../config/navConfig';
+import { AVATAR_MENU_ITEMS, NAV_TABS } from '../config/navConfig';
 import { useT } from '../lib/i18n/I18nContext';
 import { useCoreState } from '../providers/CoreStateProvider';
 import { trackEvent } from '../services/analytics';
@@ -17,10 +17,11 @@ import { resolveUserName } from '../utils/userName';
 // ── SVG icons, keyed by tab id ────────────────────────────────────────────────
 
 function TabIcon({ id }: { id: string }) {
+  const cls = 'w-4 h-4';
   switch (id) {
     case 'home':
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -31,7 +32,7 @@ function TabIcon({ id }: { id: string }) {
       );
     case 'human':
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -42,7 +43,7 @@ function TabIcon({ id }: { id: string }) {
       );
     case 'chat':
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -53,7 +54,7 @@ function TabIcon({ id }: { id: string }) {
       );
     case 'connections':
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -65,7 +66,7 @@ function TabIcon({ id }: { id: string }) {
     case 'activity':
       // Reuse the Intelligence/memory lightbulb icon for the Activity tab
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -76,7 +77,7 @@ function TabIcon({ id }: { id: string }) {
       );
     case 'settings':
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -92,10 +93,9 @@ function TabIcon({ id }: { id: string }) {
         </svg>
       );
     case 'brain':
-      // Two symmetric lobes — reads clearly as a brain. Rendered larger and
-      // white inside the raised center circle.
+      // Two symmetric lobes — reads clearly as a brain.
       return (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -191,15 +191,11 @@ const BottomTabBar = () => {
 
   const isActive = (path: string) => {
     if (path === '/chat') return location.pathname.startsWith('/chat');
-    if (path === '/settings/cron-jobs') return location.pathname.startsWith('/settings/cron-jobs');
-    if (path === '/settings/messaging') return location.pathname.startsWith('/settings/messaging');
+    // Every /settings/* page lives in the two-pane settings layout — the
+    // Settings tab is active for all of them. (The old cron-jobs/messaging
+    // exclusions covered dedicated tabs that no longer exist.)
     if (path === '/settings')
-      return (
-        location.pathname === '/settings' ||
-        (location.pathname.startsWith('/settings/') &&
-          !location.pathname.startsWith('/settings/cron-jobs') &&
-          !location.pathname.startsWith('/settings/messaging'))
-      );
+      return location.pathname === '/settings' || location.pathname.startsWith('/settings/');
     if (path === '/home') return location.pathname === '/home';
     return location.pathname === path;
   };
@@ -228,17 +224,16 @@ const BottomTabBar = () => {
     trackEvent('avatar_menu_item_click', { item_id: itemId });
   };
 
-  // One regular pill tab. `iconOnly` renders just the glyph (no label) — used
-  // for the pinned Home button so it reads as a fixed icon, like the avatar.
+  // One regular pill tab.
   //
   // When labels are always visible (theme setting), every labelled tab is given
   // the SAME fixed width so the row stays symmetric. In the default hover mode
   // the label still expands on hover (no fixed width) — unchanged behaviour.
-  const renderTab = (tab: (typeof tabs)[number], iconOnly = false) => {
+  const renderTab = (tab: (typeof tabs)[number]) => {
     const active = isActive(tab.path);
     const showBadge = tab.id === 'notifications' && unreadCount > 0;
     const showCompanionDot = tab.id === 'settings' && companionActive;
-    const fixedWidth = !iconOnly && labelsAlwaysVisible;
+    const fixedWidth = labelsAlwaysVisible;
     return (
       <button
         key={tab.id}
@@ -246,11 +241,7 @@ const BottomTabBar = () => {
         onClick={() => handleTabClick(tab, active)}
         title={tab.label}
         className={`group relative flex items-center rounded-sm text-sm transition-colors duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
-          iconOnly
-            ? 'h-9 w-9 justify-center'
-            : fixedWidth
-              ? 'w-32 justify-center px-2 py-2'
-              : 'px-2 py-2'
+          fixedWidth ? 'w-32 justify-center px-2 py-2' : 'px-2 py-2'
         } ${
           active
             ? 'bg-white dark:bg-neutral-800 text-stone-900 dark:text-neutral-100 font-semibold shadow-sm'
@@ -272,51 +263,20 @@ const BottomTabBar = () => {
             <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
           )}
         </span>
-        {!iconOnly && (
-          <span
-            className={`min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,margin-left,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              active || labelsAlwaysVisible
-                ? `${fixedWidth ? 'truncate ' : ''}max-w-[160px] ml-2 opacity-100`
-                : 'max-w-0 ml-0 opacity-0 group-hover:max-w-[160px] group-hover:ml-2 group-hover:opacity-100 group-focus-visible:max-w-[160px] group-focus-visible:ml-2 group-focus-visible:opacity-100'
-            }`}>
-            {tab.label}
-          </span>
-        )}
+        <span
+          className={`min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,margin-left,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            active || labelsAlwaysVisible
+              ? `${fixedWidth ? 'truncate ' : ''}max-w-[160px] ml-2 opacity-100`
+              : 'max-w-0 ml-0 opacity-0 group-hover:max-w-[160px] group-hover:ml-2 group-hover:opacity-100 group-focus-visible:max-w-[160px] group-focus-visible:ml-2 group-focus-visible:opacity-100'
+          }`}>
+          {tab.label}
+        </span>
       </button>
     );
   };
 
-  // The Brain — a raised circular button rising out of the center of the bar.
-  // The bg-colored ring fakes a notch cut into the pill's top edge. `brain-fab`
-  // is targeted by the reduced-motion gate in index.css to silence the glow.
-  const renderBrainButton = () => {
-    const active = isActive(BRAIN_TAB.path);
-    const brainTab = { ...BRAIN_TAB, label: t(BRAIN_TAB.labelKey) };
-    return (
-      <button
-        key="brain"
-        type="button"
-        data-walkthrough={BRAIN_TAB.walkthroughAttr}
-        onClick={() => handleTabClick(brainTab, active)}
-        aria-label={brainTab.label}
-        title={brainTab.label}
-        className={`brain-fab group relative mx-1 flex h-12 w-12 -translate-y-5 items-center justify-center rounded-full text-white shadow-soft ring-4 ring-stone-200 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer dark:ring-neutral-900 ${
-          active
-            ? 'bg-primary-600 animate-glow-pulse shadow-[0_0_16px_rgba(74,131,221,0.55)] scale-105'
-            : 'bg-primary-500 hover:bg-primary-600 hover:scale-105'
-        }`}>
-        <TabIcon id="brain" />
-      </button>
-    );
-  };
-
-  // Home is pinned to the far-left of the pill behind a divider — mirroring the
-  // avatar pinned to the far-right behind its own divider. The rest of the row
-  // splits evenly around the centered Brain button:
-  //   [ home ] | assistant · connections  ( 🧠 )  activity · settings | [ avatar ]
-  const homeTab = tabs[0];
-  const leftTabs = tabs.slice(1, 3);
-  const rightTabs = tabs.slice(3);
+  // All tabs render as uniform pill buttons in a single row; the avatar
+  // stays pinned to the far-right behind a divider.
 
   return (
     // pointer-events-none on the full-width shell so transparent areas (e.g.
@@ -342,12 +302,7 @@ const BottomTabBar = () => {
           if (!e.currentTarget.contains(e.relatedTarget as Node)) setRevealed(false);
         }}>
         <nav className="pointer-events-auto inline-flex items-center gap-1 rounded-sm border border-stone-300 dark:border-neutral-700 bg-stone-200 dark:bg-neutral-900 shadow-soft px-1 py-1">
-          <div className="relative mr-1 border-r border-stone-300 pr-1 dark:border-neutral-700">
-            {renderTab(homeTab, true)}
-          </div>
-          {leftTabs.map(tab => renderTab(tab))}
-          {renderBrainButton()}
-          {rightTabs.map(tab => renderTab(tab))}
+          {tabs.map(tab => renderTab(tab))}
           <div
             className="relative ml-1 border-l border-stone-300 pl-1 dark:border-neutral-700"
             ref={profileMenuRef}>
