@@ -288,7 +288,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   }, [refreshRecentCalls]);
 
   const selectedLabel = t('skills.meetingBots.platforms.gmeet');
-  const agentName = personaDisplayName.trim() || 'OpenHuman';
+  const agentName = personaDisplayName.trim() || 'Tiny';
   const systemPrompt = personaDescription.trim() || undefined;
   const mascotId = selectedMascotId ?? (mascotColor === 'custom' ? undefined : mascotColor);
   const riveColors =

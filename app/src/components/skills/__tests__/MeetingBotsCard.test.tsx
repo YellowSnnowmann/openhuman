@@ -78,9 +78,9 @@ describe('MeetingBotsCard', () => {
       expect(joinMock).toHaveBeenCalledWith(
         expect.objectContaining({
           meetUrl: 'https://meet.google.com/abc-defg-hij',
-          displayName: 'OpenHuman',
+          displayName: 'Tiny',
           platform: 'gmeet',
-          agentName: 'OpenHuman',
+          agentName: 'Tiny',
           respondToParticipant: 'Alice',
         })
       );
