@@ -665,6 +665,8 @@ async fn get_or_build_agent(
         "orchestrator",
         None,
         Some(IN_CALL_VOICE_DIRECTIVE.to_string()),
+        // No thread-selected agent profile applies to an in-call orchestrator.
+        None,
     )
     .map_err(|e| format!("{LOG_PREFIX} orchestrator build failed: {e}"))?;
 
