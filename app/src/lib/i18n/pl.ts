@@ -4693,7 +4693,7 @@ const messages: TranslationMap = {
     'Brak poprzednich rozmów — historia spotkań pojawi się tutaj.',
   'skills.meetingBots.recentCallsLoading': 'Ładowanie\u2026',
   'skills.meetingBots.recentCallAddedBy': 'Dodane przez {name}',
-  'skills.meetingBots.recentCallParticipants': 'Z {names}',
+  'skills.meetingBots.recentCallParticipants': 'Uczestnicy: {names}',
   'skills.meetingBots.liveBadge': 'Na żywo',
   'skills.meetingBots.liveTitle': 'Na spotkaniu',
   'skills.meetingBots.liveStatusJoining': 'Dołączanie\u2026',
