@@ -3184,7 +3184,8 @@ const messages: TranslationMap = {
   'notifications.meeting.joinActive': 'Beitreten und antworten',
   'notifications.meeting.skip': 'Nicht dieses',
   'notifications.meeting.alwaysJoin': 'Immer beitreten',
-  'notifications.meeting.actionError': 'Diese Aktion konnte nicht abgeschlossen werden. Bitte versuche es erneut.',
+  'notifications.meeting.actionError':
+    'Diese Aktion konnte nicht abgeschlossen werden. Bitte versuche es erneut.',
   'oauth.button.connecting': 'Verbinden...',
   'oauth.button.loopbackTimeout':
     'Anmeldung abgelaufen — der Browser hat die OAuth-Weiterleitung nicht abgeschlossen. Bitte versuche es erneut.',

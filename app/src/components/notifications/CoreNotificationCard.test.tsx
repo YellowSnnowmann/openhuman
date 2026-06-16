@@ -70,10 +70,7 @@ describe('CoreNotificationCard', () => {
 
   it('marks the notification read in the store after a successful action', async () => {
     callCoreRpc.mockResolvedValue({ ok: true });
-    store.dispatch({
-      type: 'notifications/notificationReceived',
-      payload: makeItem(),
-    });
+    store.dispatch({ type: 'notifications/notificationReceived', payload: makeItem() });
     renderCard(makeItem());
 
     fireEvent.click(screen.getByRole('button', { name: 'Not this one' }));
