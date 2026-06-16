@@ -3176,7 +3176,7 @@ const messages: TranslationMap = {
   'notifications.center.markAllRead': 'Tout marquer comme lu',
   'notifications.center.title': 'Notifications',
   'notifications.meeting.joinListen': 'Rejoindre (écoute seule)',
-  'notifications.meeting.joinActive': 'Rejoindre et répondre',
+  'notifications.meeting.joinActive': 'Rejoindre en participant',
   'notifications.meeting.skip': 'Pas celle-ci',
   'notifications.meeting.alwaysJoin': 'Toujours rejoindre',
   'notifications.meeting.actionError': 'Impossible de terminer cette action. Veuillez réessayer.',

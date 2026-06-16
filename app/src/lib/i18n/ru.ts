@@ -3135,7 +3135,7 @@ const messages: TranslationMap = {
   'notifications.center.title': 'Уведомления',
   'notifications.meeting.joinListen': 'Присоединиться (только слушать)',
   'notifications.meeting.joinActive': 'Присоединиться и отвечать',
-  'notifications.meeting.skip': 'Не эта',
+  'notifications.meeting.skip': 'Пропустить',
   'notifications.meeting.alwaysJoin': 'Всегда присоединяться',
   'notifications.meeting.actionError': 'Не удалось выполнить действие. Попробуйте снова.',
   'oauth.button.connecting': 'Подключение...',

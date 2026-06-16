@@ -172,12 +172,17 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                 error = %e,
                 "[meet:calendar] failed to load config, defaulting to ask"
             );
-            // Publish prompt as fallback — behaves like AskEachTime.
+            // Keep the legacy prompt for existing consumers, but return `false`
+            // so the heartbeat planner still emits its plain reminder card. We
+            // can't build the actionable CoreNotificationEvent here (no config,
+            // so no persisted session for the action handler to resolve), and
+            // returning `true` would suppress every notification surface —
+            // silently "delivering" the meeting with nothing the user can act on.
             publish_global(DomainEvent::MeetAutoJoinPrompt {
                 meet_url,
                 event_title,
             });
-            return true;
+            return false;
         }
     };
 
@@ -254,7 +259,21 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                 updated_at_ms: now_ms,
             };
             if let Err(e) = store::create_session(&config, &session) {
-                tracing::warn!("[meet:calendar] session create failed (non-fatal): {e}");
+                // The action buttons carry this `meetingId`; the
+                // `agent_meetings_notification_action` handler resolves the
+                // session by id. If persistence failed there is no session to
+                // resolve, so publishing the actionable card would hand the user
+                // Join/Skip/Always buttons that fail against missing state.
+                // Fall back to the plain reminder path instead.
+                tracing::warn!(
+                    error = %e,
+                    "[meet:calendar] session create failed; falling back to plain reminder without actionable buttons"
+                );
+                publish_global(DomainEvent::MeetAutoJoinPrompt {
+                    meet_url,
+                    event_title,
+                });
+                return false;
             }
 
             // Announce the new Pending session (issue #3507 contract event).
