@@ -3078,6 +3078,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': '전체 필터',
   'notifications.center.markAllRead': '모두 읽음으로 표시',
   'notifications.center.title': '알림',
+  'notifications.meeting.joinListen': '참여 (듣기 전용)',
+  'notifications.meeting.joinActive': '참여 및 응답',
+  'notifications.meeting.skip': '이건 아니에요',
+  'notifications.meeting.alwaysJoin': '항상 참여',
+  'notifications.meeting.actionError': '작업을 완료할 수 없습니다. 다시 시도해 주세요.',
   'oauth.button.connecting': '연결 중...',
   'oauth.button.loopbackTimeout':
     '로그인 시간 초과 — 브라우저가 OAuth 리디렉션을 완료하지 못했습니다. 다시 시도해 주세요.',

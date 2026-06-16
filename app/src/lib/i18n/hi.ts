@@ -3108,6 +3108,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'सभी फिल्टर',
   'notifications.center.markAllRead': 'सभी पढ़ा हुआ मार्क करें',
   'notifications.center.title': 'नोटिफिकेशन',
+  'notifications.meeting.joinListen': 'शामिल हों (केवल सुनें)',
+  'notifications.meeting.joinActive': 'शामिल हों और जवाब दें',
+  'notifications.meeting.skip': 'यह नहीं',
+  'notifications.meeting.alwaysJoin': 'हमेशा शामिल हों',
+  'notifications.meeting.actionError': 'यह क्रिया पूरी नहीं हो सकी। कृपया पुनः प्रयास करें।',
   'oauth.button.connecting': 'कनेक्ट हो रहा है...',
   'oauth.button.loopbackTimeout':
     'साइन-इन का समय समाप्त हो गया — ब्राउज़र ने OAuth पुनर्निर्देशन पूरा नहीं किया। कृपया पुनः प्रयास करें।',

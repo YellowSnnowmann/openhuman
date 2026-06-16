@@ -3037,6 +3037,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'تصفية الكل',
   'notifications.center.markAllRead': 'تحديد الكل كمقروء',
   'notifications.center.title': 'الإشعارات',
+  'notifications.meeting.joinListen': 'الانضمام (استماع فقط)',
+  'notifications.meeting.joinActive': 'الانضمام والرد',
+  'notifications.meeting.skip': 'ليس هذا',
+  'notifications.meeting.alwaysJoin': 'الانضمام دائماً',
+  'notifications.meeting.actionError': 'تعذّر إكمال هذا الإجراء. يرجى المحاولة مرة أخرى.',
   'oauth.button.connecting': 'جارٍ الاتصال...',
   'oauth.button.loopbackTimeout':
     'انتهت مهلة تسجيل الدخول — لم يكتمل المتصفح إعادة توجيه OAuth. يرجى المحاولة مرة أخرى.',

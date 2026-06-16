@@ -3697,6 +3697,11 @@ const en: TranslationMap = {
   'notifications.center.filterAll': 'Filter all',
   'notifications.center.markAllRead': 'Mark all read',
   'notifications.center.title': 'Notifications',
+  'notifications.meeting.joinListen': 'Join (listen only)',
+  'notifications.meeting.joinActive': 'Join & reply',
+  'notifications.meeting.skip': 'Not this one',
+  'notifications.meeting.alwaysJoin': 'Always join',
+  'notifications.meeting.actionError': 'Could not complete that action. Please try again.',
   'oauth.button.connecting': 'Connecting...',
   'oauth.button.loopbackTimeout':
     'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',

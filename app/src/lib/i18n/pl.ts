@@ -3146,6 +3146,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'Wszystkie',
   'notifications.center.markAllRead': 'Oznacz wszystkie jako przeczytane',
   'notifications.center.title': 'Powiadomienia',
+  'notifications.meeting.joinListen': 'Dołącz (tylko słuchanie)',
+  'notifications.meeting.joinActive': 'Dołącz i odpowiadaj',
+  'notifications.meeting.skip': 'Nie to',
+  'notifications.meeting.alwaysJoin': 'Zawsze dołączaj',
+  'notifications.meeting.actionError': 'Nie udało się wykonać tej akcji. Spróbuj ponownie.',
   'oauth.button.connecting': 'Łączenie...',
   'oauth.button.loopbackTimeout':
     'Logowanie przekroczyło limit czasu — przeglądarka nie ukończyła przekierowania OAuth. Spróbuj ponownie.',

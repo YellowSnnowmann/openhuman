@@ -3111,6 +3111,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'Filter semua',
   'notifications.center.markAllRead': 'Tandai semua sudah dibaca',
   'notifications.center.title': 'Notifikasi',
+  'notifications.meeting.joinListen': 'Gabung (hanya mendengarkan)',
+  'notifications.meeting.joinActive': 'Gabung & balas',
+  'notifications.meeting.skip': 'Bukan yang ini',
+  'notifications.meeting.alwaysJoin': 'Selalu gabung',
+  'notifications.meeting.actionError': 'Tindakan tidak dapat diselesaikan. Silakan coba lagi.',
   'oauth.button.connecting': 'Menghubungkan...',
   'oauth.button.loopbackTimeout':
     'Masuk habis waktu — browser tidak menyelesaikan pengalihan OAuth. Silakan coba lagi.',

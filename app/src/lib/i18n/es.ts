@@ -3163,6 +3163,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'Filtrar todo',
   'notifications.center.markAllRead': 'Marcar todo como leído',
   'notifications.center.title': 'Notificaciones',
+  'notifications.meeting.joinListen': 'Unirse (solo escuchar)',
+  'notifications.meeting.joinActive': 'Unirse y responder',
+  'notifications.meeting.skip': 'Esta no',
+  'notifications.meeting.alwaysJoin': 'Unirse siempre',
+  'notifications.meeting.actionError': 'No se pudo completar esa acción. Inténtalo de nuevo.',
   'oauth.button.connecting': 'Conectando...',
   'oauth.button.loopbackTimeout':
     'El inicio de sesión expiró — el navegador no completó la redirección OAuth. Por favor, inténtalo de nuevo.',

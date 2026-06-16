@@ -164,6 +164,16 @@ impl EventHandler for MeetCalendarSubscriber {
                     "[meet:calendar] auto_join_policy=always, joining automatically"
                 );
                 let correlation_id = uuid::Uuid::new_v4().to_string();
+                // Auto-join transparency: announce the triggered join so
+                // downstream consumers (UI banner, thread bus) can react
+                // (issue #3507 contract event). `meeting_id` is empty because
+                // the Always path joins directly without a Pending session.
+                publish_global(DomainEvent::MeetingAutoJoinTriggered {
+                    meeting_id: String::new(),
+                    meet_url: meet_url.clone(),
+                    listen_only: true,
+                    correlation_id: correlation_id.clone(),
+                });
                 tokio::spawn(auto_join_meeting(
                     meet_url,
                     event_title,
@@ -213,6 +223,14 @@ impl EventHandler for MeetCalendarSubscriber {
                 if let Err(e) = store::create_session(&config, &session) {
                     tracing::warn!("[meet:calendar] session create failed (non-fatal): {e}");
                 }
+
+                // Announce the new Pending session (issue #3507 contract event).
+                publish_global(DomainEvent::MeetingSessionCreated {
+                    meeting_id: meeting_id.clone(),
+                    meet_url: meet_url.clone(),
+                    title: event_title.clone(),
+                    source: "calendar".to_string(),
+                });
 
                 let action_payload = serde_json::json!({
                     "meetingId": meeting_id,

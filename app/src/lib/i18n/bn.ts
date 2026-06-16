@@ -3107,6 +3107,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'সব ফিল্টার',
   'notifications.center.markAllRead': 'সব পঠিত চিহ্নিত করুন',
   'notifications.center.title': 'বিজ্ঞপ্তি',
+  'notifications.meeting.joinListen': 'যোগ দিন (শুধু শুনুন)',
+  'notifications.meeting.joinActive': 'যোগ দিন ও উত্তর দিন',
+  'notifications.meeting.skip': 'এটি নয়',
+  'notifications.meeting.alwaysJoin': 'সবসময় যোগ দিন',
+  'notifications.meeting.actionError': 'এই কাজটি সম্পন্ন করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।',
   'oauth.button.connecting': 'সংযোগ হচ্ছে...',
   'oauth.button.loopbackTimeout':
     'সাইন-ইন টাইম আউট হয়েছে — ব্রাউজার OAuth পুনর্নির্দেশনা সম্পন্ন করেনি। অনুগ্রহ করে আবার চেষ্টা করুন।',

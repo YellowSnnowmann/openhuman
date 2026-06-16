@@ -3155,6 +3155,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'Filtra tutte',
   'notifications.center.markAllRead': 'Segna tutte come lette',
   'notifications.center.title': 'Notifiche',
+  'notifications.meeting.joinListen': 'Partecipa (solo ascolto)',
+  'notifications.meeting.joinActive': 'Partecipa e rispondi',
+  'notifications.meeting.skip': 'Non questa',
+  'notifications.meeting.alwaysJoin': 'Partecipa sempre',
+  'notifications.meeting.actionError': 'Impossibile completare questa azione. Riprova.',
   'oauth.button.connecting': 'Connessione...',
   'oauth.button.loopbackTimeout':
     'Accesso scaduto — il browser non ha completato il reindirizzamento OAuth. Riprova.',

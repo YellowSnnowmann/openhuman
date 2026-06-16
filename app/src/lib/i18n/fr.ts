@@ -3175,6 +3175,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'Tout filtrer',
   'notifications.center.markAllRead': 'Tout marquer comme lu',
   'notifications.center.title': 'Notifications',
+  'notifications.meeting.joinListen': 'Rejoindre (écoute seule)',
+  'notifications.meeting.joinActive': 'Rejoindre et répondre',
+  'notifications.meeting.skip': 'Pas celle-ci',
+  'notifications.meeting.alwaysJoin': 'Toujours rejoindre',
+  'notifications.meeting.actionError': 'Impossible de terminer cette action. Veuillez réessayer.',
   'oauth.button.connecting': 'Connexion en cours…',
   'oauth.button.loopbackTimeout':
     "La connexion a expiré — le navigateur n'a pas complété la redirection OAuth. Veuillez réessayer.",
