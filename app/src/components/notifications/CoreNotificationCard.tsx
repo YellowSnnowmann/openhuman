@@ -1,3 +1,4 @@
+import debug from 'debug';
 import { useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
@@ -6,11 +7,8 @@ import { useAppDispatch } from '../../store/hooks';
 import { markRead, type NotificationItem } from '../../store/notificationSlice';
 import NotificationBody from './NotificationBody';
 
-const log = (...args: unknown[]) => {
-  // Namespaced debug — keep grep-friendly prefix per project logging rules.
-  // eslint-disable-next-line no-console
-  if (typeof console !== 'undefined') console.debug('[notifications:core-card]', ...args);
-};
+// Namespaced debug per project logging rules (mirrors nativeNotifications).
+const log = debug('notifications:core-card');
 
 /** Relative human-readable time string from epoch ms, e.g. "2m ago". */
 function relativeTime(timestampMs: number): string {
