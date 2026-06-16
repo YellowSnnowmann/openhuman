@@ -164,6 +164,9 @@ impl EventHandler for MeetCalendarSubscriber {
                     "[meet:calendar] auto_join_policy=always, joining automatically"
                 );
                 let correlation_id = uuid::Uuid::new_v4().to_string();
+                // Honor the user's listen-only default (issue #3511 settings
+                // UI) instead of hardcoding passive-listener mode.
+                let listen_only = config.meet.listen_only_default;
                 // Auto-join transparency: announce the triggered join so
                 // downstream consumers (UI banner, thread bus) can react
                 // (issue #3507 contract event). `meeting_id` is empty because
@@ -171,14 +174,14 @@ impl EventHandler for MeetCalendarSubscriber {
                 publish_global(DomainEvent::MeetingAutoJoinTriggered {
                     meeting_id: String::new(),
                     meet_url: meet_url.clone(),
-                    listen_only: true,
+                    listen_only,
                     correlation_id: correlation_id.clone(),
                 });
                 tokio::spawn(auto_join_meeting(
                     meet_url,
                     event_title,
                     correlation_id,
-                    true, // calendar auto-join bots are passive listeners by default
+                    listen_only,
                 ));
                 return;
             }
