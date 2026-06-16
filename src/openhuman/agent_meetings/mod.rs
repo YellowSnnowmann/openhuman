@@ -20,6 +20,7 @@ pub mod in_call;
 pub mod ops;
 pub mod schemas;
 pub mod store;
+pub mod summary;
 pub mod types;
 
 pub use schemas::{

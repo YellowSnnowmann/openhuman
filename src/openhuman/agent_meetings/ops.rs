@@ -124,13 +124,25 @@ pub async fn create_meeting_thread_with_transcript(
 ) -> Result<(), String> {
     use crate::openhuman::memory::{
         AppendConversationMessageRequest, ConversationMessageRecord,
-        CreateConversationThreadRequest,
+        CreateConversationThreadRequest, UpdateConversationThreadTitleRequest,
     };
     use crate::openhuman::threads::ops;
 
     if turns.is_empty() {
         return Ok(());
     }
+
+    // Generate a structured post-call summary + short context label up front
+    // (best-effort). On failure we fall back to a plain "Meetings" thread with
+    // just the transcript — thread creation must not depend on the LLM.
+    let generated =
+        match super::summary::generate_meeting_summary(turns, correlation_id.as_deref()).await {
+            Ok(g) => Some(g),
+            Err(e) => {
+                tracing::warn!("[agent_meetings] summary generation failed: {e}");
+                None
+            }
+        };
 
     // Format transcript body.
     let mut body = String::new();
@@ -152,9 +164,21 @@ pub async fn create_meeting_thread_with_transcript(
         body.push_str(&format!("**{role_label}**: {text}\n\n"));
     }
 
-    // 1. Create thread with labels: ["Meetings"]
+    // Context label (e.g. "Q3 Roadmap") generated from the meeting, if any.
+    let context_label = generated
+        .as_ref()
+        .map(|g| g.label.trim())
+        .filter(|l| !l.is_empty())
+        .map(str::to_string);
+
+    // 1. Create thread under the shared "Meetings" label, plus the per-meeting
+    //    context label so each call is distinguishable within the group.
+    let mut labels = vec!["Meetings".to_string()];
+    if let Some(label) = &context_label {
+        labels.push(label.clone());
+    }
     let create_req = CreateConversationThreadRequest {
-        labels: Some(vec!["Meetings".to_string()]),
+        labels: Some(labels),
         personality_id: None,
     };
     let outcome = ops::thread_create_new(create_req)
@@ -167,6 +191,22 @@ pub async fn create_meeting_thread_with_transcript(
         .ok_or_else(|| "[agent_meetings] thread creation returned no data".to_string())?
         .id
         .clone();
+
+    // 1a. Rename the thread to the context label so the meeting is identifiable
+    //     in the thread list (the default title is a generic "Chat <date>").
+    if let Some(title) = &context_label {
+        if let Err(e) = ops::thread_update_title(UpdateConversationThreadTitleRequest {
+            thread_id: thread_id.clone(),
+            title: title.clone(),
+        })
+        .await
+        {
+            tracing::warn!(
+                thread_id = %thread_id,
+                "[agent_meetings] failed to set meeting thread title: {e}"
+            );
+        }
+    }
 
     // 2. Append the transcript as a message.
     let msg = ConversationMessageRecord {
@@ -188,9 +228,34 @@ pub async fn create_meeting_thread_with_transcript(
         );
     }
 
+    // 3. Append the structured summary as a final message, so the thread ends
+    //    with the headline / key points / action items.
+    if let Some(g) = &generated {
+        let summary_body = super::summary::format_summary_markdown(&g.summary, &g.label);
+        let summary_msg = ConversationMessageRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: summary_body,
+            message_type: "system".to_string(),
+            extra_metadata: serde_json::Value::Null,
+            sender: "system".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let summary_req = AppendConversationMessageRequest {
+            thread_id: thread_id.clone(),
+            message: summary_msg,
+        };
+        if let Err(e) = ops::message_append(summary_req).await {
+            tracing::warn!(
+                thread_id = %thread_id,
+                "[agent_meetings] failed to append summary message: {e}"
+            );
+        }
+    }
+
     tracing::info!(
         thread_id = %thread_id,
         turn_count = turns.len(),
+        summarized = generated.is_some(),
         "[agent_meetings] meeting thread created"
     );
     Ok(())
