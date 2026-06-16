@@ -1106,6 +1106,11 @@ mod tests {
     /// These run serially (they mutate the process env) via the shared
     /// `TEST_ENV_LOCK`; the lock is the same one used by `auto_approve_tool_skips_prompt`
     /// and the live_policy tests so they cannot clobber each other in parallel.
+    ///
+    /// Guarded on `debug_assertions`: the override is compiled out of release
+    /// builds, so this assertion only holds under `cargo test` (debug). The
+    /// fallback tests below hold in either build.
+    #[cfg(debug_assertions)]
     #[test]
     fn effective_ttl_uses_env_override_when_valid() {
         let _env = crate::openhuman::config::TEST_ENV_LOCK
