@@ -12,7 +12,7 @@ const log = debug('notifications:core-card');
 
 /** Relative human-readable time string from epoch ms, e.g. "2m ago". */
 function relativeTime(timestampMs: number): string {
-  const diff = Date.now() - timestampMs;
+  const diff = Math.max(0, Date.now() - timestampMs);
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);

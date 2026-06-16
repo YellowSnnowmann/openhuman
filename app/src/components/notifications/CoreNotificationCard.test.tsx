@@ -98,4 +98,34 @@ describe('CoreNotificationCard', () => {
     renderCard(makeItem({ actions: [] }));
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('disables all buttons while an action RPC is in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    callCoreRpc.mockImplementation(
+      () =>
+        new Promise(r => {
+          resolve = r;
+        })
+    );
+    renderCard(makeItem());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Join (listen only)' }));
+
+    // All buttons should be disabled while the call is pending.
+    const buttons = screen.getAllByRole('button');
+    buttons.forEach(btn => expect(btn).toBeDisabled());
+
+    resolve({ ok: true });
+    await waitFor(() => buttons.forEach(btn => expect(btn).not.toBeDisabled()));
+  });
+
+  it('shows no unread dot when notification is already read', () => {
+    renderCard(makeItem({ read: true }));
+    expect(document.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('shows unread dot when notification is unread', () => {
+    renderCard(makeItem({ read: false }));
+    expect(document.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+  });
 });

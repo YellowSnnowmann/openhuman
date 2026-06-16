@@ -136,4 +136,11 @@ describe('MeetingSettingsPanel', () => {
     fireEvent.change(select, { target: { value: 'never' } });
     expect(await screen.findByText('Save failed')).toBeInTheDocument();
   });
+
+  it('shows "Saved" note after a successful persist', async () => {
+    renderWithProviders(<MeetingSettingsPanel />);
+    const select = await screen.findByRole('combobox', { name: /auto-join policy/i });
+    fireEvent.change(select, { target: { value: 'always' } });
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+  });
 });

@@ -139,12 +139,31 @@ impl EventHandler for MeetCalendarSubscriber {
     }
 }
 
+/// Returns `true` when the given policy causes `handle_calendar_meeting_candidate`
+/// to publish its own actionable notification — the heartbeat planner uses this
+/// to skip the generic "meeting starting" plain card.
+///
+/// `AskEachTime` surfaces an interactive card (join/skip buttons), so the plain
+/// card is redundant. `Always` and `Never` do not surface an interactive card,
+/// so the plain card is still useful.
+pub(crate) fn auto_join_policy_owns_notification(
+    policy: &crate::openhuman::config::schema::AutoJoinPolicy,
+) -> bool {
+    use crate::openhuman::config::schema::AutoJoinPolicy;
+    matches!(policy, AutoJoinPolicy::AskEachTime)
+}
+
 /// Apply the user's meeting auto-join policy to a calendar-discovered meeting.
+///
+/// Returns `true` when this function published (or will publish) its own
+/// actionable notification — the heartbeat planner should skip its plain card
+/// in that case. Returns `false` for `Always` and `Never` so the caller still
+/// fires the generic "meeting starting" reminder.
 ///
 /// This is shared by live Composio calendar triggers and the heartbeat
 /// calendar poller. Both sources can discover the same imminent meeting; the
 /// Pending-session dedupe below keeps the ask flow to one actionable prompt.
-pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: String) {
+pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: String) -> bool {
     // Check the auto-join policy.
     let config = match config_rpc::load_config_with_timeout().await {
         Ok(c) => c,
@@ -153,18 +172,19 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                 error = %e,
                 "[meet:calendar] failed to load config, defaulting to ask"
             );
-            // Publish prompt as fallback.
+            // Publish prompt as fallback — behaves like AskEachTime.
             publish_global(DomainEvent::MeetAutoJoinPrompt {
                 meet_url,
                 event_title,
             });
-            return;
+            return true;
         }
     };
 
     match config.meet.auto_join_policy {
         crate::openhuman::config::schema::AutoJoinPolicy::Never => {
             tracing::debug!("[meet:calendar] auto_join_policy=never, dropping");
+            false
         }
         crate::openhuman::config::schema::AutoJoinPolicy::Always => {
             tracing::info!(
@@ -178,10 +198,11 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
             let listen_only = config.meet.listen_only_default;
             // Auto-join transparency: announce the triggered join so
             // downstream consumers (UI banner, thread bus) can react
-            // (issue #3507 contract event). `meeting_id` is empty because
-            // the Always path joins directly without a Pending session.
+            // (issue #3507 contract event). The Always path skips a Pending
+            // session, so meeting_id mirrors correlation_id as a stable
+            // per-attempt identifier.
             publish_global(DomainEvent::MeetingAutoJoinTriggered {
-                meeting_id: String::new(),
+                meeting_id: correlation_id.clone(),
                 meet_url: meet_url.clone(),
                 listen_only,
                 correlation_id: correlation_id.clone(),
@@ -192,6 +213,7 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                 correlation_id,
                 listen_only,
             ));
+            false
         }
         crate::openhuman::config::schema::AutoJoinPolicy::AskEachTime => {
             // Default: ask — create a Pending session and surface an
@@ -212,7 +234,7 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                         meeting_id = %existing.id,
                         "[meet:calendar] open session already exists — skipping re-prompt"
                     );
-                    return;
+                    return true;
                 }
             }
 
@@ -273,6 +295,7 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                 meet_url,
                 event_title,
             });
+            true
         }
     }
 }
@@ -641,5 +664,27 @@ mod tests {
             extract_meet_url(&payload).as_deref(),
             Some("https://meet.webex.com/meet/abc")
         );
+    }
+
+    // ── auto_join_policy_owns_notification ──────────────────────
+
+    #[test]
+    fn ask_each_time_owns_notification() {
+        use crate::openhuman::config::schema::AutoJoinPolicy;
+        assert!(auto_join_policy_owns_notification(
+            &AutoJoinPolicy::AskEachTime
+        ));
+    }
+
+    #[test]
+    fn always_does_not_own_notification() {
+        use crate::openhuman::config::schema::AutoJoinPolicy;
+        assert!(!auto_join_policy_owns_notification(&AutoJoinPolicy::Always));
+    }
+
+    #[test]
+    fn never_does_not_own_notification() {
+        use crate::openhuman::config::schema::AutoJoinPolicy;
+        assert!(!auto_join_policy_owns_notification(&AutoJoinPolicy::Never));
     }
 }

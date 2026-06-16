@@ -1,3 +1,4 @@
+import debug from 'debug';
 import { useEffect, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
@@ -18,6 +19,8 @@ import {
   SettingsSwitch,
 } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+
+const log = debug('settings:meetings');
 
 const AUTO_JOIN_OPTIONS: MeetAutoJoinPolicy[] = ['ask_each_time', 'always', 'never'];
 const AUTO_SUMMARIZE_OPTIONS: MeetAutoSummarizePolicy[] = ['ask', 'always', 'never'];
@@ -62,15 +65,23 @@ const MeetingSettingsPanel = () => {
     let cancelled = false;
     const load = async () => {
       if (!isTauri()) return;
+      log('load start');
       try {
         const resp = await openhumanGetMeetSettings();
         if (cancelled) return;
         const s = resp.result;
+        log(
+          'load ok auto_join=%s auto_summarize=%s listen_only=%s',
+          s.auto_join_policy,
+          s.auto_summarize_policy,
+          s.listen_only_default
+        );
         setAutoJoin(s.auto_join_policy);
         setAutoSummarize(s.auto_summarize_policy);
         setListenOnly(s.listen_only_default);
         setIngestTranscripts(s.ingest_backend_transcripts);
       } catch (e) {
+        log('load failed err=%o', e);
         if (!cancelled) setError(e instanceof Error ? e.message : t('settings.meetings.loadError'));
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -86,15 +97,18 @@ const MeetingSettingsPanel = () => {
   const persist = async (patch: Parameters<typeof openhumanUpdateMeetSettings>[0]) => {
     const seq = ++persistSeqRef.current;
     if (!isTauri()) return;
+    log('persist patch=%o seq=%d', patch, seq);
     setError(null);
     setSavedNote(null);
     setIsSaving(true);
     try {
       await openhumanUpdateMeetSettings(patch);
       if (seq !== persistSeqRef.current) return;
+      log('persist ok seq=%d', seq);
       setSavedNote(t('settings.meetings.saved'));
     } catch (e) {
       if (seq !== persistSeqRef.current) return;
+      log('persist failed seq=%d err=%o', seq, e);
       setError(e instanceof Error ? e.message : t('settings.meetings.saveError'));
     } finally {
       if (seq === persistSeqRef.current) setIsSaving(false);

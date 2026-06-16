@@ -620,4 +620,69 @@ mod tests {
 
         assert_eq!(selected, vec!["active-cal"]);
     }
+
+    // ── extract_meeting_url_from_map ─────────────────────────────
+
+    fn map_from_value(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+        match v {
+            serde_json::Value::Object(m) => m,
+            _ => panic!("expected object"),
+        }
+    }
+
+    #[test]
+    fn extract_meeting_url_picks_hangout_link() {
+        let map = map_from_value(serde_json::json!({
+            "hangoutLink": "https://meet.google.com/abc-defg-hij",
+            "summary": "Standup"
+        }));
+        assert_eq!(
+            extract_meeting_url_from_map(&map).as_deref(),
+            Some("https://meet.google.com/abc-defg-hij")
+        );
+    }
+
+    #[test]
+    fn extract_meeting_url_picks_conference_data_entry_point() {
+        let map = map_from_value(serde_json::json!({
+            "conferenceData": {
+                "entryPoints": [
+                    { "entryPointType": "phone", "uri": "tel:+1234567890" },
+                    { "entryPointType": "video", "uri": "https://meet.google.com/xyz-uvwx-yz1" }
+                ]
+            }
+        }));
+        assert_eq!(
+            extract_meeting_url_from_map(&map).as_deref(),
+            Some("https://meet.google.com/xyz-uvwx-yz1")
+        );
+    }
+
+    #[test]
+    fn extract_meeting_url_picks_zoom_from_location() {
+        let map = map_from_value(serde_json::json!({
+            "location": "https://zoom.us/j/123456789"
+        }));
+        assert_eq!(
+            extract_meeting_url_from_map(&map).as_deref(),
+            Some("https://zoom.us/j/123456789")
+        );
+    }
+
+    #[test]
+    fn extract_meeting_url_rejects_non_meeting_hangout_link() {
+        let map = map_from_value(serde_json::json!({
+            "hangoutLink": "https://not-a-meeting-host.example.com/room/abc"
+        }));
+        assert_eq!(extract_meeting_url_from_map(&map), None);
+    }
+
+    #[test]
+    fn extract_meeting_url_returns_none_for_plain_event() {
+        let map = map_from_value(serde_json::json!({
+            "summary": "Lunch",
+            "location": "Office kitchen"
+        }));
+        assert_eq!(extract_meeting_url_from_map(&map), None);
+    }
 }

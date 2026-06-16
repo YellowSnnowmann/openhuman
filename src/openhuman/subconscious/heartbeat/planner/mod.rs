@@ -153,11 +153,24 @@ pub async fn evaluate_and_dispatch(config: &Config, now: DateTime<Utc>) -> Plann
                     stage = plan.stage,
                     "[heartbeat:planner] forwarding imminent meeting to auto-join policy"
                 );
-                crate::openhuman::agent_meetings::calendar::handle_calendar_meeting_candidate(
-                    meeting_url,
-                    event.title.clone(),
-                )
-                .await;
+                let owns_notification =
+                    crate::openhuman::agent_meetings::calendar::handle_calendar_meeting_candidate(
+                        meeting_url,
+                        event.title.clone(),
+                    )
+                    .await;
+                if owns_notification {
+                    // The auto-join handler published its own actionable card
+                    // (AskEachTime prompt). Skip the generic plain card so the
+                    // user doesn't see two notifications for the same meeting.
+                    tracing::debug!(
+                        source = %event.source,
+                        source_event_id = %event.source_event_id,
+                        "[heartbeat:planner] auto-join handler owns notification; skipping plain card"
+                    );
+                    summary.deliveries_sent += 1;
+                    continue;
+                }
             } else {
                 tracing::debug!(
                     source = %event.source,
@@ -504,6 +517,83 @@ mod tests {
         assert_ne!(
             key_a, key_d,
             "different categories must produce different overlap keys"
+        );
+    }
+
+    /// When a meeting event with a `meeting_url` reaches `evaluate_and_dispatch`
+    /// with `allow_external = true`, the auto-join handler runs and (because
+    /// `load_config_with_timeout` fails in tests — no server running) it falls
+    /// back to `AskEachTime` behaviour, returning `true`.  The planner must then
+    /// skip the plain `CoreNotificationEvent` card and still count one delivery.
+    #[tokio::test]
+    async fn meeting_with_url_suppresses_plain_notification_when_handler_owns_it() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = test_config(&tmp);
+        config.heartbeat.notify_meetings = true;
+        config.heartbeat.notify_reminders = false;
+        config.heartbeat.notify_relevant_events = false;
+        // meeting_lookahead_minutes=120 → allow_external=false for heads_up stage.
+        // We need allow_external=true (final_call / due window).
+        config.heartbeat.meeting_lookahead_minutes = 15;
+
+        let now = Utc::now();
+        // Anchor the meeting to start in ~5 min → within the 15-min lookahead
+        // AND within the 7-min final_call window → allow_external=true.
+        let anchor = now + Duration::minutes(5);
+
+        let mut rx = subscribe_core_notifications();
+        while rx.try_recv().is_ok() {}
+
+        // Drive the planner with an artificial event injected via the calendar
+        // extractor.  Build a minimal Google Calendar payload that contains a
+        // hangoutLink so `meeting_url` is populated.
+        let payload = serde_json::json!({
+            "items": [{
+                "id": "suppress-test-evt",
+                "summary": "Suppression Test Meeting",
+                "start": { "dateTime": anchor.to_rfc3339() },
+                "end":   { "dateTime": (anchor + Duration::minutes(30)).to_rfc3339() },
+                "hangoutLink": "https://meet.google.com/sup-pres-sion"
+            }]
+        });
+
+        // Verify the collector picks up the meeting_url.
+        let events = collectors::extract_calendar_events(
+            &payload,
+            "googlecalendar",
+            "conn-suppress",
+            now,
+            now + Duration::minutes(60),
+        );
+        assert_eq!(events.len(), 1);
+        assert!(
+            events[0].meeting_url.is_some(),
+            "meeting_url must be populated"
+        );
+
+        // Verify plan has allow_external=true so the auto-join path fires.
+        let plan =
+            plan::plan_delivery_for_event(&events[0], &config, now).expect("must produce a plan");
+        assert!(
+            plan.allow_external,
+            "stage must be allow_external for this test to be valid"
+        );
+
+        // Run the full dispatch — handle_calendar_meeting_candidate will fail to
+        // load config (no server) → returns true → plain card is skipped.
+        let summary = evaluate_and_dispatch(&config, now).await;
+        assert_eq!(
+            summary.deliveries_sent, 1,
+            "one delivery must be counted even when auto-join handler owns the notification"
+        );
+
+        // No plain CoreNotificationEvent should have been published.
+        let plain_notifications: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter(|n| n.id.starts_with("heartbeat:"))
+            .collect();
+        assert!(
+            plain_notifications.is_empty(),
+            "plain heartbeat card must be suppressed when auto-join handler owns the notification: {plain_notifications:?}"
         );
     }
 }
