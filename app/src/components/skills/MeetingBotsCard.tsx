@@ -239,6 +239,15 @@ function MeetingBotsInline({ onToast, hasSubmittedRef }: MeetingBotsInlineProps)
 
   useEffect(() => {
     void refreshRecentCalls();
+    // This inline form remounts the instant a call ends, but the core writes
+    // the call record asynchronously a few ms after the transcript arrives —
+    // so the mount-time fetch can race ahead of that write and miss the just-
+    // ended call. A couple of short delayed re-fetches reliably reflect it
+    // without the user having to reopen the tab. Cheap (a ~2ms RPC each).
+    const retries = [1200, 3000].map(delay =>
+      setTimeout(() => void refreshRecentCalls(), delay)
+    );
+    return () => retries.forEach(clearTimeout);
   }, [refreshRecentCalls]);
 
   const selectedLabel = t('skills.meetingBots.platforms.gmeet');
@@ -434,6 +443,7 @@ function RecentCallsSection({
 }
 
 function RecentCallRow({ call }: { call: MeetCallRecord }) {
+  const { t } = useT();
   const meetingCode = (() => {
     try {
       const parsed = new URL(call.meet_url);
@@ -444,6 +454,8 @@ function RecentCallRow({ call }: { call: MeetCallRecord }) {
     }
   })();
   const duration = Math.max(0, Math.round(call.spoken_seconds + call.listened_seconds));
+  const owner = call.owner_display_name?.trim();
+  const participants = (call.participants ?? []).map(p => p.trim()).filter(Boolean);
   return (
     <li className="rounded-lg px-2 py-1.5 text-[11px] text-stone-700 dark:text-neutral-300 hover:bg-stone-50 dark:hover:bg-neutral-800/40">
       <div className="flex items-center justify-between gap-2">
@@ -459,7 +471,20 @@ function RecentCallRow({ call }: { call: MeetCallRecord }) {
           {call.turn_count} turn{call.turn_count === 1 ? '' : 's'}
         </span>
         <span>{duration}s on call</span>
+        {owner && (
+          <span className="truncate">
+            {t('skills.meetingBots.recentCallAddedBy').replace('{name}', owner)}
+          </span>
+        )}
       </div>
+      {participants.length > 0 && (
+        <div className="mt-0.5 truncate text-[10px] text-stone-500 dark:text-neutral-400">
+          {t('skills.meetingBots.recentCallParticipants').replace(
+            '{names}',
+            participants.join(', ')
+          )}
+        </div>
+      )}
     </li>
   );
 }
