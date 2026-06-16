@@ -3064,6 +3064,15 @@ const messages: TranslationMap = {
   'intelligence.agentWork.kind.workflowChild': 'Hijo de flujo de trabajo',
   'intelligence.agentWork.openThread': 'Abrir hilo',
   'intelligence.agentWork.openWorker': 'Abrir trabajador',
+  'intelligence.agentWork.action.stop': 'Detener',
+  'intelligence.agentWork.action.retry': 'Reintentar',
+  'intelligence.agentWork.action.continue': 'Continuar',
+  'intelligence.agentWork.action.followUp': 'Hacer seguimiento',
+  'intelligence.agentWork.action.send': 'Enviar',
+  'intelligence.agentWork.action.cancel': 'Cancelar',
+  'intelligence.agentWork.action.continuePlaceholder': 'Responde para desbloquear este agente…',
+  'intelligence.agentWork.action.followUpPlaceholder': 'Envía una instrucción de seguimiento…',
+  'intelligence.agentWork.action.failed': 'La acción falló',
   'intelligence.teams.subtitle': 'Equipos de agentes coordinados y las tareas que comparten.',
   'intelligence.teams.loading': 'Cargando equipos…',
   'intelligence.teams.failedToLoad': 'Error al cargar los equipos',
@@ -3372,6 +3381,7 @@ const messages: TranslationMap = {
   'settings.ai.endpointUrlRequired': 'Se requiere el punto final URL.',
   'settings.ai.endpointProtocolRequired': 'El punto final debe comenzar con http:// o https://.',
   'settings.ai.connectProviderDialog': 'Conectar {label}',
+  'settings.ai.getProviderApiKey': 'Obtener API Key',
   'settings.ai.or': 'O',
   'settings.ai.codexOauthMissingAuthUrl':
     'Codex OAuth no devolvió una URL de autorización. Intenta iniciar sesión de nuevo.',
@@ -4672,6 +4682,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc':
     'El participante debe decir esto antes de que el bot responda.',
+  'skills.meetingBots.activeMode': 'Responder cuando me dirija a él',
+  'skills.meetingBots.activeModeDesc':
+    'Si está activado, el bot responde en voz alta después de que digas su frase de activación. Si está desactivado, solo escucha y transcribe.',
   'skills.resource.preview.closeAriaLabel': 'Cerrar vista previa',
   'skills.resource.preview.failed': 'Vista previa fallida',
   'skills.resource.preview.loading': 'Cargando vista previa…',
@@ -5398,6 +5411,8 @@ const messages: TranslationMap = {
     'El modelo de extracción de memoria está agotando el tiempo de espera, por lo que la wiki tiene poca estructura. Cambia el modelo de extracción de memoria por uno más rápido en Configuración → IA.',
   'memory.health.remediation.summarizer_unavailable':
     'No hay ningún proveedor de resúmenes disponible para Crear árboles de resumen. Activa la IA local (Ollama) o activa el resumen en la nube en Configuración → IA → Memoria.',
+  'memory.health.remediation.empty_input_refused':
+    'Se omitió un elemento de memoria porque su texto estaba vacío. No se requiere ninguna acción — los elementos nuevos siguen incrustándose con normalidad.',
   'memory.health.remediation.transient':
     'Un error temporal interrumpió el procesamiento de la memoria. Se reintentará automáticamente.',
   'memory.health.remediation.unknown':

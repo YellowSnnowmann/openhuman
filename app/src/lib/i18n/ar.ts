@@ -2947,6 +2947,15 @@ const messages: TranslationMap = {
   'intelligence.agentWork.kind.workflowChild': 'عنصر فرعي لسير العمل',
   'intelligence.agentWork.openThread': 'فتح المحادثة',
   'intelligence.agentWork.openWorker': 'فتح العامل',
+  'intelligence.agentWork.action.stop': 'إيقاف',
+  'intelligence.agentWork.action.retry': 'إعادة المحاولة',
+  'intelligence.agentWork.action.continue': 'متابعة',
+  'intelligence.agentWork.action.followUp': 'متابعة لاحقة',
+  'intelligence.agentWork.action.send': 'إرسال',
+  'intelligence.agentWork.action.cancel': 'إلغاء',
+  'intelligence.agentWork.action.continuePlaceholder': 'أرسل ردًا لإلغاء حظر هذا العامل…',
+  'intelligence.agentWork.action.followUpPlaceholder': 'أرسل تعليمات متابعة…',
+  'intelligence.agentWork.action.failed': 'فشل الإجراء',
   'intelligence.teams.subtitle': 'فِرَق وكلاء منسَّقة والمهام التي يتشاركونها.',
   'intelligence.teams.loading': 'جارٍ تحميل الفِرَق…',
   'intelligence.teams.failedToLoad': 'فشل تحميل الفِرَق',
@@ -3241,6 +3250,7 @@ const messages: TranslationMap = {
   'settings.ai.endpointUrlRequired': 'نقطة النهاية URL مطلوبة.',
   'settings.ai.endpointProtocolRequired': 'يجب أن تبدأ نقطة النهاية بـ http:// أو https://.',
   'settings.ai.connectProviderDialog': 'الاتصال {label}',
+  'settings.ai.getProviderApiKey': 'احصل على مفتاح API',
   'settings.ai.or': 'أو',
   'settings.ai.codexOauthMissingAuthUrl':
     'لم يُرجع Codex OAuth عنوان URL للتفويض. حاول تسجيل الدخول مرة أخرى.',
@@ -4492,6 +4502,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'عبارة التنشيط',
   'skills.meetingBots.wakePhraseHint': 'مرحباً OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'يجب أن يقول المشارك هذا قبل أن يرد البوت.',
+  'skills.meetingBots.activeMode': 'الرد عندما أناديه',
+  'skills.meetingBots.activeModeDesc':
+    'عند التفعيل، يرد البوت بصوت مسموع بعد أن تقول عبارة التنبيه. عند الإيقاف، يكتفي بالاستماع وتدوين النص.',
   'skills.resource.preview.closeAriaLabel': 'إغلاق المعاينة',
   'skills.resource.preview.failed': 'فشلت المعاينة',
   'skills.resource.preview.loading': 'جارٍ تحميل المعاينة…',
@@ -5188,6 +5201,8 @@ const messages: TranslationMap = {
     'يتجاوز نموذج استخراج الذاكرة المهلة الزمنية، لذا فإن بنية الويكي قليلة. بدّل نموذج استخراج الذاكرة إلى نموذج أسرع في الإعدادات → الذكاء الاصطناعي.',
   'memory.health.remediation.summarizer_unavailable':
     'لا يتوفر مزوّد تلخيص لميزة إنشاء أشجار التلخيص. فعّل الذكاء الاصطناعي المحلي (Ollama)، أو فعّل تلخيص السحابة في الإعدادات → الذكاء الاصطناعي → الذاكرة.',
+  'memory.health.remediation.empty_input_refused':
+    'تم تخطي عنصر ذاكرة لأن نصه كان فارغًا. لا حاجة لأي إجراء — تستمر العناصر الجديدة في التضمين بشكل طبيعي.',
   'memory.health.remediation.transient':
     'حدث خطأ مؤقت أدى إلى مقاطعة معالجة الذاكرة. ستتم إعادة المحاولة تلقائيًا.',
   'memory.health.remediation.unknown':

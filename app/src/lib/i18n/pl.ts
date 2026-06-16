@@ -3047,6 +3047,15 @@ const messages: TranslationMap = {
   'intelligence.agentWork.kind.workflowChild': 'Element podrzędny przepływu',
   'intelligence.agentWork.openThread': 'Otwórz wątek',
   'intelligence.agentWork.openWorker': 'Otwórz proces',
+  'intelligence.agentWork.action.stop': 'Zatrzymaj',
+  'intelligence.agentWork.action.retry': 'Ponów',
+  'intelligence.agentWork.action.continue': 'Kontynuuj',
+  'intelligence.agentWork.action.followUp': 'Dopytaj',
+  'intelligence.agentWork.action.send': 'Wyślij',
+  'intelligence.agentWork.action.cancel': 'Anuluj',
+  'intelligence.agentWork.action.continuePlaceholder': 'Odpowiedz, aby odblokować tego agenta…',
+  'intelligence.agentWork.action.followUpPlaceholder': 'Wyślij instrukcję uzupełniającą…',
+  'intelligence.agentWork.action.failed': 'Akcja nie powiodła się',
   'intelligence.teams.subtitle': 'Skoordynowane zespoły agentów i zadania, które dzielą.',
   'intelligence.teams.loading': 'Ładowanie zespołów…',
   'intelligence.teams.failedToLoad': 'Nie udało się załadować zespołów',
@@ -3363,6 +3372,7 @@ const messages: TranslationMap = {
   'settings.ai.endpointUrlRequired': 'URL endpointu jest wymagany.',
   'settings.ai.endpointProtocolRequired': 'Endpoint musi zaczynać się od http:// lub https://.',
   'settings.ai.connectProviderDialog': 'Połącz {label}',
+  'settings.ai.getProviderApiKey': 'Pobierz API Key',
   'settings.ai.or': 'lub',
   'settings.ai.codexOauthMissingAuthUrl':
     'Codex OAuth nie zwrócił adresu URL autoryzacji. Spróbuj zalogować się ponownie.',
@@ -4656,6 +4666,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'Fraza aktywacji',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Uczestnik musi to powiedzieć, zanim bot odpowie.',
+  'skills.meetingBots.activeMode': 'Odpowiadaj, gdy się do niego zwracam',
+  'skills.meetingBots.activeModeDesc':
+    'Gdy włączone, bot odpowiada na głos po wypowiedzeniu frazy aktywującej. Gdy wyłączone, tylko słucha i transkrybuje.',
   'skills.resource.preview.closeAriaLabel': 'Zamknij podgląd',
   'skills.resource.preview.failed': 'Podgląd nie powiódł się',
   'skills.resource.preview.loading': 'Wczytywanie podglądu…',
@@ -5379,6 +5392,8 @@ const messages: TranslationMap = {
     'Model ekstrakcji pamięci przekracza limit czasu, więc wiki ma niewielką strukturę. Zmień model ekstrakcji pamięci na szybszy w Ustawienia → AI.',
   'memory.health.remediation.summarizer_unavailable':
     'Brak dostępnego dostawcy podsumowań dla funkcji Twórz drzewa podsumowań. Włącz lokalną AI (Ollama) lub włącz podsumowywanie w chmurze w Ustawienia → AI → Pamięć.',
+  'memory.health.remediation.empty_input_refused':
+    'Pominięto element pamięci, ponieważ jego tekst był pusty. Żadne działanie nie jest wymagane — nowe elementy są nadal osadzane normalnie.',
   'memory.health.remediation.transient':
     'Tymczasowy błąd przerwał przetwarzanie pamięci. Ponowna próba nastąpi automatycznie.',
   'memory.health.remediation.unknown':

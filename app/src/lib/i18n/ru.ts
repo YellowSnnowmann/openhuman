@@ -3033,6 +3033,16 @@ const messages: TranslationMap = {
   'intelligence.agentWork.kind.workflowChild': 'Дочерний элемент рабочего процесса',
   'intelligence.agentWork.openThread': 'Открыть тред',
   'intelligence.agentWork.openWorker': 'Открыть воркер',
+  'intelligence.agentWork.action.stop': 'Остановить',
+  'intelligence.agentWork.action.retry': 'Повторить',
+  'intelligence.agentWork.action.continue': 'Продолжить',
+  'intelligence.agentWork.action.followUp': 'Уточнить',
+  'intelligence.agentWork.action.send': 'Отправить',
+  'intelligence.agentWork.action.cancel': 'Отмена',
+  'intelligence.agentWork.action.continuePlaceholder':
+    'Ответьте, чтобы разблокировать этого агента…',
+  'intelligence.agentWork.action.followUpPlaceholder': 'Отправьте уточняющую инструкцию…',
+  'intelligence.agentWork.action.failed': 'Не удалось выполнить действие',
   'intelligence.teams.subtitle':
     'Скоординированные команды агентов и задачи, которые они разделяют.',
   'intelligence.teams.loading': 'Загрузка команд…',
@@ -3339,6 +3349,7 @@ const messages: TranslationMap = {
   'settings.ai.endpointProtocolRequired':
     'Конечная точка должна начинаться с http:// или https://..',
   'settings.ai.connectProviderDialog': 'Подключиться {label}',
+  'settings.ai.getProviderApiKey': 'Получить API Key',
   'settings.ai.or': 'Или',
   'settings.ai.codexOauthMissingAuthUrl':
     'Codex OAuth не вернул URL авторизации. Попробуйте войти снова.',
@@ -4627,6 +4638,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'Фраза активации',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Участник должен произнести это, прежде чем бот ответит.',
+  'skills.meetingBots.activeMode': 'Отвечать, когда я обращаюсь',
+  'skills.meetingBots.activeModeDesc':
+    'Когда включено, бот отвечает вслух после того, как вы произнесёте фразу-обращение. Когда выключено, он только слушает и расшифровывает.',
   'skills.resource.preview.closeAriaLabel': 'Закрыть предпросмотр',
   'skills.resource.preview.failed': 'Не удалось показать превью',
   'skills.resource.preview.loading': 'Загрузка предпросмотра…',
@@ -5347,6 +5361,8 @@ const messages: TranslationMap = {
     'Модель извлечения памяти превышает время ожидания, поэтому в вики мало структуры. Выберите более быструю модель извлечения памяти в разделе Настройки → ИИ.',
   'memory.health.remediation.summarizer_unavailable':
     'Нет доступного поставщика суммаризации для «Построить деревья сводок». Включите локальный ИИ (Ollama) или включите облачную суммаризацию в разделе Настройки → ИИ → Память.',
+  'memory.health.remediation.empty_input_refused':
+    'Элемент памяти пропущен, так как его текст был пуст. Действия не требуются — новые элементы продолжают встраиваться как обычно.',
   'memory.health.remediation.transient':
     'Временная ошибка прервала обработку памяти. Повтор произойдёт автоматически.',
   'memory.health.remediation.unknown':

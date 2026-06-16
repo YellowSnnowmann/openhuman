@@ -3009,6 +3009,15 @@ const messages: TranslationMap = {
   'intelligence.agentWork.kind.workflowChild': 'ওয়ার্কফ্লো চাইল্ড',
   'intelligence.agentWork.openThread': 'থ্রেড খুলুন',
   'intelligence.agentWork.openWorker': 'ওয়ার্কার খুলুন',
+  'intelligence.agentWork.action.stop': 'থামান',
+  'intelligence.agentWork.action.retry': 'আবার চেষ্টা করুন',
+  'intelligence.agentWork.action.continue': 'চালিয়ে যান',
+  'intelligence.agentWork.action.followUp': 'ফলো আপ',
+  'intelligence.agentWork.action.send': 'পাঠান',
+  'intelligence.agentWork.action.cancel': 'বাতিল করুন',
+  'intelligence.agentWork.action.continuePlaceholder': 'এই এজেন্টকে আনব্লক করতে উত্তর দিন…',
+  'intelligence.agentWork.action.followUpPlaceholder': 'একটি ফলো-আপ নির্দেশনা পাঠান…',
+  'intelligence.agentWork.action.failed': 'অ্যাকশন ব্যর্থ হয়েছে',
   'intelligence.teams.subtitle': 'সমন্বিত এজেন্ট টিম এবং তারা যে কাজগুলো ভাগ করে নেয়।',
   'intelligence.teams.loading': 'টিম লোড হচ্ছে…',
   'intelligence.teams.failedToLoad': 'টিম লোড করতে ব্যর্থ হয়েছে',
@@ -3312,6 +3321,7 @@ const messages: TranslationMap = {
   'settings.ai.endpointUrlRequired': 'এন্ডপয়েন্ট URL প্রয়োজন।',
   'settings.ai.endpointProtocolRequired': 'সমাপ্তির তারিখ / http://wxqxqxkx/x উচিত',
   'settings.ai.connectProviderDialog': 'সংযোগ করুন {label}',
+  'settings.ai.getProviderApiKey': 'API Key নিন',
   'settings.ai.or': 'অথবা',
   'settings.ai.codexOauthMissingAuthUrl':
     'Codex OAuth কোনো অনুমোদন URL ফেরত দেয়নি। আবার সাইন ইন করার চেষ্টা করুন।',
@@ -4584,6 +4594,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'ওয়েক ফ্রেজ',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'বট সাড়া দেওয়ার আগে অংশগ্রহণকারীকে এটি বলতে হবে।',
+  'skills.meetingBots.activeMode': 'আমি ডাকলে উত্তর দেবে',
+  'skills.meetingBots.activeModeDesc':
+    'চালু থাকলে, আপনি ওয়েক ফ্রেজ বললে বটটি সশব্দে উত্তর দেয়। বন্ধ থাকলে, এটি শুধু শোনে ও প্রতিলিপি তৈরি করে।',
   'skills.resource.preview.closeAriaLabel': 'প্রিভিউ বন্ধ করুন',
   'skills.resource.preview.failed': 'প্রিভিউ ব্যর্থ',
   'skills.resource.preview.loading': 'প্রিভিউ লোড হচ্ছে…',
@@ -5294,6 +5307,8 @@ const messages: TranslationMap = {
     'মেমরি এক্সট্র্যাকশন মডেল টাইম আউট হচ্ছে, তাই উইকিতে সামান্য কাঠামো আছে। সেটিংস → AI-তে মেমরি এক্সট্র্যাকশন মডেল একটি দ্রুততর মডেলে পরিবর্তন করুন।',
   'memory.health.remediation.summarizer_unavailable':
     'সারাংশ ট্রি তৈরির জন্য কোনও সারাংশ প্রদানকারী উপলব্ধ নেই। স্থানীয় AI (Ollama) সক্ষম করুন, অথবা সেটিংস → AI → মেমরিতে ক্লাউড সারাংশ সক্ষম করুন।',
+  'memory.health.remediation.empty_input_refused':
+    'একটি মেমরি আইটেম এড়িয়ে যাওয়া হয়েছে কারণ এর পাঠ্য খালি ছিল। কোনো পদক্ষেপের প্রয়োজন নেই — নতুন আইটেমগুলি স্বাভাবিকভাবে এমবেড করতে থাকে।',
   'memory.health.remediation.transient':
     'একটি অস্থায়ী ত্রুটি মেমরি প্রক্রিয়াকরণে বাধা দিয়েছে। স্বয়ংক্রিয়ভাবে পুনরায় চেষ্টা করা হবে।',
   'memory.health.remediation.unknown':
