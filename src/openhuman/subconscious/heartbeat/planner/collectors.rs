@@ -444,6 +444,33 @@ fn is_meeting_url(raw: &str) -> bool {
     MEETING_HOST_PATTERNS.iter().any(|pat| raw.contains(pat))
 }
 
+/// Pull the first parseable meeting URL out of a free-form string.
+///
+/// Calendar `location` is free-form and commonly mixes a label with a URL
+/// (e.g. `Zoom Meeting: https://zoom.us/j/123`). Returning the whole string
+/// would produce a `meeting_url` that the join handler's `url::Url::parse`
+/// later rejects, leaving AskEachTime prompts with buttons that always fail
+/// while the generic reminder stays suppressed. So scan tokens for one that
+/// both matches a known meeting host and parses as an http(s) URL.
+fn extract_meeting_url_from_text(text: &str) -> Option<String> {
+    text.split_whitespace()
+        // Strip surrounding punctuation that often hugs a URL in prose:
+        // "(https://zoom.us/j/123)," -> "https://zoom.us/j/123".
+        .map(|tok| {
+            tok.trim_matches(|c: char| {
+                matches!(
+                    c,
+                    '(' | ')' | '[' | ']' | '<' | '>' | ',' | ';' | '"' | '\''
+                )
+            })
+        })
+        .filter(|tok| is_meeting_url(tok))
+        .find_map(|tok| {
+            let parsed = url::Url::parse(tok).ok()?;
+            matches!(parsed.scheme(), "http" | "https").then(|| parsed.to_string())
+        })
+}
+
 fn extract_meeting_url_from_map(
     map: &serde_json::Map<String, serde_json::Value>,
 ) -> Option<String> {
@@ -468,8 +495,7 @@ fn extract_meeting_url_from_map(
         .or_else(|| {
             map.get("location")
                 .and_then(serde_json::Value::as_str)
-                .filter(|url| is_meeting_url(url))
-                .map(ToString::to_string)
+                .and_then(extract_meeting_url_from_text)
         })
 }
 
@@ -667,6 +693,29 @@ mod tests {
             extract_meeting_url_from_map(&map).as_deref(),
             Some("https://zoom.us/j/123456789")
         );
+    }
+
+    #[test]
+    fn extract_meeting_url_picks_url_out_of_free_form_location() {
+        // A label + URL is the common calendar shape; we must return only the
+        // parseable URL, not the whole string (which url::Url::parse rejects).
+        let map = map_from_value(serde_json::json!({
+            "location": "Zoom Meeting: (https://zoom.us/j/123456789), dial-in optional"
+        }));
+        assert_eq!(
+            extract_meeting_url_from_map(&map).as_deref(),
+            Some("https://zoom.us/j/123456789")
+        );
+    }
+
+    #[test]
+    fn extract_meeting_url_rejects_unparseable_location() {
+        // Mentions a host substring but has no real URL — must not leak a value
+        // the join handler would reject.
+        let map = map_from_value(serde_json::json!({
+            "location": "Conference Room — ask host for the zoom.us link"
+        }));
+        assert_eq!(extract_meeting_url_from_map(&map), None);
     }
 
     #[test]

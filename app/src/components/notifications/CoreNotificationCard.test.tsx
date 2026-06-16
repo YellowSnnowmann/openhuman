@@ -81,6 +81,35 @@ describe('CoreNotificationCard', () => {
     });
   });
 
+  it('clears the action buttons after a successful action so it cannot be re-clicked', async () => {
+    callCoreRpc.mockResolvedValue({ ok: true });
+    store.dispatch({ type: 'notifications/notificationReceived', payload: makeItem() });
+    renderCard(makeItem());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not this one' }));
+
+    await waitFor(() => {
+      const item = store.getState().notifications.items.find(i => i.id === 'meet-auto-join:m1');
+      expect(item?.actions ?? []).toHaveLength(0);
+    });
+  });
+
+  it('keeps the action buttons when the RPC rejects', async () => {
+    callCoreRpc.mockRejectedValue(new Error('boom'));
+    store.dispatch({ type: 'notifications/notificationReceived', payload: makeItem() });
+    renderCard(makeItem());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not this one' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Could not complete that action. Please try again.')
+      ).toBeInTheDocument()
+    );
+    const item = store.getState().notifications.items.find(i => i.id === 'meet-auto-join:m1');
+    expect(item?.actions).toHaveLength(4);
+  });
+
   it('surfaces an error message when the RPC rejects', async () => {
     callCoreRpc.mockRejectedValue(new Error('boom'));
     renderCard(makeItem());

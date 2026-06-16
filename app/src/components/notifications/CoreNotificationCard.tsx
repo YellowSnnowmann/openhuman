@@ -4,7 +4,11 @@ import { useState } from 'react';
 import { useT } from '../../lib/i18n/I18nContext';
 import { callCoreRpc } from '../../services/coreRpcClient';
 import { useAppDispatch } from '../../store/hooks';
-import { markRead, type NotificationItem } from '../../store/notificationSlice';
+import {
+  clearNotificationActions,
+  markRead,
+  type NotificationItem,
+} from '../../store/notificationSlice';
 import NotificationBody from './NotificationBody';
 
 // Namespaced debug per project logging rules (mirrors nativeNotifications).
@@ -67,6 +71,10 @@ const CoreNotificationCard = ({ notification: n }: Props) => {
       });
       log('action ok id=%s', actionId);
       dispatch(markRead({ id: n.id }));
+      // Remove the buttons so the handled prompt can't be re-clicked (which would
+      // re-fire bot:join, or flip always_join after a skip). Without this the
+      // card stays pinned in NotificationCenter with live actions.
+      dispatch(clearNotificationActions({ id: n.id }));
     } catch (err) {
       log('action failed id=%s err=%o', actionId, err);
       setError(t('notifications.meeting.actionError'));
