@@ -2767,6 +2767,7 @@ async fn provider_sse_tool_args_accumulation() {
         messages: &messages,
         tools: Some(&tools),
         stream: Some(&delta_tx),
+        max_tokens: None,
     };
     let response = provider
         .chat(request, "e2e-sse-model", 0.0)
