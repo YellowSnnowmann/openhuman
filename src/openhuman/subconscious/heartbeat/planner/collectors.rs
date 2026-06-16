@@ -58,6 +58,7 @@ pub(crate) fn collect_cron_reminders(config: &Config, now: DateTime<Utc>) -> Vec
                 title,
                 body,
                 deep_link: Some("/settings/cron-jobs".to_string()),
+                meeting_url: None,
                 anchor_at: job.next_run,
             }
         })
@@ -355,6 +356,7 @@ fn collect_calendar_events_recursive(
                         .and_then(serde_json::Value::as_str)
                         .or_else(|| map.get("hangoutLink").and_then(serde_json::Value::as_str))
                         .map(ToString::to_string);
+                    let meeting_url = extract_meeting_url_from_map(map);
 
                     let fingerprint = stable_key(&format!(
                         "{}:{}:{}:{}",
@@ -377,6 +379,7 @@ fn collect_calendar_events_recursive(
                         title: title.clone(),
                         body: format!("{} starts at {}.", title, starts_at.format("%H:%M")),
                         deep_link,
+                        meeting_url,
                         anchor_at: starts_at,
                     });
                 }
@@ -428,6 +431,46 @@ fn extract_title_from_map(map: &serde_json::Map<String, serde_json::Value>) -> S
         .map(|raw| sanitize_preview(raw, 80))
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| "Upcoming meeting".to_string())
+}
+
+const MEETING_HOST_PATTERNS: &[&str] = &[
+    "meet.google.com",
+    "zoom.us",
+    "teams.microsoft.com",
+    "webex.com",
+];
+
+fn is_meeting_url(raw: &str) -> bool {
+    MEETING_HOST_PATTERNS.iter().any(|pat| raw.contains(pat))
+}
+
+fn extract_meeting_url_from_map(
+    map: &serde_json::Map<String, serde_json::Value>,
+) -> Option<String> {
+    map.get("hangoutLink")
+        .and_then(serde_json::Value::as_str)
+        .filter(|url| is_meeting_url(url))
+        .map(ToString::to_string)
+        .or_else(|| {
+            map.get("conferenceData")
+                .and_then(|cd| cd.get("entryPoints"))
+                .and_then(serde_json::Value::as_array)
+                .and_then(|entries| {
+                    entries.iter().find_map(|entry| {
+                        entry
+                            .get("uri")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|url| is_meeting_url(url))
+                            .map(ToString::to_string)
+                    })
+                })
+        })
+        .or_else(|| {
+            map.get("location")
+                .and_then(serde_json::Value::as_str)
+                .filter(|url| is_meeting_url(url))
+                .map(ToString::to_string)
+        })
 }
 
 fn parse_datetime(raw: &str) -> Option<DateTime<Utc>> {
@@ -489,6 +532,7 @@ pub(crate) fn collect_relevant_notifications(
                 title,
                 body,
                 deep_link: Some("/notifications".to_string()),
+                meeting_url: None,
                 anchor_at: item.received_at,
             }
         })

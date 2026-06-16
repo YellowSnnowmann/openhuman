@@ -145,6 +145,29 @@ pub async fn evaluate_and_dispatch(config: &Config, now: DateTime<Utc>) -> Plann
             continue;
         }
 
+        if event.category == types::HeartbeatCategory::Meetings && plan.allow_external {
+            if let Some(meeting_url) = event.meeting_url.clone() {
+                tracing::info!(
+                    source = %event.source,
+                    source_event_id = %event.source_event_id,
+                    stage = plan.stage,
+                    "[heartbeat:planner] forwarding imminent meeting to auto-join policy"
+                );
+                crate::openhuman::agent_meetings::calendar::handle_calendar_meeting_candidate(
+                    meeting_url,
+                    event.title.clone(),
+                )
+                .await;
+            } else {
+                tracing::debug!(
+                    source = %event.source,
+                    source_event_id = %event.source_event_id,
+                    stage = plan.stage,
+                    "[heartbeat:planner] imminent meeting has no join URL; auto-join skipped"
+                );
+            }
+        }
+
         publish_core_notification(CoreNotificationEvent {
             id,
             category: event.category.notification_category(),
@@ -206,7 +229,8 @@ mod tests {
                     "id": "evt-1",
                     "summary": "Team sync",
                     "start": { "dateTime": "2026-05-08T10:20:00Z" },
-                    "htmlLink": "https://calendar.google.com/event?evt=1"
+                    "htmlLink": "https://calendar.google.com/event?evt=1",
+                    "hangoutLink": "https://meet.google.com/abc-defg-hij"
                 }
             ]
         });
@@ -226,6 +250,10 @@ mod tests {
         assert_eq!(
             events[0].deep_link.as_deref(),
             Some("https://calendar.google.com/event?evt=1")
+        );
+        assert_eq!(
+            events[0].meeting_url.as_deref(),
+            Some("https://meet.google.com/abc-defg-hij")
         );
     }
 
@@ -306,6 +334,7 @@ mod tests {
             title: "Pay rent".to_string(),
             body: String::new(),
             deep_link: None,
+            meeting_url: None,
             anchor_at: now,
         };
 
@@ -332,6 +361,7 @@ mod tests {
             title: "Planning".to_string(),
             body: String::new(),
             deep_link: None,
+            meeting_url: None,
             anchor_at: now + Duration::minutes(45),
         };
 

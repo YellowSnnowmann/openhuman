@@ -135,137 +135,144 @@ impl EventHandler for MeetCalendarSubscriber {
             "[meet:calendar] detected imminent Google Meet meeting"
         );
 
-        // Check the auto-join policy.
-        let config = match config_rpc::load_config_with_timeout().await {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "[meet:calendar] failed to load config, defaulting to ask"
-                );
-                // Publish prompt as fallback.
-                publish_global(DomainEvent::MeetAutoJoinPrompt {
-                    meet_url,
-                    event_title,
-                });
-                return;
-            }
-        };
+        handle_calendar_meeting_candidate(meet_url, event_title).await;
+    }
+}
 
-        match config.meet.auto_join_policy {
-            crate::openhuman::config::schema::AutoJoinPolicy::Never => {
-                tracing::debug!("[meet:calendar] auto_join_policy=never, dropping");
-                return;
-            }
-            crate::openhuman::config::schema::AutoJoinPolicy::Always => {
-                tracing::info!(
-                    meet_url = %meet_url,
-                    title = %event_title,
-                    "[meet:calendar] auto_join_policy=always, joining automatically"
-                );
-                let correlation_id = uuid::Uuid::new_v4().to_string();
-                // Honor the user's listen-only default (issue #3511 settings
-                // UI) instead of hardcoding passive-listener mode.
-                let listen_only = config.meet.listen_only_default;
-                // Auto-join transparency: announce the triggered join so
-                // downstream consumers (UI banner, thread bus) can react
-                // (issue #3507 contract event). `meeting_id` is empty because
-                // the Always path joins directly without a Pending session.
-                publish_global(DomainEvent::MeetingAutoJoinTriggered {
-                    meeting_id: String::new(),
-                    meet_url: meet_url.clone(),
-                    listen_only,
-                    correlation_id: correlation_id.clone(),
-                });
-                tokio::spawn(auto_join_meeting(
-                    meet_url,
-                    event_title,
-                    correlation_id,
-                    listen_only,
-                ));
-                return;
-            }
-            crate::openhuman::config::schema::AutoJoinPolicy::AskEachTime => {
-                // Default: ask — create a Pending session and surface an
-                // actionable notification (issue #3507). The buttons route
-                // through `agent_meetings_notification_action`.
-                tracing::info!(
-                    meet_url = %meet_url,
-                    title = %event_title,
-                    "[meet:calendar] auto_join_policy=ask_each_time, prompting user"
-                );
+/// Apply the user's meeting auto-join policy to a calendar-discovered meeting.
+///
+/// This is shared by live Composio calendar triggers and the heartbeat
+/// calendar poller. Both sources can discover the same imminent meeting; the
+/// Pending-session dedupe below keeps the ask flow to one actionable prompt.
+pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: String) {
+    // Check the auto-join policy.
+    let config = match config_rpc::load_config_with_timeout().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "[meet:calendar] failed to load config, defaulting to ask"
+            );
+            // Publish prompt as fallback.
+            publish_global(DomainEvent::MeetAutoJoinPrompt {
+                meet_url,
+                event_title,
+            });
+            return;
+        }
+    };
 
-                // Dedupe: one prompt per meeting URL while a session is
-                // still open (Composio can re-fire the trigger on event
-                // updates).
-                if let Ok(Some(existing)) = store::get_session_by_meet_url(&config, &meet_url) {
-                    if existing.status != MeetingSessionStatus::Ended {
-                        tracing::debug!(
-                            meeting_id = %existing.id,
-                            "[meet:calendar] open session already exists — skipping re-prompt"
-                        );
-                        return;
-                    }
+    match config.meet.auto_join_policy {
+        crate::openhuman::config::schema::AutoJoinPolicy::Never => {
+            tracing::debug!("[meet:calendar] auto_join_policy=never, dropping");
+        }
+        crate::openhuman::config::schema::AutoJoinPolicy::Always => {
+            tracing::info!(
+                meet_url = %meet_url,
+                title = %event_title,
+                "[meet:calendar] auto_join_policy=always, joining automatically"
+            );
+            let correlation_id = uuid::Uuid::new_v4().to_string();
+            // Honor the user's listen-only default (issue #3511 settings
+            // UI) instead of hardcoding passive-listener mode.
+            let listen_only = config.meet.listen_only_default;
+            // Auto-join transparency: announce the triggered join so
+            // downstream consumers (UI banner, thread bus) can react
+            // (issue #3507 contract event). `meeting_id` is empty because
+            // the Always path joins directly without a Pending session.
+            publish_global(DomainEvent::MeetingAutoJoinTriggered {
+                meeting_id: String::new(),
+                meet_url: meet_url.clone(),
+                listen_only,
+                correlation_id: correlation_id.clone(),
+            });
+            tokio::spawn(auto_join_meeting(
+                meet_url,
+                event_title,
+                correlation_id,
+                listen_only,
+            ));
+        }
+        crate::openhuman::config::schema::AutoJoinPolicy::AskEachTime => {
+            // Default: ask — create a Pending session and surface an
+            // actionable notification (issue #3507). The buttons route
+            // through `agent_meetings_notification_action`.
+            tracing::info!(
+                meet_url = %meet_url,
+                title = %event_title,
+                "[meet:calendar] auto_join_policy=ask_each_time, prompting user"
+            );
+
+            // Dedupe: one prompt per meeting URL while a session is
+            // still open (Composio can re-fire the trigger on event
+            // updates; heartbeat can also poll the same event).
+            if let Ok(Some(existing)) = store::get_session_by_meet_url(&config, &meet_url) {
+                if existing.status != MeetingSessionStatus::Ended {
+                    tracing::debug!(
+                        meeting_id = %existing.id,
+                        "[meet:calendar] open session already exists — skipping re-prompt"
+                    );
+                    return;
                 }
-
-                let meeting_id = uuid::Uuid::new_v4().to_string();
-                let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
-                let session = MeetingSession {
-                    id: meeting_id.clone(),
-                    meet_url: meet_url.clone(),
-                    title: Some(event_title.clone()),
-                    calendar_event_id: None,
-                    status: MeetingSessionStatus::Pending,
-                    source: AutoJoinSource::Calendar,
-                    thread_id: None,
-                    transcript_received: false,
-                    summary_generated: false,
-                    created_at_ms: now_ms,
-                    updated_at_ms: now_ms,
-                };
-                if let Err(e) = store::create_session(&config, &session) {
-                    tracing::warn!("[meet:calendar] session create failed (non-fatal): {e}");
-                }
-
-                // Announce the new Pending session (issue #3507 contract event).
-                publish_global(DomainEvent::MeetingSessionCreated {
-                    meeting_id: meeting_id.clone(),
-                    meet_url: meet_url.clone(),
-                    title: event_title.clone(),
-                    source: "calendar".to_string(),
-                });
-
-                let action_payload = serde_json::json!({
-                    "meetingId": meeting_id,
-                    "meetUrl": meet_url,
-                    "title": event_title,
-                });
-                let action = |action_id: &str, label: &str| CoreNotificationAction {
-                    action_id: action_id.to_string(),
-                    label: label.to_string(),
-                    payload: Some(action_payload.clone()),
-                };
-                publish_core_notification(CoreNotificationEvent {
-                    id: format!("meet-auto-join:{meeting_id}"),
-                    category: CoreNotificationCategory::Meetings,
-                    title: format!("Meeting starting: {event_title}"),
-                    body: "Add Tiny to this meeting?".to_string(),
-                    deep_link: None,
-                    timestamp_ms: now_ms,
-                    actions: Some(vec![
-                        action("join_listen", "Join (listen only)"),
-                        action("join_active", "Join & reply"),
-                        action("skip", "Not this one"),
-                        action("always_join", "Always join"),
-                    ]),
-                });
-
-                // Legacy prompt event kept for existing consumers.
-                publish_global(DomainEvent::MeetAutoJoinPrompt {
-                    meet_url,
-                    event_title,
-                });
             }
+
+            let meeting_id = uuid::Uuid::new_v4().to_string();
+            let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+            let session = MeetingSession {
+                id: meeting_id.clone(),
+                meet_url: meet_url.clone(),
+                title: Some(event_title.clone()),
+                calendar_event_id: None,
+                status: MeetingSessionStatus::Pending,
+                source: AutoJoinSource::Calendar,
+                thread_id: None,
+                transcript_received: false,
+                summary_generated: false,
+                created_at_ms: now_ms,
+                updated_at_ms: now_ms,
+            };
+            if let Err(e) = store::create_session(&config, &session) {
+                tracing::warn!("[meet:calendar] session create failed (non-fatal): {e}");
+            }
+
+            // Announce the new Pending session (issue #3507 contract event).
+            publish_global(DomainEvent::MeetingSessionCreated {
+                meeting_id: meeting_id.clone(),
+                meet_url: meet_url.clone(),
+                title: event_title.clone(),
+                source: "calendar".to_string(),
+            });
+
+            let action_payload = serde_json::json!({
+                "meetingId": meeting_id,
+                "meetUrl": meet_url,
+                "title": event_title,
+            });
+            let action = |action_id: &str, label: &str| CoreNotificationAction {
+                action_id: action_id.to_string(),
+                label: label.to_string(),
+                payload: Some(action_payload.clone()),
+            };
+            publish_core_notification(CoreNotificationEvent {
+                id: format!("meet-auto-join:{meeting_id}"),
+                category: CoreNotificationCategory::Meetings,
+                title: format!("Meeting starting: {event_title}"),
+                body: "Add Tiny to this meeting?".to_string(),
+                deep_link: None,
+                timestamp_ms: now_ms,
+                actions: Some(vec![
+                    action("join_listen", "Join (listen only)"),
+                    action("join_active", "Join & reply"),
+                    action("skip", "Not this one"),
+                    action("always_join", "Always join"),
+                ]),
+            });
+
+            // Legacy prompt event kept for existing consumers.
+            publish_global(DomainEvent::MeetAutoJoinPrompt {
+                meet_url,
+                event_title,
+            });
         }
     }
 }
