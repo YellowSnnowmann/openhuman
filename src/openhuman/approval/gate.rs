@@ -523,14 +523,14 @@ impl ApprovalGate {
             "[approval::gate] tool call parked, waiting for decision"
         );
 
-        // `effective_ttl()` already honours the debug env override; live
-        // meetings clamp it further to IN_CALL_APPROVAL_TTL so an in-call park
-        // window can't outlast the call.
-        let base_ttl = self.effective_ttl();
+        // Live meetings get a clamped park window — see IN_CALL_APPROVAL_TTL.
+        // `effective_ttl()` applies the debug-only env override; the in-call
+        // clamp is applied on top so a longer override can't extend a live
+        // meeting's park window past IN_CALL_APPROVAL_TTL.
         let effective_ttl = if in_call_ctx.is_some() {
-            IN_CALL_APPROVAL_TTL.min(base_ttl)
+            IN_CALL_APPROVAL_TTL.min(self.effective_ttl())
         } else {
-            base_ttl
+            self.effective_ttl()
         };
 
         let outcome = match tokio::time::timeout(effective_ttl, rx).await {
@@ -1106,6 +1106,11 @@ mod tests {
     /// These run serially (they mutate the process env) via the shared
     /// `TEST_ENV_LOCK`; the lock is the same one used by `auto_approve_tool_skips_prompt`
     /// and the live_policy tests so they cannot clobber each other in parallel.
+    ///
+    /// Guarded on `debug_assertions`: the override is compiled out of release
+    /// builds, so this assertion only holds under `cargo test` (debug). The
+    /// fallback tests below hold in either build.
+    #[cfg(debug_assertions)]
     #[test]
     fn effective_ttl_uses_env_override_when_valid() {
         let _env = crate::openhuman::config::TEST_ENV_LOCK
