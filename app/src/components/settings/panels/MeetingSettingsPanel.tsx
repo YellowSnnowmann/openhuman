@@ -94,7 +94,10 @@ const MeetingSettingsPanel = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const persist = async (patch: Parameters<typeof openhumanUpdateMeetSettings>[0]) => {
+  const persist = async (
+    patch: Parameters<typeof openhumanUpdateMeetSettings>[0],
+    onFailure?: () => void
+  ) => {
     const seq = ++persistSeqRef.current;
     if (!isTauri()) return;
     log('persist patch=%o seq=%d', patch, seq);
@@ -109,6 +112,7 @@ const MeetingSettingsPanel = () => {
     } catch (e) {
       if (seq !== persistSeqRef.current) return;
       log('persist failed seq=%d err=%o', seq, e);
+      onFailure?.();
       setError(e instanceof Error ? e.message : t('settings.meetings.saveError'));
     } finally {
       if (seq === persistSeqRef.current) setIsSaving(false);
@@ -116,23 +120,27 @@ const MeetingSettingsPanel = () => {
   };
 
   const handleAutoJoinChange = (next: MeetAutoJoinPolicy) => {
+    const prev = autoJoin;
     setAutoJoin(next);
-    void persist({ auto_join_policy: next });
+    void persist({ auto_join_policy: next }, () => setAutoJoin(prev));
   };
 
   const handleAutoSummarizeChange = (next: MeetAutoSummarizePolicy) => {
+    const prev = autoSummarize;
     setAutoSummarize(next);
-    void persist({ auto_summarize_policy: next });
+    void persist({ auto_summarize_policy: next }, () => setAutoSummarize(prev));
   };
 
   const handleListenOnlyChange = (next: boolean) => {
+    const prev = listenOnly;
     setListenOnly(next);
-    void persist({ listen_only_default: next });
+    void persist({ listen_only_default: next }, () => setListenOnly(prev));
   };
 
   const handleIngestChange = (next: boolean) => {
+    const prev = ingestTranscripts;
     setIngestTranscripts(next);
-    void persist({ ingest_backend_transcripts: next });
+    void persist({ ingest_backend_transcripts: next }, () => setIngestTranscripts(prev));
   };
 
   if (!isTauri()) {

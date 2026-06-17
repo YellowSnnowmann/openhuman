@@ -143,4 +143,44 @@ describe('MeetingSettingsPanel', () => {
     fireEvent.change(select, { target: { value: 'always' } });
     expect(await screen.findByText('Saved')).toBeInTheDocument();
   });
+
+  it('rolls back auto-join select to previous value when persist fails', async () => {
+    mockUpdate.mockRejectedValue(new Error('Save failed'));
+    renderWithProviders(<MeetingSettingsPanel />);
+    const select = await screen.findByRole('combobox', { name: /auto-join policy/i });
+    expect(select).toHaveValue('ask_each_time');
+    fireEvent.change(select, { target: { value: 'never' } });
+    await screen.findByText('Save failed');
+    expect(select).toHaveValue('ask_each_time');
+  });
+
+  it('rolls back auto-summarize select to previous value when persist fails', async () => {
+    mockUpdate.mockRejectedValue(new Error('Save failed'));
+    renderWithProviders(<MeetingSettingsPanel />);
+    const select = await screen.findByRole('combobox', { name: /post-call summary/i });
+    expect(select).toHaveValue('ask');
+    fireEvent.change(select, { target: { value: 'never' } });
+    await screen.findByText('Save failed');
+    expect(select).toHaveValue('ask');
+  });
+
+  it('rolls back listen-only toggle to previous value when persist fails', async () => {
+    mockUpdate.mockRejectedValue(new Error('Save failed'));
+    renderWithProviders(<MeetingSettingsPanel />);
+    const toggle = await screen.findByRole('switch', { name: /listen-only mode/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    await screen.findByText('Save failed');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('rolls back transcript ingestion toggle to previous value when persist fails', async () => {
+    mockUpdate.mockRejectedValue(new Error('Save failed'));
+    renderWithProviders(<MeetingSettingsPanel />);
+    const toggle = await screen.findByRole('switch', { name: /ingest backend transcripts/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(toggle);
+    await screen.findByText('Save failed');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+  });
 });

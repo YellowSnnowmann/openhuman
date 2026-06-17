@@ -318,6 +318,22 @@ pub async fn handle_calendar_meeting_candidate(
             false
         }
         crate::openhuman::config::schema::AutoJoinPolicy::Always => {
+            // Dedup: one auto-join per meeting URL while an active session exists.
+            // The heartbeat planner can forward the same event from multiple
+            // stages (final_call + starting_now) and Composio can re-fire on
+            // event updates — without this guard a single meeting generates
+            // multiple bot:join calls with distinct correlation IDs that the
+            // backend cannot deduplicate.
+            if let Ok(Some(existing)) = store::get_session_by_meet_url(&config, &meet_url) {
+                if existing.status != MeetingSessionStatus::Ended {
+                    tracing::debug!(
+                        meeting_id = %existing.id,
+                        "[meet:calendar] auto_join_policy=always, open session exists — skipping duplicate join"
+                    );
+                    return false;
+                }
+            }
+
             tracing::info!(
                 meet_url = %meet_url,
                 title = %event_title,
@@ -334,11 +350,33 @@ pub async fn handle_calendar_meeting_candidate(
                     "[meet:calendar] forcing listen-only auto-join (no reply anchor)"
                 );
             }
+
+            // Persist a session keyed by correlation_id so future trigger
+            // firings find the existing entry and skip (see dedup guard above).
+            let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+            let session = MeetingSession {
+                id: correlation_id.clone(),
+                meet_url: meet_url.clone(),
+                title: Some(event_title.clone()),
+                calendar_event_id: None,
+                status: MeetingSessionStatus::Joined,
+                source: AutoJoinSource::Calendar,
+                thread_id: None,
+                transcript_received: false,
+                summary_generated: false,
+                created_at_ms: now_ms,
+                updated_at_ms: now_ms,
+            };
+            if let Err(e) = store::create_session(&config, &session) {
+                tracing::warn!(
+                    error = %e,
+                    "[meet:calendar] session create failed for always-join; dedup best-effort only"
+                );
+            }
+
             // Auto-join transparency: announce the triggered join so
             // downstream consumers (UI banner, thread bus) can react
-            // (issue #3507 contract event). The Always path skips a Pending
-            // session, so meeting_id mirrors correlation_id as a stable
-            // per-attempt identifier.
+            // (issue #3507 contract event).
             publish_global(DomainEvent::MeetingAutoJoinTriggered {
                 meeting_id: correlation_id.clone(),
                 meet_url: meet_url.clone(),
@@ -540,6 +578,31 @@ fn is_meeting_url(s: &str) -> bool {
     MEETING_HOST_PATTERNS.iter().any(|pat| s.contains(pat))
 }
 
+/// Pull the first parseable meeting URL out of a free-form string.
+///
+/// Calendar `location` is free-form and commonly mixes a label with a URL
+/// (e.g. `"Zoom Meeting: https://zoom.us/j/123"`). Returning the raw string
+/// would produce a `meeting_url` that `url::Url::parse` later rejects, leaving
+/// Join/Skip buttons that silently fail. So scan whitespace-separated tokens,
+/// strip surrounding punctuation (including trailing `.`), and return the first
+/// token that both matches a known meeting host and parses as an http(s) URL.
+fn extract_meeting_url_from_text(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .map(|tok| {
+            tok.trim_matches(|c: char| {
+                matches!(
+                    c,
+                    '(' | ')' | '[' | ']' | '<' | '>' | ',' | ';' | '"' | '\'' | '.'
+                )
+            })
+        })
+        .filter(|tok| is_meeting_url(tok))
+        .find_map(|tok| {
+            let parsed = url::Url::parse(tok).ok()?;
+            matches!(parsed.scheme(), "http" | "https").then(|| parsed.to_string())
+        })
+}
+
 /// Extract a meeting URL from a Composio Google Calendar trigger payload.
 ///
 /// Supports Google Meet, Zoom, Teams, and Webex links. Searches:
@@ -571,10 +634,13 @@ fn extract_meet_url(payload: &serde_json::Value) -> Option<String> {
             }
         }
 
-        // location field (Zoom/Teams links are often pasted here)
+        // location field (Zoom/Teams links are often pasted here as free-form
+        // text, e.g. "Zoom Meeting: https://zoom.us/j/123"). Extract only the
+        // parseable URL token — returning the whole string would fail later
+        // validation in handle_join → validate_meeting_url.
         if let Some(loc) = root.get("location").and_then(|v| v.as_str()) {
-            if is_meeting_url(loc) {
-                return Some(loc.to_string());
+            if let Some(url) = extract_meeting_url_from_text(loc) {
+                return Some(url);
             }
         }
     }
@@ -1072,5 +1138,60 @@ mod tests {
         assert!(p.get("respondToParticipant").is_none());
         let p2 = build_action_payload("m-1", "https://meet.google.com/abc", "Standup", Some("  "));
         assert!(p2.get("respondToParticipant").is_none());
+    }
+
+    // ── extract_meeting_url_from_text ───────────────────────────
+
+    #[test]
+    fn extracts_url_from_free_form_location_with_label() {
+        assert_eq!(
+            extract_meeting_url_from_text("Zoom Meeting: https://zoom.us/j/123456789"),
+            Some("https://zoom.us/j/123456789".to_string())
+        );
+    }
+
+    #[test]
+    fn strips_surrounding_parens_from_url() {
+        assert_eq!(
+            extract_meeting_url_from_text("Join here (https://zoom.us/j/999),"),
+            Some("https://zoom.us/j/999".to_string())
+        );
+    }
+
+    #[test]
+    fn strips_trailing_period_from_url() {
+        assert_eq!(
+            extract_meeting_url_from_text("Link: https://zoom.us/j/123."),
+            Some("https://zoom.us/j/123".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_for_non_meeting_free_form() {
+        assert!(extract_meeting_url_from_text("Office kitchen, 2nd floor").is_none());
+    }
+
+    #[test]
+    fn extracts_zoom_from_free_form_location_field() {
+        let payload = json!({
+            "summary": "Team sync",
+            "location": "Zoom Meeting: https://zoom.us/j/987654321"
+        });
+        assert_eq!(
+            extract_meet_url(&payload).as_deref(),
+            Some("https://zoom.us/j/987654321")
+        );
+    }
+
+    #[test]
+    fn extracts_teams_from_free_form_location_field() {
+        let payload = json!({
+            "summary": "Planning",
+            "location": "MS Teams: https://teams.microsoft.com/l/meetup-join/abc"
+        });
+        assert_eq!(
+            extract_meet_url(&payload).as_deref(),
+            Some("https://teams.microsoft.com/l/meetup-join/abc")
+        );
     }
 }

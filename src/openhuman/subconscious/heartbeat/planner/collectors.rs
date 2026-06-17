@@ -460,7 +460,7 @@ fn extract_meeting_url_from_text(text: &str) -> Option<String> {
             tok.trim_matches(|c: char| {
                 matches!(
                     c,
-                    '(' | ')' | '[' | ']' | '<' | '>' | ',' | ';' | '"' | '\''
+                    '(' | ')' | '[' | ']' | '<' | '>' | ',' | ';' | '"' | '\'' | '.'
                 )
             })
         })
@@ -733,5 +733,18 @@ mod tests {
             "location": "Office kitchen"
         }));
         assert_eq!(extract_meeting_url_from_map(&map), None);
+    }
+
+    #[test]
+    fn extract_meeting_url_strips_trailing_period() {
+        // url::Url::parse accepts a trailing period as a path segment, but it
+        // produces a subtly different URL. Strip it at the token-trim level.
+        let map = map_from_value(serde_json::json!({
+            "location": "Join the call: https://zoom.us/j/999888777."
+        }));
+        assert_eq!(
+            extract_meeting_url_from_map(&map).as_deref(),
+            Some("https://zoom.us/j/999888777")
+        );
     }
 }
