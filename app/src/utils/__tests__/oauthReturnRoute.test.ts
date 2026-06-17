@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { setOAuthReturnRoute, takeOAuthReturnRoute } from '../oauthReturnRoute';
+import {
+  clearOAuthReturnRoute,
+  setOAuthReturnRoute,
+  takeOAuthReturnRoute,
+} from '../oauthReturnRoute';
 
 const STORAGE_KEY = 'openhuman:oauth:return-route';
 
@@ -8,11 +12,13 @@ describe('oauthReturnRoute', () => {
   afterEach(() => {
     sessionStorage.clear();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('stores a route and returns it once, clearing it afterwards', () => {
     setOAuthReturnRoute('/rewards');
-    expect(sessionStorage.getItem(STORAGE_KEY)).toBe('/rewards');
+    const stored = JSON.parse(sessionStorage.getItem(STORAGE_KEY) as string);
+    expect(stored.route).toBe('/rewards');
 
     expect(takeOAuthReturnRoute()).toBe('/rewards');
     // Cleared after read → falls back to the default on the next call.
@@ -24,7 +30,29 @@ describe('oauthReturnRoute', () => {
   });
 
   it('ignores a stored value that is not an in-app path', () => {
-    sessionStorage.setItem(STORAGE_KEY, 'https://evil.example.com');
+    sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ route: 'https://evil.example.com', ts: Date.now() })
+    );
+    expect(takeOAuthReturnRoute()).toBe('/connections');
+  });
+
+  it('ignores corrupt (non-JSON) stored values', () => {
+    sessionStorage.setItem(STORAGE_KEY, 'not-json');
+    expect(takeOAuthReturnRoute()).toBe('/connections');
+  });
+
+  it('ignores a stale route older than the freshness window', () => {
+    sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ route: '/rewards', ts: Date.now() - 6 * 60 * 1000 })
+    );
+    expect(takeOAuthReturnRoute()).toBe('/connections');
+  });
+
+  it('clearOAuthReturnRoute forgets a stored route', () => {
+    setOAuthReturnRoute('/rewards');
+    clearOAuthReturnRoute();
     expect(takeOAuthReturnRoute()).toBe('/connections');
   });
 
@@ -32,7 +60,6 @@ describe('oauthReturnRoute', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('storage unavailable');
     });
-    // Must not throw.
     expect(() => setOAuthReturnRoute('/rewards')).not.toThrow();
   });
 
@@ -41,5 +68,12 @@ describe('oauthReturnRoute', () => {
       throw new Error('storage unavailable');
     });
     expect(takeOAuthReturnRoute()).toBe('/connections');
+  });
+
+  it('clearOAuthReturnRoute swallows storage errors', () => {
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    expect(() => clearOAuthReturnRoute()).not.toThrow();
   });
 });

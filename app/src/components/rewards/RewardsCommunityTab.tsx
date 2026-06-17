@@ -5,7 +5,7 @@ import { useT } from '../../lib/i18n/I18nContext';
 import { callCoreRpc } from '../../services/coreRpcClient';
 import type { RewardsAchievement, RewardsSnapshot } from '../../types/rewards';
 import { DISCORD_INVITE_URL } from '../../utils/links';
-import { setOAuthReturnRoute } from '../../utils/oauthReturnRoute';
+import { clearOAuthReturnRoute, setOAuthReturnRoute } from '../../utils/oauthReturnRoute';
 import { openUrl } from '../../utils/openUrl';
 
 const log = createDebug('rewards:discord');
@@ -125,6 +125,9 @@ export default function RewardsCommunityTab({
       setConnectState('idle');
     } catch (err) {
       log('connect discord failed error=%s', err instanceof Error ? err.message : String(err));
+      // The flow won't reach oauth/success — drop the return route so it can't misroute a
+      // later OAuth completed from a different page.
+      clearOAuthReturnRoute();
       setConnectState('error');
     }
   }, []);

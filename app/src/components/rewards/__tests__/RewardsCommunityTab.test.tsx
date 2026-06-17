@@ -9,15 +9,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RewardsSnapshot } from '../../../types/rewards';
 
-const { openUrl, callCoreRpc, setOAuthReturnRoute } = vi.hoisted(() => ({
+const { openUrl, callCoreRpc, setOAuthReturnRoute, clearOAuthReturnRoute } = vi.hoisted(() => ({
   openUrl: vi.fn(),
   callCoreRpc: vi.fn(),
   setOAuthReturnRoute: vi.fn(),
+  clearOAuthReturnRoute: vi.fn(),
 }));
 
 vi.mock('../../../utils/openUrl', () => ({ openUrl }));
 vi.mock('../../../services/coreRpcClient', () => ({ callCoreRpc }));
-vi.mock('../../../utils/oauthReturnRoute', () => ({ setOAuthReturnRoute }));
+vi.mock('../../../utils/oauthReturnRoute', () => ({ setOAuthReturnRoute, clearOAuthReturnRoute }));
 
 function buildSnapshot(): RewardsSnapshot {
   return {
@@ -156,6 +157,9 @@ describe('RewardsCommunityTab — Connect Discord', () => {
     await waitFor(() =>
       expect(screen.getByTestId('rewards-connect-discord-error')).toBeInTheDocument()
     );
+    // The flow failed before success → the stored return route is cleared so it can't misroute
+    // a later OAuth completed from another page.
+    expect(clearOAuthReturnRoute).toHaveBeenCalled();
   });
 
   it('renders the connected username pill and footer when linked', async () => {

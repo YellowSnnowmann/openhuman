@@ -17,7 +17,7 @@ import {
   oauthAuthReadinessUserMessage,
   waitForOAuthAuthReadiness,
 } from './oauthAppVersionGate';
-import { takeOAuthReturnRoute } from './oauthReturnRoute';
+import { clearOAuthReturnRoute, takeOAuthReturnRoute } from './oauthReturnRoute';
 import { openUrl } from './openUrl';
 import { storeSession } from './tauriCommands';
 import { isTauri as coreIsTauri } from './tauriCommands/common';
@@ -430,6 +430,9 @@ const handleOAuthDeepLink = async (parsed: URL) => {
     // Return to whichever page started the connect (e.g. the Rewards tab); defaults to /connections.
     window.location.hash = takeOAuthReturnRoute();
   } else if (path === 'error') {
+    // The flow failed — drop any remembered return route so it can't leak into a later
+    // unrelated OAuth success and misroute the user.
+    clearOAuthReturnRoute();
     const provider = sanitizeOAuthDiagnosticValue(
       parsed.searchParams.get('provider'),
       'unknown',
