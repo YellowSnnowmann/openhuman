@@ -17,6 +17,7 @@ import {
   oauthAuthReadinessUserMessage,
   waitForOAuthAuthReadiness,
 } from './oauthAppVersionGate';
+import { takeOAuthReturnRoute } from './oauthReturnRoute';
 import { openUrl } from './openUrl';
 import { storeSession } from './tauriCommands';
 import { isTauri as coreIsTauri } from './tauriCommands/common';
@@ -426,7 +427,8 @@ const handleOAuthDeepLink = async (parsed: URL) => {
       `[DeepLink] OAuth success for integration=${integrationId}${toolkit ? ` toolkit=${toolkit}` : ''}`
     );
     window.dispatchEvent(new CustomEvent('oauth:success', { detail: { integrationId, toolkit } }));
-    window.location.hash = '/connections';
+    // Return to whichever page started the connect (e.g. the Rewards tab); defaults to /connections.
+    window.location.hash = takeOAuthReturnRoute();
   } else if (path === 'error') {
     const provider = sanitizeOAuthDiagnosticValue(
       parsed.searchParams.get('provider'),

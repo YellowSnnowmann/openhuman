@@ -16,6 +16,7 @@ function buildSnapshot(): RewardsSnapshot {
     discord: {
       linked: true,
       discordId: 'discord-1',
+      username: 'cooluser',
       inviteUrl: 'https://discord.gg/example',
       membershipStatus: 'member',
     },
