@@ -3,9 +3,10 @@
 //! After a Google Meet call ends, the raw transcript is turned into a
 //! structured [`MeetingSummary`] (headline + key points + action items) **and**
 //! a short context label (e.g. "Q3 Planning") via a single LLM call. The
-//! summary is appended to the meeting thread; the label is added alongside the
-//! shared "Meetings" label so each call is distinguishable from the others in
-//! the same group.
+//! summary is appended to the meeting thread; the label becomes the thread
+//! *title* so each call is distinguishable from the others in the shared
+//! "Meetings" group (it is not added as a second label, which would pollute the
+//! shared label taxonomy with a unique, never-reused entry per call).
 //!
 //! Generation is best-effort: callers treat a failure as "no summary" and fall
 //! back to the plain transcript thread rather than aborting thread creation.
@@ -20,10 +21,12 @@ use super::types::{ActionItem, ActionItemKind, MeetingSummary};
 
 const LOG_PREFIX: &str = "[agent_meetings::summary]";
 
-/// Cap transcript characters fed to the model so a marathon call doesn't blow
-/// the context window. The tail is kept (most recent) — summaries care most
-/// about conclusions and action items, which land at the end.
-const MAX_TRANSCRIPT_CHARS: usize = 24_000;
+/// Cap on the transcript size (in **bytes**, matching `str::len`) fed to the
+/// model so a marathon call doesn't blow the context window. The tail is kept
+/// (most recent) — summaries care most about conclusions and action items,
+/// which land at the end. For multibyte (e.g. CJK) transcripts the effective
+/// character budget is correspondingly smaller.
+const MAX_TRANSCRIPT_BYTES: usize = 24_000;
 
 /// Workload role used to resolve the summarisation provider/model from config.
 const SUMMARIZATION_ROLE: &str = "summarization";
@@ -200,7 +203,7 @@ fn render_transcript(turns: &[BackendMeetTurn]) -> String {
         out.push_str(text);
         out.push('\n');
     }
-    cap_tail(&out, MAX_TRANSCRIPT_CHARS)
+    cap_tail(&out, MAX_TRANSCRIPT_BYTES)
 }
 
 /// Keep the last `max` bytes of `s`, trimmed forward to a char + line boundary.
@@ -324,7 +327,7 @@ mod tests {
         let mut turns = filler;
         turns.push(turn("assistant", "FINAL DECISION: ship Friday."));
         let rendered = render_transcript(&turns);
-        assert!(rendered.len() <= MAX_TRANSCRIPT_CHARS + 64);
+        assert!(rendered.len() <= MAX_TRANSCRIPT_BYTES + 64);
         assert!(rendered.starts_with("…(earlier transcript truncated)…\n"));
         // The most recent turn (where decisions land) survives truncation.
         assert!(rendered.contains("FINAL DECISION: ship Friday."));
@@ -354,6 +357,70 @@ mod tests {
             .await
             .expect_err("blank transcript should error");
         assert!(err.contains("no usable turns"), "unexpected error: {err}");
+    }
+
+    /// Scripted provider that returns a fixed reply, so the full
+    /// generate → parse → map path can be exercised without any network.
+    struct ScriptedProvider {
+        reply: String,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::openhuman::inference::provider::Provider for ScriptedProvider {
+        async fn chat_with_system(
+            &self,
+            _system_prompt: Option<&str>,
+            _message: &str,
+            _model: &str,
+            _temperature: f64,
+        ) -> anyhow::Result<String> {
+            Ok(self.reply.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_meeting_summary_parses_and_maps_provider_reply() {
+        // Inject a scripted provider via the factory test override so
+        // `create_chat_provider` hands back our mock instead of resolving a
+        // real provider — the call stays network-free. The guard clears the
+        // override on drop.
+        let reply = "Here you go:\n```json\n{\"label\":\"Q3 Roadmap\",\
+            \"headline\":\"Agreed to ship Friday.\",\
+            \"key_points\":[\"Ship Friday\",\"QA owns sign-off\"],\
+            \"action_items\":[{\"description\":\"Send release notes\",\
+            \"kind\":\"executable\",\"tool_name\":\"gmail\",\"assignee\":\"Sam\"},\
+            {\"description\":\"Book retro\",\"kind\":\"advisory\",\
+            \"tool_name\":null,\"assignee\":null}]}\n```";
+        let _guard =
+            crate::openhuman::inference::provider::factory::test_provider_override::install(
+                std::sync::Arc::new(ScriptedProvider {
+                    reply: reply.to_string(),
+                }),
+            );
+
+        let turns = vec![
+            turn("user", "Let's ship Friday."),
+            turn("assistant", "Noted, QA owns sign-off."),
+        ];
+        let generated = generate_meeting_summary(&turns, Some("meet-42"))
+            .await
+            .expect("scripted reply should parse");
+
+        // Label is sanitised from the model reply.
+        assert_eq!(generated.label, "Q3 Roadmap");
+        // correlation_id flows through to the summary's meeting_id.
+        assert_eq!(generated.summary.meeting_id, "meet-42");
+        assert_eq!(generated.summary.headline, "Agreed to ship Friday.");
+        assert_eq!(generated.summary.key_points.len(), 2);
+        // Action items are mapped to executable/advisory with tool/assignee.
+        assert_eq!(generated.summary.action_items.len(), 2);
+        let exec = &generated.summary.action_items[0];
+        assert!(matches!(exec.kind, ActionItemKind::Executable));
+        assert_eq!(exec.tool_name.as_deref(), Some("gmail"));
+        assert_eq!(exec.assignee.as_deref(), Some("Sam"));
+        let advisory = &generated.summary.action_items[1];
+        assert!(matches!(advisory.kind, ActionItemKind::Advisory));
+        assert!(advisory.tool_name.is_none());
     }
 
     #[test]

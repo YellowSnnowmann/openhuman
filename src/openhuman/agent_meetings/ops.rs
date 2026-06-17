@@ -25,6 +25,13 @@ const ALLOWED_HOSTS: &[(&str, &str)] = &[
     ("webex.com", "webex"),
 ];
 
+/// Upper bound on the best-effort post-call summarisation call. The provider
+/// has a 120s per-request timeout and the reliable wrapper retries transient
+/// failures with backoff, so without a bound a slow/flaky `summarization`
+/// provider could stall the post-call persistence pipeline for minutes. On
+/// timeout we fall back to the plain-transcript thread.
+const SUMMARY_GENERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 fn transcript_turns_to_chat_batch(
     turns: &[BackendMeetTurn],
     duration_ms: u64,
@@ -132,19 +139,8 @@ pub async fn create_meeting_thread_with_transcript(
         return Ok(());
     }
 
-    // Generate a structured post-call summary + short context label up front
-    // (best-effort). On failure we fall back to a plain "Meetings" thread with
-    // just the transcript — thread creation must not depend on the LLM.
-    let generated =
-        match super::summary::generate_meeting_summary(turns, correlation_id.as_deref()).await {
-            Ok(g) => Some(g),
-            Err(e) => {
-                tracing::warn!("[agent_meetings] summary generation failed: {e}");
-                None
-            }
-        };
-
-    // Format transcript body.
+    // Format the transcript body first — this is the durable artifact and must
+    // not depend on (or wait on) the summarisation LLM call.
     let mut body = String::new();
     let duration_min = duration_ms / 60_000;
     body.push_str(&format!("Duration: {duration_min} min\n\n"));
@@ -164,21 +160,15 @@ pub async fn create_meeting_thread_with_transcript(
         body.push_str(&format!("**{role_label}**: {text}\n\n"));
     }
 
-    // Context label (e.g. "Q3 Roadmap") generated from the meeting, if any.
-    let context_label = generated
-        .as_ref()
-        .map(|g| g.label.trim())
-        .filter(|l| !l.is_empty())
-        .map(str::to_string);
-
-    // 1. Create thread under the shared "Meetings" label, plus the per-meeting
-    //    context label so each call is distinguishable within the group.
-    let mut labels = vec!["Meetings".to_string()];
-    if let Some(label) = &context_label {
-        labels.push(label.clone());
-    }
+    // 1. Create the thread under the shared "Meetings" label and append the
+    //    transcript *before* any LLM work, so thread/transcript persistence (and
+    //    the memory-tree ingest that runs after this returns) never gate on
+    //    summarisation. The per-meeting topic is applied later as the thread
+    //    *title* only — adding it as a second label would accrue a unique,
+    //    never-reused label per call and pollute the shared label taxonomy,
+    //    while the title already disambiguates calls in the list.
     let create_req = CreateConversationThreadRequest {
-        labels: Some(labels),
+        labels: Some(vec!["Meetings".to_string()]),
         personality_id: None,
     };
     let outcome = ops::thread_create_new(create_req)
@@ -192,23 +182,8 @@ pub async fn create_meeting_thread_with_transcript(
         .id
         .clone();
 
-    // 1a. Rename the thread to the context label so the meeting is identifiable
-    //     in the thread list (the default title is a generic "Chat <date>").
-    if let Some(title) = &context_label {
-        if let Err(e) = ops::thread_update_title(UpdateConversationThreadTitleRequest {
-            thread_id: thread_id.clone(),
-            title: title.clone(),
-        })
-        .await
-        {
-            tracing::warn!(
-                thread_id = %thread_id,
-                "[agent_meetings] failed to set meeting thread title: {e}"
-            );
-        }
-    }
-
-    // 2. Append the transcript as a message.
+    // 2. Append the transcript as a message. The durable record is now complete
+    //    regardless of whether summarisation succeeds below.
     let msg = ConversationMessageRecord {
         id: uuid::Uuid::new_v4().to_string(),
         content: body,
@@ -228,8 +203,52 @@ pub async fn create_meeting_thread_with_transcript(
         );
     }
 
-    // 3. Append the structured summary as a final message, so the thread ends
-    //    with the headline / key points / action items.
+    // 3. Best-effort enrichment: generate a structured post-call summary + short
+    //    context label. Bounded by `SUMMARY_GENERATION_TIMEOUT` so a slow/flaky
+    //    provider can never dominate the path. Any failure or timeout logs a
+    //    warning and leaves the plain-transcript thread untouched.
+    let generated = match tokio::time::timeout(
+        SUMMARY_GENERATION_TIMEOUT,
+        super::summary::generate_meeting_summary(turns, correlation_id.as_deref()),
+    )
+    .await
+    {
+        Ok(Ok(g)) => Some(g),
+        Ok(Err(e)) => {
+            tracing::warn!("[agent_meetings] summary generation failed: {e}");
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                timeout_secs = SUMMARY_GENERATION_TIMEOUT.as_secs(),
+                "[agent_meetings] summary generation timed out"
+            );
+            None
+        }
+    };
+
+    // 3a. Title the thread with the context label (e.g. "Q3 Roadmap") so the
+    //     meeting is identifiable in the list (default title is "Chat <date>").
+    let context_label = generated
+        .as_ref()
+        .map(|g| g.label.trim())
+        .filter(|l| !l.is_empty());
+    if let Some(title) = context_label {
+        if let Err(e) = ops::thread_update_title(UpdateConversationThreadTitleRequest {
+            thread_id: thread_id.clone(),
+            title: title.to_string(),
+        })
+        .await
+        {
+            tracing::warn!(
+                thread_id = %thread_id,
+                "[agent_meetings] failed to set meeting thread title: {e}"
+            );
+        }
+    }
+
+    // 3b. Append the structured summary as a closing message, so the thread ends
+    //     with the headline / key points / action items.
     if let Some(g) = &generated {
         let summary_body = super::summary::format_summary_markdown(&g.summary, &g.label);
         let summary_msg = ConversationMessageRecord {
