@@ -25,6 +25,7 @@ use async_trait::async_trait;
 use crate::core::event_bus::{
     publish_global, subscribe_global, DomainEvent, EventHandler, SubscriptionHandle,
 };
+use crate::openhuman::app_state::peek_cached_current_user_identity;
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::notifications::bus::publish_core_notification;
 use crate::openhuman::notifications::types::{
@@ -128,14 +129,120 @@ impl EventHandler for MeetCalendarSubscriber {
             .unwrap_or("Untitled meeting")
             .to_string();
 
+        // Resolve the meeting owner (the human the bot should reply to) so the
+        // auto-join can pass `respondToParticipant` to the backend bot. The
+        // calendar event payload carries the user as a "self" attendee whose
+        // displayName matches their Google Meet caption label exactly — the
+        // most accurate anchor. Falls back to the signed-in account identity.
+        let owner_display_name =
+            owner_name_from_event_payload(payload).or_else(fallback_owner_from_account);
+
         tracing::info!(
             trigger = %trigger,
             meet_url = %meet_url,
             title = %event_title,
+            owner_resolved = owner_display_name.is_some(),
             "[meet:calendar] detected imminent Google Meet meeting"
         );
 
-        handle_calendar_meeting_candidate(meet_url, event_title).await;
+        handle_calendar_meeting_candidate(meet_url, event_title, owner_display_name).await;
+    }
+}
+
+/// Extract the meeting owner's display name from a Google Calendar event
+/// payload — the participant the bot should anchor its replies to.
+///
+/// Google Calendar marks the connected user's own attendee/organizer/creator
+/// record with `self: true`. That record's `displayName` is the same label
+/// Google Meet shows in caption regions, so it is the most reliable anchor for
+/// the backend bot's `respondToParticipant` gate. Falls back to the local part
+/// of the `self` email when no display name is present.
+fn owner_name_from_event_payload(payload: &serde_json::Value) -> Option<String> {
+    for root in [payload, payload.get("data").unwrap_or(payload)] {
+        // attendees[] with self == true
+        if let Some(attendees) = root.get("attendees").and_then(|a| a.as_array()) {
+            for att in attendees {
+                if att.get("self").and_then(|v| v.as_bool()) == Some(true) {
+                    if let Some(name) = name_or_email_local_part(att) {
+                        return Some(name);
+                    }
+                }
+            }
+        }
+
+        // organizer / creator with self == true
+        for key in ["organizer", "creator"] {
+            if let Some(person) = root.get(key) {
+                if person.get("self").and_then(|v| v.as_bool()) == Some(true) {
+                    if let Some(name) = name_or_email_local_part(person) {
+                        return Some(name);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Pull a usable display name from a calendar person object: prefer
+/// `displayName`, else the local part of `email` (before the `@`).
+fn name_or_email_local_part(person: &serde_json::Value) -> Option<String> {
+    let trimmed = |v: Option<&serde_json::Value>| -> Option<String> {
+        v.and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+
+    if let Some(name) = trimmed(person.get("displayName")) {
+        return Some(name);
+    }
+    let email = trimmed(person.get("email"))?;
+    let local = email.split('@').next().unwrap_or(&email).trim();
+    if local.is_empty() {
+        None
+    } else {
+        Some(local.to_string())
+    }
+}
+
+/// Decide the effective `listen_only` mode for an auto-join.
+///
+/// Reply mode needs a known anchor (the participant the bot replies to). When
+/// no anchor resolved we force listen-only — the bot still joins, transcribes,
+/// and summarizes as configured, but never speaks — instead of replying to
+/// every speaker indiscriminately.
+pub(crate) fn effective_listen_only(requested_listen_only: bool, has_anchor: bool) -> bool {
+    requested_listen_only || !has_anchor
+}
+
+/// Fallback owner identity from the signed-in OpenHuman account when the
+/// calendar payload carries no `self` attendee (e.g. heartbeat-polled events
+/// that surface only a title + URL). Network-free cache peek.
+fn fallback_owner_from_account() -> Option<String> {
+    let identity = peek_cached_current_user_identity()?;
+    owner_from_identity(identity.name.as_deref(), identity.email.as_deref())
+}
+
+/// Pure: derive a reply anchor from an identity's `(name, email)`. Prefers a
+/// non-blank name, else the local part of the email. Returns `None` when
+/// neither yields a usable value.
+fn owner_from_identity(name: Option<&str>, email: Option<&str>) -> Option<String> {
+    let clean = |s: Option<&str>| -> Option<String> {
+        s.map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+
+    if let Some(name) = clean(name) {
+        return Some(name);
+    }
+    let email = clean(email)?;
+    let local = email.split('@').next().unwrap_or(&email).trim();
+    if local.is_empty() {
+        None
+    } else {
+        Some(local.to_string())
     }
 }
 
@@ -163,7 +270,26 @@ pub(crate) fn auto_join_policy_owns_notification(
 /// This is shared by live Composio calendar triggers and the heartbeat
 /// calendar poller. Both sources can discover the same imminent meeting; the
 /// Pending-session dedupe below keeps the ask flow to one actionable prompt.
-pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: String) -> bool {
+pub async fn handle_calendar_meeting_candidate(
+    meet_url: String,
+    event_title: String,
+    owner_display_name: Option<String>,
+) -> bool {
+    // Resolve the reply anchor. Callers without payload context (the heartbeat
+    // poller passes `None`) fall back to the signed-in account identity here so
+    // the bot still knows who to reply to.
+    let owner_display_name = owner_display_name
+        .or_else(fallback_owner_from_account)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let has_anchor = owner_display_name.is_some();
+    if !has_anchor {
+        tracing::warn!(
+            meet_url = %meet_url,
+            "[meet:calendar] no reply anchor resolved — auto-join will fall back to listen-only"
+        );
+    }
+
     // Check the auto-join policy.
     let config = match config_rpc::load_config_with_timeout().await {
         Ok(c) => c,
@@ -199,8 +325,15 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
             );
             let correlation_id = uuid::Uuid::new_v4().to_string();
             // Honor the user's listen-only default (issue #3511 settings
-            // UI) instead of hardcoding passive-listener mode.
-            let listen_only = config.meet.listen_only_default;
+            // UI), but force listen-only when no reply anchor resolved so the
+            // bot transcribes/summarizes instead of replying to everyone.
+            let listen_only = effective_listen_only(config.meet.listen_only_default, has_anchor);
+            if listen_only && !config.meet.listen_only_default {
+                tracing::warn!(
+                    meet_url = %meet_url,
+                    "[meet:calendar] forcing listen-only auto-join (no reply anchor)"
+                );
+            }
             // Auto-join transparency: announce the triggered join so
             // downstream consumers (UI banner, thread bus) can react
             // (issue #3507 contract event). The Always path skips a Pending
@@ -217,6 +350,7 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                 event_title,
                 correlation_id,
                 listen_only,
+                owner_display_name,
             ));
             false
         }
@@ -284,11 +418,15 @@ pub async fn handle_calendar_meeting_candidate(meet_url: String, event_title: St
                 source: "calendar".to_string(),
             });
 
-            let action_payload = serde_json::json!({
-                "meetingId": meeting_id,
-                "meetUrl": meet_url,
-                "title": event_title,
-            });
+            // Carry the resolved reply anchor through the notification buttons so
+            // `handle_notification_action` can pass `respondToParticipant` to the
+            // backend bot when the user chooses "Join & reply".
+            let action_payload = build_action_payload(
+                &meeting_id,
+                &meet_url,
+                &event_title,
+                owner_display_name.as_deref(),
+            );
             let action = |action_id: &str, label: &str| CoreNotificationAction {
                 action_id: action_id.to_string(),
                 label: label.to_string(),
@@ -474,6 +612,7 @@ async fn auto_join_meeting(
     event_title: String,
     correlation_id: String,
     listen_only: bool,
+    owner_display_name: Option<String>,
 ) {
     use crate::openhuman::socket::global_socket_manager;
     use serde_json::json;
@@ -486,18 +625,19 @@ async fn auto_join_meeting(
         }
     };
 
-    let payload = json!({
-        "meetUrl": meet_url,
-        "displayName": "Tiny",
-        "correlationId": correlation_id,
-        "listenOnly": listen_only,
-    });
+    let payload = build_auto_join_payload(
+        &meet_url,
+        &correlation_id,
+        listen_only,
+        owner_display_name.as_deref(),
+    );
 
     tracing::info!(
         meet_url = %meet_url,
         title = %event_title,
         correlation_id = %correlation_id,
         listen_only = listen_only,
+        respond_to = ?owner_display_name,
         "[meet:calendar] emitting bot:join"
     );
 
@@ -507,6 +647,54 @@ async fn auto_join_meeting(
             "[meet:calendar] failed to emit bot:join for auto-join"
         );
     }
+}
+
+/// Build the notification action payload carried by the AskEachTime buttons.
+///
+/// Pure function so the `respondToParticipant` anchor wiring is unit-testable.
+/// A `None`/empty owner omits `respondToParticipant`.
+fn build_action_payload(
+    meeting_id: &str,
+    meet_url: &str,
+    title: &str,
+    owner_display_name: Option<&str>,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "meetingId": meeting_id,
+        "meetUrl": meet_url,
+        "title": title,
+    });
+    if let Some(map) = payload.as_object_mut() {
+        if let Some(owner) = owner_display_name.map(str::trim).filter(|s| !s.is_empty()) {
+            map.insert("respondToParticipant".to_string(), serde_json::json!(owner));
+        }
+    }
+    payload
+}
+
+/// Build the `bot:join` Socket.IO payload for a calendar auto-join.
+///
+/// Pure function so the `respondToParticipant` anchor wiring is unit-testable
+/// without a live socket. A `None`/empty owner omits `respondToParticipant`,
+/// which the backend bot treats as "respond to everyone".
+fn build_auto_join_payload(
+    meet_url: &str,
+    correlation_id: &str,
+    listen_only: bool,
+    owner_display_name: Option<&str>,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "meetUrl": meet_url,
+        "displayName": "Tiny",
+        "correlationId": correlation_id,
+        "listenOnly": listen_only,
+    });
+    if let Some(map) = payload.as_object_mut() {
+        if let Some(owner) = owner_display_name.map(str::trim).filter(|s| !s.is_empty()) {
+            map.insert("respondToParticipant".to_string(), serde_json::json!(owner));
+        }
+    }
+    payload
 }
 
 #[cfg(test)]
@@ -705,5 +893,184 @@ mod tests {
     fn never_does_not_own_notification() {
         use crate::openhuman::config::schema::AutoJoinPolicy;
         assert!(!auto_join_policy_owns_notification(&AutoJoinPolicy::Never));
+    }
+
+    // ── owner_name_from_event_payload ───────────────────────────
+
+    #[test]
+    fn owner_from_self_attendee_display_name() {
+        let payload = json!({
+            "summary": "Standup",
+            "attendees": [
+                { "email": "bob@x.com", "displayName": "Bob" },
+                { "email": "me@x.com", "self": true, "displayName": "Aditya L" },
+            ]
+        });
+        assert_eq!(
+            owner_name_from_event_payload(&payload).as_deref(),
+            Some("Aditya L")
+        );
+    }
+
+    #[test]
+    fn owner_from_self_attendee_email_local_part_when_no_name() {
+        let payload = json!({
+            "attendees": [
+                { "email": "aditya@syvora.com", "self": true },
+            ]
+        });
+        assert_eq!(
+            owner_name_from_event_payload(&payload).as_deref(),
+            Some("aditya")
+        );
+    }
+
+    #[test]
+    fn owner_from_nested_data_attendees() {
+        let payload = json!({
+            "data": {
+                "attendees": [
+                    { "email": "me@x.com", "self": true, "displayName": "Nested Me" },
+                ]
+            }
+        });
+        assert_eq!(
+            owner_name_from_event_payload(&payload).as_deref(),
+            Some("Nested Me")
+        );
+    }
+
+    #[test]
+    fn owner_from_organizer_self() {
+        let payload = json!({
+            "organizer": { "email": "org@x.com", "self": true, "displayName": "Organizer" }
+        });
+        assert_eq!(
+            owner_name_from_event_payload(&payload).as_deref(),
+            Some("Organizer")
+        );
+    }
+
+    #[test]
+    fn owner_none_when_no_self_record() {
+        let payload = json!({
+            "attendees": [
+                { "email": "bob@x.com", "displayName": "Bob" },
+            ],
+            "organizer": { "email": "org@x.com", "displayName": "Org" }
+        });
+        assert!(owner_name_from_event_payload(&payload).is_none());
+    }
+
+    #[test]
+    fn owner_ignores_blank_display_name_falls_to_email() {
+        let payload = json!({
+            "attendees": [
+                { "email": "carol@x.com", "self": true, "displayName": "   " },
+            ]
+        });
+        assert_eq!(
+            owner_name_from_event_payload(&payload).as_deref(),
+            Some("carol")
+        );
+    }
+
+    // ── build_auto_join_payload ─────────────────────────────────
+
+    #[test]
+    fn auto_join_payload_includes_respond_to_participant() {
+        let p = build_auto_join_payload(
+            "https://meet.google.com/abc",
+            "corr-1",
+            false,
+            Some("Aditya"),
+        );
+        assert_eq!(p["respondToParticipant"], json!("Aditya"));
+        assert_eq!(p["displayName"], json!("Tiny"));
+        assert_eq!(p["listenOnly"], json!(false));
+        assert_eq!(p["correlationId"], json!("corr-1"));
+    }
+
+    #[test]
+    fn auto_join_payload_omits_respond_to_participant_when_absent() {
+        let p = build_auto_join_payload("https://meet.google.com/abc", "corr-1", true, None);
+        assert!(p.get("respondToParticipant").is_none());
+    }
+
+    #[test]
+    fn auto_join_payload_omits_respond_to_participant_when_blank() {
+        let p = build_auto_join_payload("https://meet.google.com/abc", "corr-1", true, Some("   "));
+        assert!(p.get("respondToParticipant").is_none());
+    }
+
+    // ── effective_listen_only ───────────────────────────────────
+
+    #[test]
+    fn listen_only_forced_when_no_anchor() {
+        // Reply requested (listen_only=false) but no anchor → forced listen-only.
+        assert!(effective_listen_only(false, false));
+    }
+
+    #[test]
+    fn reply_mode_kept_when_anchor_present() {
+        assert!(!effective_listen_only(false, true));
+    }
+
+    #[test]
+    fn listen_only_stays_listen_only_regardless_of_anchor() {
+        assert!(effective_listen_only(true, true));
+        assert!(effective_listen_only(true, false));
+    }
+
+    // ── owner_from_identity ─────────────────────────────────────
+
+    #[test]
+    fn owner_from_identity_prefers_name() {
+        assert_eq!(
+            owner_from_identity(Some("Shanu Goyanka"), Some("shanu@x.com")).as_deref(),
+            Some("Shanu Goyanka")
+        );
+    }
+
+    #[test]
+    fn owner_from_identity_falls_back_to_email_local_part() {
+        assert_eq!(
+            owner_from_identity(Some("  "), Some("shanu@x.com")).as_deref(),
+            Some("shanu")
+        );
+        assert_eq!(
+            owner_from_identity(None, Some("aditya@syvora.com")).as_deref(),
+            Some("aditya")
+        );
+    }
+
+    #[test]
+    fn owner_from_identity_none_when_both_blank() {
+        assert!(owner_from_identity(None, None).is_none());
+        assert!(owner_from_identity(Some("  "), Some("   ")).is_none());
+    }
+
+    // ── build_action_payload ────────────────────────────────────
+
+    #[test]
+    fn action_payload_includes_respond_to_participant() {
+        let p = build_action_payload(
+            "m-1",
+            "https://meet.google.com/abc",
+            "Standup",
+            Some("Shanu Goyanka"),
+        );
+        assert_eq!(p["meetingId"], json!("m-1"));
+        assert_eq!(p["meetUrl"], json!("https://meet.google.com/abc"));
+        assert_eq!(p["title"], json!("Standup"));
+        assert_eq!(p["respondToParticipant"], json!("Shanu Goyanka"));
+    }
+
+    #[test]
+    fn action_payload_omits_respond_to_participant_when_absent_or_blank() {
+        let p = build_action_payload("m-1", "https://meet.google.com/abc", "Standup", None);
+        assert!(p.get("respondToParticipant").is_none());
+        let p2 = build_action_payload("m-1", "https://meet.google.com/abc", "Standup", Some("  "));
+        assert!(p2.get("respondToParticipant").is_none());
     }
 }

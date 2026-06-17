@@ -157,6 +157,10 @@ pub async fn evaluate_and_dispatch(config: &Config, now: DateTime<Utc>) -> Plann
                     crate::openhuman::agent_meetings::calendar::handle_calendar_meeting_candidate(
                         meeting_url,
                         event.title.clone(),
+                        // Heartbeat-polled events carry only a title + URL; the
+                        // candidate handler resolves the reply anchor from the
+                        // signed-in account identity.
+                        None,
                     )
                     .await;
                 if owns_notification {
