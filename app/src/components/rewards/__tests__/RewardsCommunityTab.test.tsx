@@ -9,16 +9,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RewardsSnapshot } from '../../../types/rewards';
 
-const { openUrl, callCoreRpc, setOAuthReturnRoute, clearOAuthReturnRoute } = vi.hoisted(() => ({
+const { openUrl, callCoreRpc, setOAuthReturnRoute } = vi.hoisted(() => ({
   openUrl: vi.fn(),
   callCoreRpc: vi.fn(),
   setOAuthReturnRoute: vi.fn(),
-  clearOAuthReturnRoute: vi.fn(),
 }));
 
 vi.mock('../../../utils/openUrl', () => ({ openUrl }));
 vi.mock('../../../services/coreRpcClient', () => ({ callCoreRpc }));
-vi.mock('../../../utils/oauthReturnRoute', () => ({ setOAuthReturnRoute, clearOAuthReturnRoute }));
+vi.mock('../../../utils/oauthReturnRoute', () => ({ setOAuthReturnRoute }));
 
 function buildSnapshot(): RewardsSnapshot {
   return {
@@ -119,7 +118,8 @@ describe('RewardsCommunityTab — Connect Discord', () => {
     fireEvent.click(screen.getByTestId('rewards-connect-discord'));
 
     await waitFor(() => expect(openUrl).toHaveBeenCalledWith('https://discord.com/oauth'));
-    expect(setOAuthReturnRoute).toHaveBeenCalledWith('/rewards');
+    // Return route is persisted only after the consent URL launches.
+    await waitFor(() => expect(setOAuthReturnRoute).toHaveBeenCalledWith('/rewards'));
     expect(callCoreRpc).toHaveBeenCalledWith({
       method: 'openhuman.auth.oauth_connect',
       params: { provider: 'discord' },
@@ -157,9 +157,8 @@ describe('RewardsCommunityTab — Connect Discord', () => {
     await waitFor(() =>
       expect(screen.getByTestId('rewards-connect-discord-error')).toBeInTheDocument()
     );
-    // The flow failed before success → the stored return route is cleared so it can't misroute
-    // a later OAuth completed from another page.
-    expect(clearOAuthReturnRoute).toHaveBeenCalled();
+    // A failed initiation must not persist any return route (it's only set after launch).
+    expect(setOAuthReturnRoute).not.toHaveBeenCalled();
   });
 
   it('renders the connected username pill and footer when linked', async () => {

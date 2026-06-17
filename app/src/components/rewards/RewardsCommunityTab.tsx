@@ -5,7 +5,7 @@ import { useT } from '../../lib/i18n/I18nContext';
 import { callCoreRpc } from '../../services/coreRpcClient';
 import type { RewardsAchievement, RewardsSnapshot } from '../../types/rewards';
 import { DISCORD_INVITE_URL } from '../../utils/links';
-import { clearOAuthReturnRoute, setOAuthReturnRoute } from '../../utils/oauthReturnRoute';
+import { setOAuthReturnRoute } from '../../utils/oauthReturnRoute';
 import { openUrl } from '../../utils/openUrl';
 
 const log = createDebug('rewards:discord');
@@ -108,8 +108,6 @@ export default function RewardsCommunityTab({
     log('connect discord requested');
     setConnectState('connecting');
     try {
-      // Return to the Rewards tab once the OAuth success deep link resolves.
-      setOAuthReturnRoute('/rewards');
       const response = await callCoreRpc<{ result: { oauthUrl?: string } }>({
         method: 'openhuman.auth.oauth_connect',
         params: { provider: 'discord' },
@@ -120,14 +118,14 @@ export default function RewardsCommunityTab({
       }
       log('opening discord oauth consent url');
       await openUrl(oauthUrl);
+      // Persist the return route only after the consent URL actually launched, so a failed
+      // initiation never leaves a stale route that could misroute a later OAuth success.
+      setOAuthReturnRoute('/rewards');
       // Reset so the button is usable again if the user cancels; once the snapshot
       // refetches with discord.linked the connected state takes over.
       setConnectState('idle');
     } catch (err) {
       log('connect discord failed error=%s', err instanceof Error ? err.message : String(err));
-      // The flow won't reach oauth/success — drop the return route so it can't misroute a
-      // later OAuth completed from a different page.
-      clearOAuthReturnRoute();
       setConnectState('error');
     }
   }, []);
