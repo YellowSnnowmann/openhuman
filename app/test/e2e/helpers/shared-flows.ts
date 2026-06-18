@@ -348,7 +348,8 @@ export async function navigateViaHash(hash) {
     return;
   }
 
-  const label = HASH_TO_SIDEBAR_LABEL[normalized];
+  // Resolve redirect before label lookup so that e.g. /home → Chat works on Mac2.
+  const label = HASH_TO_SIDEBAR_LABEL[resolveRedirect(normalized)];
   if (label) {
     try {
       await clickText(label, 12_000);

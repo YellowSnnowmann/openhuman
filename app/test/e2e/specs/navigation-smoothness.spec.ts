@@ -158,7 +158,7 @@ describe('Navigation smoothness', () => {
     // AppRoutes.tsx redirects /home → /chat, so the settled hash is #/chat.
     // Accept either form to keep the test resilient across routing changes.
     const hash = await browser.execute(() => window.location.hash);
-    expect(hash).toMatch(/^#\/(home|chat)/);
+    expect(hash).toMatch(/^#\/(home|chat)(\/|$)/);
     console.log(`${LOG_PREFIX} N1.3: passed — on ${hash}, content: "${homeText}"`);
   });
 });

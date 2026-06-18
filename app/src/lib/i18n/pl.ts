@@ -3274,7 +3274,7 @@ const messages: TranslationMap = {
   'rewards.community.cumulativeTokens': 'Łączna liczba tokenów',
   'rewards.community.currentStreak': 'Aktualna seria',
   'rewards.community.disconnectDiscord': 'Rozłącz',
-  'rewards.community.disconnectDiscordError': 'Nie udało się rozłączyć Discorda. Spróbuj ponownie.',
+  'rewards.community.disconnectDiscordError': 'Nie udało się rozłączyć konta Discord. Spróbuj ponownie.',
   'rewards.community.disconnectingDiscord': 'Rozłączanie…',
   'rewards.community.discordAccount': 'Konto Discord',
   'rewards.community.discordConnected': 'Discord połączony',

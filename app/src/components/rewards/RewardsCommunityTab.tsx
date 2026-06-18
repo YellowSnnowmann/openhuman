@@ -239,7 +239,7 @@ export default function RewardsCommunityTab({
               {t('rewards.community.connectDiscordError')}
             </p>
           ) : null}
-          {disconnectState === 'error' ? (
+          {discordLinked && disconnectState === 'error' ? (
             <p
               role="alert"
               data-testid="rewards-disconnect-discord-error"

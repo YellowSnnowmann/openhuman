@@ -195,7 +195,9 @@ export const rewardsApi = {
   async disconnectDiscord(): Promise<void> {
     let response: ApiResponse<unknown>;
     try {
-      response = await apiClient.delete<ApiResponse<unknown>>('/rewards/discord');
+      response = await apiClient.delete<ApiResponse<unknown>>('/rewards/discord', {
+        timeout: REWARDS_SNAPSHOT_TIMEOUT_MS,
+      });
     } catch (transportError) {
       const normalized = normalizeRewardsApiError(transportError);
       log('disconnect transport failed error=%s', normalized.error);
