@@ -3273,6 +3273,10 @@ const messages: TranslationMap = {
   'rewards.community.connectingDiscord': 'Conectando…',
   'rewards.community.cumulativeTokens': 'Tokens acumulados',
   'rewards.community.currentStreak': 'Sequência atual',
+  'rewards.community.disconnectDiscord': 'Desconectar',
+  'rewards.community.disconnectDiscordError':
+    'Não foi possível desconectar o Discord. Tente novamente.',
+  'rewards.community.disconnectingDiscord': 'Desconectando…',
   'rewards.community.discordAccount': 'Conta do Discord',
   'rewards.community.discordConnected': 'Discord conectado',
   'rewards.community.discordConnectedAs': 'Conectado como {username}',

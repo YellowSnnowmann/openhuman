@@ -191,4 +191,26 @@ export const rewardsApi = {
     );
     return normalizeRewardsSnapshot(response.data);
   },
+
+  async disconnectDiscord(): Promise<void> {
+    let response: ApiResponse<unknown>;
+    try {
+      response = await apiClient.delete<ApiResponse<unknown>>('/rewards/discord');
+    } catch (transportError) {
+      const normalized = normalizeRewardsApiError(transportError);
+      log('disconnect transport failed error=%s', normalized.error);
+      throw normalized;
+    }
+
+    if (!response.success) {
+      const appError: RewardsApiError = {
+        success: false,
+        error: response.error ?? response.message ?? 'Unable to disconnect Discord',
+      };
+      log('disconnect backend error error=%s', appError.error);
+      throw appError;
+    }
+
+    log('discord disconnected');
+  },
 };

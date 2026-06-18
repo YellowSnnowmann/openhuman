@@ -3189,6 +3189,10 @@ const messages: TranslationMap = {
   'rewards.community.connectingDiscord': '연결 중…',
   'rewards.community.cumulativeTokens': '누적 토큰',
   'rewards.community.currentStreak': '현재 연속 기록',
+  'rewards.community.disconnectDiscord': '연결 해제',
+  'rewards.community.disconnectDiscordError':
+    'Discord 연결을 해제하지 못했습니다. 다시 시도해 주세요.',
+  'rewards.community.disconnectingDiscord': '연결 해제 중…',
   'rewards.community.discordAccount': 'Discord 계정',
   'rewards.community.discordConnected': 'Discord 연결됨',
   'rewards.community.discordConnectedAs': '{username}(으)로 연결됨',

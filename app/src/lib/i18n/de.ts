@@ -3297,6 +3297,10 @@ const messages: TranslationMap = {
   'rewards.community.connectingDiscord': 'Verbinden…',
   'rewards.community.cumulativeTokens': 'Kumulierte Token',
   'rewards.community.currentStreak': 'Aktuelle Serie',
+  'rewards.community.disconnectDiscord': 'Trennen',
+  'rewards.community.disconnectDiscordError':
+    'Discord konnte nicht getrennt werden. Bitte versuche es erneut.',
+  'rewards.community.disconnectingDiscord': 'Wird getrennt…',
   'rewards.community.discordAccount': 'Discord-Konto',
   'rewards.community.discordConnected': 'Discord verbunden',
   'rewards.community.discordConnectedAs': 'Verbunden als {username}',
