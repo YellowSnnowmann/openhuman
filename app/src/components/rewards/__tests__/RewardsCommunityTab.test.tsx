@@ -9,14 +9,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RewardsSnapshot } from '../../../types/rewards';
 
-const { openUrl, callCoreRpc, setOAuthReturnRoute } = vi.hoisted(() => ({
+const { openUrl, callCoreRpc, setOAuthReturnRoute, disconnectDiscord } = vi.hoisted(() => ({
   openUrl: vi.fn(),
   callCoreRpc: vi.fn(),
   setOAuthReturnRoute: vi.fn(),
+  disconnectDiscord: vi.fn(),
 }));
 
 vi.mock('../../../utils/openUrl', () => ({ openUrl }));
 vi.mock('../../../services/coreRpcClient', () => ({ callCoreRpc }));
+vi.mock('../../../services/api/rewardsApi', () => ({ rewardsApi: { disconnectDiscord } }));
 vi.mock('../../../utils/oauthReturnRoute', () => ({ setOAuthReturnRoute }));
 
 function buildSnapshot(): RewardsSnapshot {
@@ -172,5 +174,57 @@ describe('RewardsCommunityTab — Connect Discord', () => {
     expect(screen.getByTestId('rewards-discord-connected')).toHaveTextContent('cooluser');
     expect(screen.getByTestId('rewards-discord-username')).toHaveTextContent('cooluser');
     expect(screen.queryByTestId('rewards-connect-discord')).not.toBeInTheDocument();
+  });
+});
+
+describe('RewardsCommunityTab — Disconnect Discord', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('disconnects Discord and refreshes the snapshot', async () => {
+    disconnectDiscord.mockResolvedValueOnce(undefined);
+    const onRetry = vi.fn();
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab
+          error={null}
+          isLoading={false}
+          onRetry={onRetry}
+          snapshot={buildSnapshot()}
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTestId('rewards-disconnect-discord'));
+
+    await waitFor(() => expect(disconnectDiscord).toHaveBeenCalledTimes(1));
+    // Snapshot is refetched so the connected state can flip back to Connect (re-link path).
+    await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('rewards-disconnect-discord-error')).not.toBeInTheDocument();
+  });
+
+  it('surfaces an error and does not refetch when disconnect fails', async () => {
+    disconnectDiscord.mockRejectedValueOnce(new Error('disconnect failed'));
+    const onRetry = vi.fn();
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab
+          error={null}
+          isLoading={false}
+          onRetry={onRetry}
+          snapshot={buildSnapshot()}
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTestId('rewards-disconnect-discord'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('rewards-disconnect-discord-error')).toBeInTheDocument()
+    );
+    expect(onRetry).not.toHaveBeenCalled();
   });
 });

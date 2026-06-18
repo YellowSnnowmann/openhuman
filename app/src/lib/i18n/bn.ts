@@ -3217,6 +3217,10 @@ const messages: TranslationMap = {
   'rewards.community.connectingDiscord': 'সংযুক্ত হচ্ছে…',
   'rewards.community.cumulativeTokens': 'সঞ্চিত টোকেন',
   'rewards.community.currentStreak': 'বর্তমান স্ট্রিক',
+  'rewards.community.disconnectDiscord': 'সংযোগ বিচ্ছিন্ন করুন',
+  'rewards.community.disconnectDiscordError':
+    'Discord সংযোগ বিচ্ছিন্ন করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।',
+  'rewards.community.disconnectingDiscord': 'সংযোগ বিচ্ছিন্ন করা হচ্ছে…',
   'rewards.community.discordAccount': 'Discord অ্যাকাউন্ট',
   'rewards.community.discordConnected': 'Discord সংযুক্ত',
   'rewards.community.discordConnectedAs': '{username} হিসেবে সংযুক্ত',

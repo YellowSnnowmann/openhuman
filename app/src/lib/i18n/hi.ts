@@ -3220,6 +3220,10 @@ const messages: TranslationMap = {
   'rewards.community.connectingDiscord': 'कनेक्ट हो रहा है…',
   'rewards.community.cumulativeTokens': 'कुल टोकन',
   'rewards.community.currentStreak': 'मौजूदा स्ट्रीक',
+  'rewards.community.disconnectDiscord': 'डिस्कनेक्ट करें',
+  'rewards.community.disconnectDiscordError':
+    'Discord डिस्कनेक्ट नहीं हो सका। कृपया पुनः प्रयास करें।',
+  'rewards.community.disconnectingDiscord': 'डिस्कनेक्ट हो रहा है…',
   'rewards.community.discordAccount': 'Discord खाता',
   'rewards.community.discordConnected': 'Discord कनेक्ट हो गया',
   'rewards.community.discordConnectedAs': '{username} के रूप में कनेक्टेड',
