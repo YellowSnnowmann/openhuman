@@ -3271,6 +3271,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'Загрузка наград…',
   'rewards.community.locked': 'Разблокировано',
   'rewards.community.retrying': 'Повтор…',
+  'rewards.community.roleAssigned': 'Роль назначена',
+  'rewards.community.roleAssignmentCount': 'Назначено ролей: {assigned} из {unlocked}',
+  'rewards.community.roleClaimDesc':
+    'Вы разблокировали роли Discord, но ещё не присоединились к серверу OpenHuman. Присоединитесь, чтобы они назначились автоматически.',
+  'rewards.community.roleClaimTitle': 'Получите свои роли в Discord',
+  'rewards.community.roleJoinToClaim': 'Присоединиться к серверу',
+  'rewards.community.rolePending': 'Синхронизация роли…',
   'rewards.community.rolesAndRewards': 'Роли и награды',
   'rewards.community.streakDays': '{n}',
   'rewards.community.syncPending': 'Синхронизация наград ожидает',

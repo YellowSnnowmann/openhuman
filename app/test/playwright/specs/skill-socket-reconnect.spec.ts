@@ -11,8 +11,9 @@ test.describe('Socket reconnect skill sync smoke', () => {
     await bootAuthenticatedPage(page, 'pw-skill-socket-reconnect', '/home');
     await waitForAppReady(page);
     await dismissWalkthroughIfPresent(page);
-    await expect(
-      page.getByRole('button', { name: 'Ask your assistant anything...' })
-    ).toBeVisible();
+    // /home redirects to /chat (Phase 6); check for chat page content.
+    await expect(page.locator('#root')).toContainText(
+      /How can I help you today|Threads|No messages yet|Ask your assistant/
+    );
   });
 });

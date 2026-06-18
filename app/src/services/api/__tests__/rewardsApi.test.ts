@@ -159,7 +159,7 @@ describe('rewardsApi.disconnectDiscord', () => {
     vi.mocked(apiClient.delete).mockResolvedValueOnce({ success: true, data: null });
 
     await expect(rewardsApi.disconnectDiscord()).resolves.toBeUndefined();
-    expect(apiClient.delete).toHaveBeenCalledWith('/rewards/discord');
+    expect(apiClient.delete).toHaveBeenCalledWith('/rewards/discord', { timeout: 15000 });
   });
 
   it('throws a normalized error on transport failure', async () => {

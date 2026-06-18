@@ -107,6 +107,13 @@ export default function RewardsCommunityTab({
   const ringOffset = ringCircumference - (progressPercent / 100) * ringCircumference;
   const discordLinked = snapshot?.discord.linked ?? false;
   const discordUsername = snapshot?.discord.username ?? null;
+  const membershipStatus = snapshot?.discord.membershipStatus ?? null;
+  const assignedRoleCount = snapshot?.summary.assignedDiscordRoleCount ?? 0;
+  // A connected member who unlocked a role-bearing achievement but has not joined the
+  // server yet cannot receive the role — surface an actionable prompt to join.
+  const hasUnlockedConfiguredRole = rewardRoles.some(role => role.unlocked && Boolean(role.roleId));
+  const showClaimBanner =
+    discordLinked && membershipStatus === 'not_in_guild' && hasUnlockedConfiguredRole;
 
   const handleConnectDiscord = useCallback(async () => {
     log('connect discord requested');
@@ -340,6 +347,30 @@ export default function RewardsCommunityTab({
               {t('rewards.community.rolesAndRewards')}
             </h2>
           </div>
+          {showClaimBanner ? (
+            <div
+              role="status"
+              data-testid="rewards-claim-roles-banner"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-100 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-stone-900 dark:text-neutral-100">
+                  {t('rewards.community.roleClaimTitle')}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-stone-600 dark:text-neutral-300">
+                  {t('rewards.community.roleClaimDesc')}
+                </p>
+              </div>
+              <button
+                type="button"
+                data-testid="rewards-claim-roles-join"
+                onClick={() => {
+                  void openUrl(inviteUrl);
+                }}
+                className="inline-flex flex-shrink-0 items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700">
+                {t('rewards.community.joinDiscord')}
+              </button>
+            </div>
+          ) : null}
           {isLoading ? (
             <div className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-soft">
               <div className="text-sm text-stone-600 dark:text-neutral-300">
@@ -349,6 +380,30 @@ export default function RewardsCommunityTab({
           ) : rewardRoles.length > 0 ? (
             rewardRoles.map((role, index) => {
               const tone = roleAccentTone(index);
+              // Surface Discord role-assignment status only for a linked user's unlocked
+              // achievements — locked badges have no role to claim yet.
+              const roleStatus =
+                discordLinked && role.unlocked
+                  ? role.discordRoleStatus === 'assigned'
+                    ? {
+                        label: t('rewards.community.roleAssigned'),
+                        classes:
+                          'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+                      }
+                    : role.discordRoleStatus === 'not_assigned'
+                      ? {
+                          label: t('rewards.community.rolePending'),
+                          classes:
+                            'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+                        }
+                      : role.discordRoleStatus === 'not_in_guild'
+                        ? {
+                            label: t('rewards.community.roleJoinToClaim'),
+                            classes:
+                              'bg-blue-50 text-primary-700 dark:bg-blue-500/10 dark:text-primary-300',
+                          }
+                        : null
+                  : null;
 
               return (
                 <div
@@ -394,6 +449,15 @@ export default function RewardsCommunityTab({
                       </svg>
                     </div>
                   </div>
+                  {roleStatus ? (
+                    <div className="mt-3">
+                      <span
+                        data-testid={`rewards-role-status-${role.id}`}
+                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${roleStatus.classes}`}>
+                        {roleStatus.label}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               );
             })
@@ -431,6 +495,18 @@ export default function RewardsCommunityTab({
                 data-testid="rewards-discord-username"
                 className="font-semibold text-stone-900 dark:text-neutral-100">
                 {discordUsername}
+              </span>
+            </div>
+          ) : null}
+          {discordLinked && membershipStatus === 'member' ? (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span>{t('rewards.community.rolesAndRewards')}</span>
+              <span
+                data-testid="rewards-roles-assigned"
+                className="font-semibold text-stone-900 dark:text-neutral-100">
+                {t('rewards.community.roleAssignmentCount')
+                  .replace('{assigned}', String(assignedRoleCount))
+                  .replace('{unlocked}', String(unlocked))}
               </span>
             </div>
           ) : null}

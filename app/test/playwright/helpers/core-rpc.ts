@@ -80,11 +80,12 @@ async function completeAuthCallback(page: Page, token: string): Promise<void> {
     // The app-side auth callback waits up to 15s for CoreStateProvider to
     // commit currentUser before navigating to /home; CI occasionally needs
     // more than Playwright's default 10s assertion window here.
+    // AppRoutes.tsx redirects /home → /chat (Phase 6), so accept either hash.
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), {
         timeout: AUTH_CALLBACK_HOME_TIMEOUT_MS,
       })
-      .toMatch(/^#\/home/);
+      .toMatch(/^#\/(home|chat)/);
     return;
   } catch {
     const runtimePickerVisible = await page
@@ -105,7 +106,7 @@ async function completeAuthCallback(page: Page, token: string): Promise<void> {
     .poll(async () => page.evaluate(() => window.location.hash), {
       timeout: AUTH_CALLBACK_HOME_TIMEOUT_MS,
     })
-    .toMatch(/^#\/home/);
+    .toMatch(/^#\/(home|chat)/);
 }
 
 export async function resetCoreForWebGuest(): Promise<void> {

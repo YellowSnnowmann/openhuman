@@ -3243,6 +3243,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'পুরস্কার লোড হচ্ছে…',
   'rewards.community.locked': 'আনলক করা',
   'rewards.community.retrying': 'আবার চেষ্টা হচ্ছে…',
+  'rewards.community.roleAssigned': 'রোল বরাদ্দ হয়েছে',
+  'rewards.community.roleAssignmentCount': '{unlocked}টির মধ্যে {assigned}টি রোল বরাদ্দ হয়েছে',
+  'rewards.community.roleClaimDesc':
+    'আপনি Discord রোল আনলক করেছেন কিন্তু এখনও OpenHuman সার্ভারে যোগ দেননি। যোগ দিন যাতে সেগুলি স্বয়ংক্রিয়ভাবে বরাদ্দ হয়।',
+  'rewards.community.roleClaimTitle': 'আপনার Discord রোল দাবি করুন',
+  'rewards.community.roleJoinToClaim': 'দাবি করতে সার্ভারে যোগ দিন',
+  'rewards.community.rolePending': 'রোল সিঙ্ক হচ্ছে…',
   'rewards.community.rolesAndRewards': 'রোল ও পুরস্কার',
   'rewards.community.streakDays': '{n}',
   'rewards.community.syncPending': 'পুরস্কার সিঙ্ক মুলতুবি',

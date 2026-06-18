@@ -3172,6 +3172,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'جارٍ تحميل المكافآت…',
   'rewards.community.locked': 'مفتوح',
   'rewards.community.retrying': 'جارٍ إعادة المحاولة…',
+  'rewards.community.roleAssigned': 'تم تعيين الرتبة',
+  'rewards.community.roleAssignmentCount': 'تم تعيين {assigned} من {unlocked} رتبة',
+  'rewards.community.roleClaimDesc':
+    'لقد فتحت رتب Discord لكنك لم تنضم بعد إلى خادم OpenHuman. انضم ليتم تعيينها تلقائيًا.',
+  'rewards.community.roleClaimTitle': 'احصل على رتب Discord الخاصة بك',
+  'rewards.community.roleJoinToClaim': 'انضم إلى الخادم للحصول عليها',
+  'rewards.community.rolePending': 'جارٍ مزامنة الرتبة…',
   'rewards.community.rolesAndRewards': 'الأدوار والمكافآت',
   'rewards.community.streakDays': '{n}',
   'rewards.community.syncPending': 'مزامنة المكافآت معلقة',

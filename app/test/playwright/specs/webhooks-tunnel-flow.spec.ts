@@ -62,11 +62,16 @@ test.describe('Webhook tunnel CRUD (UI + core RPC + mock backend)', () => {
 
   test('reached the logged-in shell after onboarding', async ({ page }) => {
     await waitForAppReady(page);
+    // /home redirects to /chat (Phase 6); accept both old home and new chat markers.
     const text = await page.locator('#root').innerText();
     expect(
-      ['Ask your assistant anything', 'Your device is connected'].some(marker =>
-        text.includes(marker)
-      )
+      [
+        'Ask your assistant anything',
+        'Your device is connected',
+        'How can I help you today',
+        'Threads',
+        'No messages yet',
+      ].some(marker => text.includes(marker))
     ).toBe(true);
   });
 

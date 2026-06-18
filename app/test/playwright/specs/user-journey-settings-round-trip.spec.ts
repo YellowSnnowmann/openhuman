@@ -17,7 +17,17 @@ const panels: PanelCheck[] = [
     hash: '/settings/billing',
     markers: ['Billing moved to the web', 'Open billing dashboard', 'credits'],
   },
-  { hash: '/home', markers: ['Ask your assistant anything', 'Your device is connected'] },
+  // /home redirects to /chat (Phase 6); accept old home and new chat markers.
+  {
+    hash: '/home',
+    markers: [
+      'Ask your assistant anything',
+      'Your device is connected',
+      'How can I help you today',
+      'Threads',
+      'No messages yet',
+    ],
+  },
   // /chat is the Assistant surface (thread list + agent chat header).
   { hash: '/chat', markers: ['Threads', 'New thread', 'Talk to Tiny', 'Reasoning'] },
 ];
@@ -36,14 +46,19 @@ test.describe('User journey - settings round-trip', () => {
 
   test('starts on /home after login', async ({ page }) => {
     await waitForAppReady(page);
+    // AppRoutes.tsx redirects /home → /chat (Phase 6); accept either hash.
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), { timeout: PANEL_TIMEOUT })
-      .toMatch(/^#\/home/);
+      .toMatch(/^#\/(home|chat)/);
     const text = await page.locator('#root').innerText();
     expect(
-      ['Ask your assistant anything', 'Your device is connected'].some(marker =>
-        text.includes(marker)
-      )
+      [
+        'Ask your assistant anything',
+        'Your device is connected',
+        'How can I help you today',
+        'Threads',
+        'No messages yet',
+      ].some(marker => text.includes(marker))
     ).toBe(true);
   });
 

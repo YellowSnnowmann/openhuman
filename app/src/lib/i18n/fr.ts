@@ -3316,6 +3316,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'Chargement des récompenses…',
   'rewards.community.locked': 'Débloqué',
   'rewards.community.retrying': 'Nouvelle tentative…',
+  'rewards.community.roleAssigned': 'Rôle attribué',
+  'rewards.community.roleAssignmentCount': '{assigned} sur {unlocked} rôles attribués',
+  'rewards.community.roleClaimDesc':
+    "Vous avez débloqué des rôles Discord mais n'avez pas encore rejoint le serveur OpenHuman. Rejoignez-le pour qu'ils soient attribués automatiquement.",
+  'rewards.community.roleClaimTitle': 'Réclamez vos rôles Discord',
+  'rewards.community.roleJoinToClaim': 'Rejoindre le serveur pour réclamer',
+  'rewards.community.rolePending': 'Synchronisation du rôle…',
   'rewards.community.rolesAndRewards': 'Rôles & Récompenses',
   'rewards.community.streakDays': '{n}',
   'rewards.community.syncPending': 'Synchronisation des récompenses en attente',

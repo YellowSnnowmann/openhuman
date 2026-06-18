@@ -15,7 +15,7 @@ interface RouteEntry {
 //   /activity    → /settings/notifications (Phase 6)
 //   /intelligence → /settings/notifications (Phase 6)
 const ROUTES: RouteEntry[] = [
-  { route: '/home' },
+  { route: '/home', expectedHash: '/chat' }, // Phase 6: AppRoutes.tsx redirects /home → /chat
   { route: '/human' }, // first-class route again (no longer redirects to /chat)
   { route: '/chat' },
   { route: '/connections' },

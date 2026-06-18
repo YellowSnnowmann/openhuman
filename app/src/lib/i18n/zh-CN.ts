@@ -3084,6 +3084,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': '正在加载奖励…',
   'rewards.community.locked': '已解锁',
   'rewards.community.retrying': '重试中…',
+  'rewards.community.roleAssigned': '身份组已分配',
+  'rewards.community.roleAssignmentCount': '已分配 {assigned}/{unlocked} 个身份组',
+  'rewards.community.roleClaimDesc':
+    '你已解锁 Discord 身份组，但尚未加入 OpenHuman 服务器。加入后将自动为你分配。',
+  'rewards.community.roleClaimTitle': '领取你的 Discord 身份组',
+  'rewards.community.roleJoinToClaim': '加入服务器领取',
+  'rewards.community.rolePending': '正在同步身份组…',
   'rewards.community.rolesAndRewards': '角色与奖励',
   'rewards.community.streakDays': '{n} 天',
   'rewards.community.syncPending': '奖励同步待处理',

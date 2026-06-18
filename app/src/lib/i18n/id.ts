@@ -3250,6 +3250,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'Memuat hadiah...',
   'rewards.community.locked': 'Terbuka',
   'rewards.community.retrying': 'Mencoba ulang...',
+  'rewards.community.roleAssigned': 'Role ditetapkan',
+  'rewards.community.roleAssignmentCount': '{assigned} dari {unlocked} role ditetapkan',
+  'rewards.community.roleClaimDesc':
+    'Kamu telah membuka role Discord tetapi belum bergabung ke server OpenHuman. Bergabunglah agar role ditetapkan secara otomatis.',
+  'rewards.community.roleClaimTitle': 'Klaim role Discord kamu',
+  'rewards.community.roleJoinToClaim': 'Gabung server untuk klaim',
+  'rewards.community.rolePending': 'Menyinkronkan role…',
   'rewards.community.rolesAndRewards': 'Peran & Hadiah',
   'rewards.community.streakDays': '{n}',
   'rewards.community.syncPending': 'Sinkronisasi hadiah tertunda',

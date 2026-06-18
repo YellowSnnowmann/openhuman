@@ -139,9 +139,10 @@ test.describe('User journey - full research task', () => {
 
     await page.goto('/#/home');
     await waitForAppReady(page);
+    // AppRoutes.tsx redirects /home → /chat (Phase 6); accept either hash.
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-      .toContain('/home');
+      .toMatch(/\/(home|chat)/);
 
     await page.goto('/#/chat');
     await waitForAppReady(page);

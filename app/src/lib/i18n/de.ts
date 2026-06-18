@@ -3326,6 +3326,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'Prämien werden geladen…',
   'rewards.community.locked': 'Gesperrt',
   'rewards.community.retrying': 'Erneuter Versuch…',
+  'rewards.community.roleAssigned': 'Rolle zugewiesen',
+  'rewards.community.roleAssignmentCount': '{assigned} von {unlocked} Rollen zugewiesen',
+  'rewards.community.roleClaimDesc':
+    'Du hast Discord-Rollen freigeschaltet, bist dem OpenHuman-Server aber noch nicht beigetreten. Tritt bei, damit sie automatisch zugewiesen werden.',
+  'rewards.community.roleClaimTitle': 'Hol dir deine Discord-Rollen',
+  'rewards.community.roleJoinToClaim': 'Server beitreten zum Abholen',
+  'rewards.community.rolePending': 'Rolle wird synchronisiert…',
   'rewards.community.rolesAndRewards': 'Rollen und Belohnungen',
   'rewards.community.streakDays': '{n} Tage',
   'rewards.community.syncPending': 'Synchronisierung der Prämien steht aus',

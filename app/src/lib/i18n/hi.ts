@@ -3246,6 +3246,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'रिवॉर्ड लोड हो रहे हैं…',
   'rewards.community.locked': 'अनलॉक्ड',
   'rewards.community.retrying': 'फिर से कोशिश हो रही है…',
+  'rewards.community.roleAssigned': 'रोल असाइन हो गया',
+  'rewards.community.roleAssignmentCount': '{unlocked} में से {assigned} रोल असाइन किए गए',
+  'rewards.community.roleClaimDesc':
+    'आपने Discord रोल अनलॉक किए हैं लेकिन अभी तक OpenHuman सर्वर में शामिल नहीं हुए हैं। शामिल हों ताकि वे अपने-आप असाइन हो जाएँ।',
+  'rewards.community.roleClaimTitle': 'अपने Discord रोल क्लेम करें',
+  'rewards.community.roleJoinToClaim': 'क्लेम करने के लिए सर्वर जॉइन करें',
+  'rewards.community.rolePending': 'रोल सिंक हो रहा है…',
   'rewards.community.rolesAndRewards': 'रोल्स और रिवॉर्ड',
   'rewards.community.streakDays': '{n}',
   'rewards.community.syncPending': 'रिवॉर्ड सिंक पेंडिंग',

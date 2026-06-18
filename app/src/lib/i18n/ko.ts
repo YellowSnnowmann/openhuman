@@ -3216,6 +3216,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': '보상 불러오는 중…',
   'rewards.community.locked': '잠김',
   'rewards.community.retrying': '다시 시도 중…',
+  'rewards.community.roleAssigned': '역할이 부여됨',
+  'rewards.community.roleAssignmentCount': '{unlocked}개 중 {assigned}개 역할 부여됨',
+  'rewards.community.roleClaimDesc':
+    'Discord 역할을 잠금 해제했지만 아직 OpenHuman 서버에 참여하지 않았습니다. 참여하면 자동으로 부여됩니다.',
+  'rewards.community.roleClaimTitle': 'Discord 역할 받기',
+  'rewards.community.roleJoinToClaim': '받으려면 서버 참여',
+  'rewards.community.rolePending': '역할 동기화 중…',
   'rewards.community.rolesAndRewards': '역할 및 보상',
   'rewards.community.streakDays': '{n}일',
   'rewards.community.syncPending': '보상 동기화 대기 중',

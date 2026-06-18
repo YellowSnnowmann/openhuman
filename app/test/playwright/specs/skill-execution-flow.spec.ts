@@ -11,10 +11,15 @@ test.describe('Skill discovery (UI + core RPC)', () => {
   test('lands the user on a logged-in shell', async ({ page }) => {
     await waitForAppReady(page);
     const text = await page.locator('#root').innerText();
+    // /home redirects to /chat (Phase 6); accept both old home and new chat markers.
     expect(
-      ['Ask your assistant anything', 'Your device is connected'].some(marker =>
-        text.includes(marker)
-      )
+      [
+        'Ask your assistant anything',
+        'Your device is connected',
+        'How can I help you today',
+        'Threads',
+        'No messages yet',
+      ].some(marker => text.includes(marker))
     ).toBe(true);
   });
 

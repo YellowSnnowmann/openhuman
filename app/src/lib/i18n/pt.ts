@@ -3300,6 +3300,13 @@ const messages: TranslationMap = {
   'rewards.community.loadingRewards': 'Carregando recompensas…',
   'rewards.community.locked': 'Desbloqueado',
   'rewards.community.retrying': 'Tentando novamente…',
+  'rewards.community.roleAssigned': 'Cargo atribuído',
+  'rewards.community.roleAssignmentCount': '{assigned} de {unlocked} cargos atribuídos',
+  'rewards.community.roleClaimDesc':
+    'Você desbloqueou cargos do Discord, mas ainda não entrou no servidor do OpenHuman. Entre para que sejam atribuídos automaticamente.',
+  'rewards.community.roleClaimTitle': 'Resgate seus cargos do Discord',
+  'rewards.community.roleJoinToClaim': 'Entre no servidor para resgatar',
+  'rewards.community.rolePending': 'Sincronizando cargo…',
   'rewards.community.rolesAndRewards': 'Funções e Recompensas',
   'rewards.community.streakDays': '{n}',
   'rewards.community.syncPending': 'Sincronização de recompensas pendente',
