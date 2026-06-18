@@ -51,7 +51,9 @@ test.describe('Login Flow', () => {
     await signInViaCallbackToken(page, 'playwright-login-token');
 
     // AppRoutes.tsx redirects /home → /chat (Phase 6); accept either hash.
-    await expect.poll(async () => page.evaluate(() => window.location.hash)).toMatch(/^#\/(home|chat)/);
+    await expect
+      .poll(async () => page.evaluate(() => window.location.hash))
+      .toMatch(/^#\/(home|chat)/);
     await expect(await waitForMockRequest('GET', '/auth/me')).toBeTruthy();
   });
 
@@ -59,7 +61,9 @@ test.describe('Login Flow', () => {
     await signInViaBypassUser(page, 'playwright-bypass-user');
 
     // AppRoutes.tsx redirects /home → /chat (Phase 6); accept either hash.
-    await expect.poll(async () => page.evaluate(() => window.location.hash)).toMatch(/^#\/(home|chat)/);
+    await expect
+      .poll(async () => page.evaluate(() => window.location.hash))
+      .toMatch(/^#\/(home|chat)/);
 
     const consumeCall = (await requests()).find(
       request => request.method === 'POST' && request.url.includes('/telegram/login-tokens/')

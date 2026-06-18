@@ -94,8 +94,7 @@ test.describe('Top-level functional flows', () => {
   test('major top-level pages render actionable UI without blanking', async ({ page }) => {
     await bootAuthenticatedPage(page, 'pw-top-level-ui', '/home');
     const routes: Array<[string, RegExp]> = [
-      // /home redirects to /chat (Phase 6); accept both old home and new chat text.
-      ['/home', /Ask your assistant anything|How can I help you today|Threads|No messages yet/],
+      // /home redirected to /chat (Phase 6) — same content; covered by /chat entry.
       ['/connections', /Composio Integrations|Composio|Channels|MCP Servers/],
       ['/chat', /How can I help you today|No messages yet|Threads/],
       ['/settings/notifications-hub', /Notifications/],

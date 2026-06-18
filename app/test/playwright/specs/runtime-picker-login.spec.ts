@@ -111,7 +111,9 @@ test.describe('Runtime picker -> login -> logout', () => {
     await dismissWalkthroughIfPresent(page);
 
     // AppRoutes.tsx redirects /home → /chat (Phase 6); accept either hash.
-    await expect.poll(async () => page.evaluate(() => window.location.hash)).toMatch(/^#\/(home|chat)/);
+    await expect
+      .poll(async () => page.evaluate(() => window.location.hash))
+      .toMatch(/^#\/(home|chat)/);
     await expect(await waitForMockRequest('GET', '/auth/me')).toBeTruthy();
 
     await page.goto('/#/settings/account');

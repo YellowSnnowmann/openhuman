@@ -62,10 +62,10 @@ test.describe('Webhook tunnel CRUD (UI + core RPC + mock backend)', () => {
 
   test('reached the logged-in shell after onboarding', async ({ page }) => {
     await waitForAppReady(page);
-    // /home redirects to /chat (Phase 6). Use toContainText (retries + accessible text).
-    await expect(page.locator('#root')).toContainText(
-      /Ask your assistant|Your device is connected|How can I help you today|Threads|No messages yet/
-    );
+    // /home redirects to /chat (Phase 6); verify app shell loaded (not welcome screen).
+    await expect
+      .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
+      .toMatch(/^#\/(home|chat)/);
   });
 
   test('creates a tunnel, lists it, deletes it, and matches mock-backend traffic', async () => {

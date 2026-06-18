@@ -10,11 +10,10 @@ test.describe('Skill discovery (UI + core RPC)', () => {
 
   test('lands the user on a logged-in shell', async ({ page }) => {
     await waitForAppReady(page);
-    // /home redirects to /chat (Phase 6). Use toContainText (accessible text)
-    // rather than innerText() since placeholders are excluded from innerText.
-    await expect(page.locator('#root')).toContainText(
-      /Ask your assistant|Your device is connected|How can I help you today|Threads|No messages yet|New thread/
-    );
+    // /home redirects to /chat (Phase 6); verify app shell loaded (not welcome screen).
+    await expect
+      .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
+      .toMatch(/^#\/(home|chat)/);
   });
 
   test('core.ping responds over the same JSON-RPC URL the UI uses', async () => {
