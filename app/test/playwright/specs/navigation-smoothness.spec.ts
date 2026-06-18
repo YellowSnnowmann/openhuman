@@ -10,13 +10,14 @@ interface RouteCheck {
 const routes: RouteCheck[] = [
   { hash: '/chat', markers: ['Threads', 'Chat', 'Message', 'New'] },
   { hash: '/connections', markers: ['Composio', 'Channels', 'MCP Servers', 'Skills'] },
-  { hash: '/home', markers: ['Ask your assistant anything', 'Your device is connected'] },
+  // /home redirects to /chat (Phase 6); use chat-surface markers.
+  { hash: '/home', markers: ['Threads', 'Chat', 'Message', 'New'] },
   { hash: '/channels', markers: ['Channels', 'Connections', 'Telegram', 'Discord'] },
   { hash: '/notifications', markers: ['Notifications', 'Alerts', 'No alerts yet'] },
   { hash: '/rewards', markers: ['Rewards', 'Referral', 'Credits', 'Invite'] },
   { hash: '/settings', markers: ['Settings', 'Account', 'Billing', 'Advanced'] },
   { hash: '/settings/notifications-hub', markers: ['Notifications'] },
-  { hash: '/home', markers: ['Ask your assistant anything', 'Your device is connected'] },
+  { hash: '/home', markers: ['Threads', 'Chat', 'Message', 'New'] },
 ];
 
 async function rootTextLength(page: import('@playwright/test').Page): Promise<number> {
@@ -56,8 +57,8 @@ test.describe('Navigation Smoothness', () => {
   test('final state is /home with correct content', async ({ page }) => {
     await page.goto('/#/home');
     await waitForAppReady(page);
-    await expect(page.getByRole('button', { name: /Ask your assistant anything/i })).toBeVisible();
-    await expect(page.getByText(/Your device is connected/i)).toBeVisible();
-    await expect.poll(async () => page.evaluate(() => window.location.hash)).toMatch(/^#\/home/);
+    // AppRoutes.tsx redirects /home → /chat (Phase 6); check for chat-surface content.
+    await expect(page.locator('#root')).toContainText(/Threads|New thread|How can I help you today/);
+    await expect.poll(async () => page.evaluate(() => window.location.hash)).toMatch(/^#\/(home|chat)/);
   });
 });
