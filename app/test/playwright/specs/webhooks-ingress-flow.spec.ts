@@ -10,10 +10,8 @@ test.describe('Webhooks ingress surface (stub-level)', () => {
 
   test('reaches the app shell after onboarding', async ({ page }) => {
     await waitForAppReady(page);
-    // /home redirects to /chat (Phase 6); verify app shell loaded (not welcome screen).
-    await expect
-      .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-      .toMatch(/^#\/(home|chat)/);
+    const text = await page.locator('#root').innerText();
+    expect(['New Conversation', 'Threads'].some(marker => text.includes(marker))).toBe(true);
   });
 
   test('exposes the stub webhook RPC surface with stable result and log shapes', async () => {

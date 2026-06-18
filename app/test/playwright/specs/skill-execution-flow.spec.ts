@@ -10,10 +10,8 @@ test.describe('Skill discovery (UI + core RPC)', () => {
 
   test('lands the user on a logged-in shell', async ({ page }) => {
     await waitForAppReady(page);
-    // /home redirects to /chat (Phase 6); verify app shell loaded (not welcome screen).
-    await expect
-      .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-      .toMatch(/^#\/(home|chat)/);
+    const text = await page.locator('#root').innerText();
+    expect(['New Conversation', 'Threads'].some(marker => text.includes(marker))).toBe(true);
   });
 
   test('core.ping responds over the same JSON-RPC URL the UI uses', async () => {

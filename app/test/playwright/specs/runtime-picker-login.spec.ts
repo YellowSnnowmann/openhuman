@@ -110,7 +110,6 @@ test.describe('Runtime picker -> login -> logout', () => {
     await signInViaBypassUser(page, 'pw-runtime-picker-login');
     await dismissWalkthroughIfPresent(page);
 
-    // AppRoutes.tsx redirects /home → /chat (Phase 6); accept either hash.
     await expect
       .poll(async () => page.evaluate(() => window.location.hash))
       .toMatch(/^#\/(home|chat)/);

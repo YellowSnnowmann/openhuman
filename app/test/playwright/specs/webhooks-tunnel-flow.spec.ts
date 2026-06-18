@@ -62,10 +62,8 @@ test.describe('Webhook tunnel CRUD (UI + core RPC + mock backend)', () => {
 
   test('reached the logged-in shell after onboarding', async ({ page }) => {
     await waitForAppReady(page);
-    // /home redirects to /chat (Phase 6); verify app shell loaded (not welcome screen).
-    await expect
-      .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-      .toMatch(/^#\/(home|chat)/);
+    const text = await page.locator('#root').innerText();
+    expect(['New Conversation', 'Threads'].some(marker => text.includes(marker))).toBe(true);
   });
 
   test('creates a tunnel, lists it, deletes it, and matches mock-backend traffic', async () => {
