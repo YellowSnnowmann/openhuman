@@ -53,10 +53,7 @@ fn leaves_valid_providers_untouched() {
     for provider in ["managed", "ollama", "voyage", "none", "openai"] {
         let mut config = config_with_provider(provider, "some-model", 1024);
         let stats = run(&mut config).expect("migration should succeed");
-        assert!(
-            !stats.provider_migrated,
-            "{provider} must not be migrated"
-        );
+        assert!(!stats.provider_migrated, "{provider} must not be migrated");
         assert_eq!(config.memory.embedding_provider, provider);
         assert_eq!(config.memory.embedding_model, "some-model");
         assert_eq!(config.memory.embedding_dimensions, 1024);

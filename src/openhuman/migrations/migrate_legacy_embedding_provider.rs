@@ -38,7 +38,9 @@
 //! - Never touches keys/secrets or any other config field.
 
 use crate::openhuman::config::Config;
-use crate::openhuman::embeddings::{DEFAULT_CLOUD_EMBEDDING_DIMENSIONS, DEFAULT_CLOUD_EMBEDDING_MODEL};
+use crate::openhuman::embeddings::{
+    DEFAULT_CLOUD_EMBEDDING_DIMENSIONS, DEFAULT_CLOUD_EMBEDDING_MODEL,
+};
 
 /// The removed provider value that must not reach the embedding factory.
 const REMOVED_PROVIDER: &str = "fastembed";

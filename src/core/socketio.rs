@@ -1190,15 +1190,25 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             };
             let payload = match event {
                 crate::core::event_bus::DomainEvent::ChannelConnected { channel } => {
-                    log::debug!("[socketio] broadcast channel:connection-updated {channel} -> connected");
-                    Some(channel_connection_update_payload(&channel, "connected", None))
+                    log::debug!(
+                        "[socketio] broadcast channel:connection-updated {channel} -> connected"
+                    );
+                    Some(channel_connection_update_payload(
+                        &channel,
+                        "connected",
+                        None,
+                    ))
                 }
                 crate::core::event_bus::DomainEvent::ChannelDisconnected { channel, reason } => {
                     log::debug!(
                         "[socketio] broadcast channel:connection-updated {channel} -> error reason_len={}",
                         reason.len()
                     );
-                    Some(channel_connection_update_payload(&channel, "error", Some(&reason)))
+                    Some(channel_connection_update_payload(
+                        &channel,
+                        "error",
+                        Some(&reason),
+                    ))
                 }
                 _ => None,
             };

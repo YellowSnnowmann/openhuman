@@ -733,7 +733,10 @@ async fn channel_status_surfaces_live_listener_error() {
         .iter()
         .find(|e| e.auth_mode == ChannelAuthMode::BotToken)
         .expect("bot_token entry");
-    assert!(bot_token.connected, "healthy listener should report connected");
+    assert!(
+        bot_token.connected,
+        "healthy listener should report connected"
+    );
     assert!(bot_token.error.is_none(), "error should clear on recovery");
 }
 
@@ -773,12 +776,10 @@ async fn set_default_channel_rejects_unknown_and_empty() {
         .await
         .expect("seed discord");
 
-    assert!(
-        set_default_channel(&mut config, "myspace")
-            .await
-            .unwrap_err()
-            .contains("unknown channel"),
-    );
+    assert!(set_default_channel(&mut config, "myspace")
+        .await
+        .unwrap_err()
+        .contains("unknown channel"),);
     assert!(set_default_channel(&mut config, "   ").await.is_err());
 
     // A rejected set must not clobber the previously persisted value.
