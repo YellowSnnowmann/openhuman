@@ -1,11 +1,18 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { renderWithProviders } from '../../test/test-utils';
 import type { FeedbackItem } from '../../types/feedback';
 import FeedbackItemRow from './FeedbackItemRow';
 
+const mockGetFeedback = vi.fn();
 vi.mock('../../services/api/feedbackApi', () => ({
-  feedbackApi: { voteFeedback: vi.fn(), updateStatus: vi.fn() },
+  feedbackApi: {
+    voteFeedback: vi.fn(),
+    updateStatus: vi.fn(),
+    addComment: vi.fn(),
+    getFeedback: (...args: unknown[]) => mockGetFeedback(...args),
+  },
 }));
 
 function makeItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
@@ -68,5 +75,29 @@ describe('<FeedbackItemRow />', () => {
       />
     );
     expect(screen.getByText('@3456')).toBeInTheDocument();
+  });
+
+  it('expands to reveal the comment thread on "Show more"', async () => {
+    mockGetFeedback.mockResolvedValueOnce({ feedback: makeItem(), comments: [] });
+    renderWithProviders(<FeedbackItemRow item={makeItem()} isAdmin={false} onChange={() => {}} />);
+
+    expect(screen.queryByText('No comments yet.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Show more'));
+    expect(await screen.findByText('No comments yet.')).toBeInTheDocument();
+    expect(screen.getByText('Show less')).toBeInTheDocument();
+  });
+
+  it('links to the GitHub issue when one exists', () => {
+    render(
+      <FeedbackItemRow
+        item={makeItem({ github: { issueNumber: 7, issueUrl: 'https://gh/issues/7' } })}
+        isAdmin={false}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByText('View issue').closest('a')).toHaveAttribute(
+      'href',
+      'https://gh/issues/7'
+    );
   });
 });
