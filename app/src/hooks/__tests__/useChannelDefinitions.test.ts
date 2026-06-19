@@ -1,7 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
+import { Provider } from 'react-redux';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { channelConnectionsApi } from '../../services/api/channelConnectionsApi';
+import { store } from '../../store';
+import { resetChannelConnectionsState } from '../../store/channelConnectionsSlice';
 import type { ChannelStatusEntry } from '../../types/channels';
-import { resolveStatusPatch } from '../useChannelDefinitions';
+import { resolveStatusPatch, useChannelDefinitions } from '../useChannelDefinitions';
+
+vi.mock('../../services/api/channelConnectionsApi', () => ({
+  channelConnectionsApi: {
+    listDefinitions: vi.fn(),
+    listStatus: vi.fn(),
+    getDefaultChannel: vi.fn(),
+  },
+}));
+
+const mockApi = vi.mocked(channelConnectionsApi);
 
 function entry(overrides: Partial<ChannelStatusEntry>): ChannelStatusEntry {
   return {
@@ -43,5 +59,44 @@ describe('resolveStatusPatch (issue #3712)', () => {
       status: 'disconnected',
       lastError: undefined,
     });
+  });
+});
+
+describe('useChannelDefinitions loadDefinitions (issue #3794)', () => {
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(Provider, { store }, children);
+
+  beforeEach(() => {
+    store.dispatch(resetChannelConnectionsState());
+    mockApi.listDefinitions.mockResolvedValue([]);
+    mockApi.getDefaultChannel.mockResolvedValue('discord');
+    mockApi.listStatus.mockResolvedValue([
+      { channel_id: 'discord', auth_mode: 'bot_token', connected: true, has_credentials: true },
+      // Unknown channel from core must be skipped, not coerced into state (#3794).
+      {
+        channel_id: 'bogus',
+        auth_mode: 'bot_token',
+        connected: true,
+        has_credentials: true,
+      } as ChannelStatusEntry,
+    ]);
+  });
+
+  afterEach(() => {
+    store.dispatch(resetChannelConnectionsState());
+    vi.clearAllMocks();
+  });
+
+  it('seeds the default channel from core, syncs known channels, and skips unknown ones', async () => {
+    const { result } = renderHook(() => useChannelDefinitions(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const state = store.getState().channelConnections;
+    // Default channel seeded from the core (source of truth).
+    expect(state.defaultMessagingChannel).toBe('discord');
+    // Known channel synced as connected.
+    expect(state.connections.discord?.bot_token?.status).toBe('connected');
+    // Unknown channel_id ignored — never added to state.
+    expect((state.connections as Record<string, unknown>).bogus).toBeUndefined();
   });
 });
