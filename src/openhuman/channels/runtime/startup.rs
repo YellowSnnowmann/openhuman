@@ -717,12 +717,16 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     // Register the proactive message subscriber so morning briefings,
     // welcome messages, and other proactive agent output gets routed to
     // the user's active channel (+ always to web).
-    let _proactive_handle = bus.subscribe(Arc::new(
-        crate::openhuman::channels::proactive::ProactiveMessageSubscriber::new(
-            Arc::clone(&channels_by_name),
-            config.channels_config.active_channel.clone(),
-        ),
-    ));
+    let proactive_sub = crate::openhuman::channels::proactive::ProactiveMessageSubscriber::new(
+        Arc::clone(&channels_by_name),
+        config.channels_config.active_channel.clone(),
+    );
+    // Expose its active-channel handle so the `channels_set_default` RPC can
+    // switch the default channel at runtime without a restart (issue #3712).
+    crate::openhuman::channels::proactive::register_active_channel_handle(
+        proactive_sub.active_channel_handle(),
+    );
+    let _proactive_handle = bus.subscribe(Arc::new(proactive_sub));
     let _telegram_remote_handle = if channels_by_name.contains_key("telegram") {
         let handle = bus.subscribe(Arc::new(
             crate::openhuman::channels::providers::telegram::TelegramRemoteSubscriber::new(

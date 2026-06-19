@@ -1,12 +1,13 @@
-import type {
-  BotPermissionCheck,
-  ChannelAuthMode,
-  ChannelConnectionResult,
-  ChannelDefinition,
-  ChannelStatusEntry,
-  ChannelType,
-  DiscordGuild,
-  DiscordTextChannel,
+import {
+  type BotPermissionCheck,
+  type ChannelAuthMode,
+  type ChannelConnectionResult,
+  type ChannelDefinition,
+  type ChannelStatusEntry,
+  type ChannelType,
+  type DiscordGuild,
+  type DiscordTextChannel,
+  isChannelType,
 } from '../../types/channels';
 import { callCoreRpc } from '../coreRpcClient';
 
@@ -263,8 +264,8 @@ export const channelConnectionsApi = {
       params: {},
     });
     const record = expectObject<{ active_channel?: unknown }>(result, 'Channel get_default');
-    return typeof record.active_channel === 'string'
-      ? (record.active_channel as ChannelType)
-      : null;
+    // Validate against known slugs so an unexpected core value can't leak into
+    // Redux/API consumers despite the `ChannelType | null` contract (#3794 review).
+    return isChannelType(record.active_channel) ? record.active_channel : null;
   },
 };

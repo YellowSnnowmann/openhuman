@@ -95,41 +95,63 @@ impl ProactiveMessageSubscriber {
             *guard = channel;
         }
     }
-}
 
-/// Process-wide override for the active external channel, set by the
-/// `channels_set_default` RPC (issue #3712 — "switch default channel
-/// Telegram↔Discord"). When set, it takes precedence over every subscriber's
-/// config-seeded `active_channel`, so a default-channel switch from the UI takes
-/// effect immediately and reaches whichever proactive subscriber is live —
-/// regardless of registration order or how many are registered (web-only vs the
-/// full channel runtime). `None` (the unset default) means "no override — use
-/// the config-seeded value". Cleared on process exit; the choice is also
-/// persisted to `config.channels_config.active_channel`, so the next start
-/// seeds correctly.
-static ACTIVE_CHANNEL_OVERRIDE: std::sync::OnceLock<RwLock<Option<String>>> =
-    std::sync::OnceLock::new();
-
-fn active_channel_override() -> &'static RwLock<Option<String>> {
-    ACTIVE_CHANNEL_OVERRIDE.get_or_init(|| RwLock::new(None))
-}
-
-/// Set (or clear) the runtime active-channel override. Pass `Some(channel)` to
-/// route proactive messages to that channel now; the value also persists to
-/// config so it survives restarts.
-pub fn set_runtime_active_channel(channel: Option<String>) {
-    if let Ok(mut guard) = active_channel_override().write() {
-        tracing::debug!(channel = ?channel, "[proactive] runtime active-channel override set");
-        *guard = channel;
+    /// Share this subscriber's active-channel handle so the runtime can update it
+    /// in place after construction (see [`register_active_channel_handle`]).
+    pub fn active_channel_handle(&self) -> Arc<RwLock<Option<String>>> {
+        Arc::clone(&self.active_channel)
     }
 }
 
-/// Read the runtime active-channel override, if any.
-fn runtime_active_channel_override() -> Option<String> {
-    active_channel_override()
-        .read()
-        .ok()
-        .and_then(|guard| guard.clone())
+/// Handle to the live proactive subscriber's `active_channel`, registered at
+/// channel-runtime startup (issue #3712 — "switch default channel
+/// Telegram↔Discord"). The `channels_set_default` RPC mutates this exact handle
+/// via [`set_runtime_active_channel`] so a default-channel switch from the UI
+/// takes effect without a restart. Only the full channel runtime registers
+/// (the web-only subscriber can't deliver externally), and nothing registers in
+/// unit tests — so [`set_runtime_active_channel`] is a no-op there and never
+/// leaks across the parallel test suite. The choice is also persisted to
+/// `config.channels_config.active_channel`, which seeds the handle on next start.
+static ACTIVE_CHANNEL_HANDLE: std::sync::OnceLock<RwLock<Option<Arc<RwLock<Option<String>>>>>> =
+    std::sync::OnceLock::new();
+
+fn active_channel_handle_slot() -> &'static RwLock<Option<Arc<RwLock<Option<String>>>>> {
+    ACTIVE_CHANNEL_HANDLE.get_or_init(|| RwLock::new(None))
+}
+
+/// Register the live subscriber's active-channel handle so the RPC can update it
+/// at runtime. Called once from channel-runtime startup; the latest registration
+/// wins.
+pub fn register_active_channel_handle(handle: Arc<RwLock<Option<String>>>) {
+    if let Ok(mut slot) = active_channel_handle_slot().write() {
+        *slot = Some(handle);
+    }
+}
+
+/// Update the live proactive subscriber's active channel. No-op when no
+/// subscriber has registered a handle (e.g. unit tests, or before the channel
+/// runtime starts) — config persistence still applies and the value is read at
+/// next startup.
+pub fn set_runtime_active_channel(channel: Option<String>) {
+    // Clone the Arc out and drop the slot read-guard before locking the handle,
+    // so we never hold two locks at once and the borrow doesn't outlive the read.
+    let handle = match active_channel_handle_slot().read() {
+        Ok(slot) => slot.clone(),
+        Err(_) => return,
+    };
+    let Some(handle) = handle else {
+        tracing::debug!("[proactive] set_runtime_active_channel: no live subscriber registered");
+        return;
+    };
+    // Bind the guard out of the match (rather than `if let`) so the write-lock
+    // temporary is dropped before `handle`, avoiding an E0597 borrow on the
+    // local `handle`.
+    let mut guard = match handle.write() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    tracing::debug!(channel = ?channel, "[proactive] runtime active channel updated");
+    *guard = channel;
 }
 
 #[async_trait]
@@ -194,15 +216,13 @@ impl EventHandler for ProactiveMessageSubscriber {
         });
 
         // 2. If an active external channel is configured, deliver there too.
-        //    A runtime override (set by the channels_set_default RPC) wins over
-        //    this subscriber's config-seeded value so a UI default-channel
-        //    switch takes effect live (issue #3712).
-        let active = runtime_active_channel_override().or_else(|| {
-            self.active_channel
-                .read()
-                .ok()
-                .and_then(|guard| guard.clone())
-        });
+        //    The `channels_set_default` RPC mutates this handle in place (issue
+        //    #3712), so reading it here picks up a live default-channel switch.
+        let active = self
+            .active_channel
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone());
 
         if let Some(ref channel_name) = active {
             // "web" is already handled above — skip to avoid noise.

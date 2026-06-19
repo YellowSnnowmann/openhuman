@@ -10,12 +10,12 @@ import {
   upsertChannelConnection,
 } from '../store/channelConnectionsSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import type {
-  ChannelAuthMode,
-  ChannelConnectionStatus,
-  ChannelDefinition,
-  ChannelStatusEntry,
-  ChannelType,
+import {
+  type ChannelAuthMode,
+  type ChannelConnectionStatus,
+  type ChannelDefinition,
+  type ChannelStatusEntry,
+  isChannelType,
 } from '../types/channels';
 
 const log = debug('channels:definitions');
@@ -89,7 +89,13 @@ export function useChannelDefinitions() {
         // connecting-guard in `resolveStatusPatch` sees the current status.
         const liveConnections = store.getState().channelConnections.connections;
         for (const entry of statusEntries) {
-          const channel = entry.channel_id as ChannelType;
+          // Skip unknown channels from core rather than coercing them into
+          // state as if valid (#3794 review).
+          if (!isChannelType(entry.channel_id)) {
+            log('ignoring unknown channel_id from status sync: %s', entry.channel_id);
+            continue;
+          }
+          const channel = entry.channel_id;
           const authMode = entry.auth_mode as ChannelAuthMode;
           const currentStatus = liveConnections[channel]?.[authMode]?.status;
           const patch = resolveStatusPatch(entry, currentStatus);
