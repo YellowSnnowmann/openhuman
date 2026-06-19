@@ -24,6 +24,7 @@
 use crate::openhuman::config::Config;
 
 mod expand_autonomy_defaults;
+mod migrate_legacy_embedding_provider;
 mod phase_out_profile_md;
 mod reconcile_orphaned_providers;
 mod remove_write_auto_approve;
@@ -32,7 +33,7 @@ mod retire_chat_v1_model;
 mod unify_ai_provider_settings;
 
 /// Current target schema version. Bumped alongside every new migration.
-pub const CURRENT_SCHEMA_VERSION: u32 = 6;
+pub const CURRENT_SCHEMA_VERSION: u32 = 7;
 
 /// Run any migrations whose `schema_version` gate hasn't yet been
 /// crossed for this workspace.
@@ -324,6 +325,44 @@ pub async fn run_pending(config: &mut Config) {
                 "[migrations] schema_version bumped to 6 \
                  (repair_http_request_limits + reconcile_orphaned_providers)"
             );
+        }
+    }
+
+    // 6 -> 7: retire the removed `"fastembed"` embedding provider. Older builds
+    // shipped a local fastembed provider; it no longer exists in the embedding
+    // factory, which hard-errors on unknown provider strings. A persisted
+    // `embedding_provider = "fastembed"` therefore aborts `start_channels`'
+    // memory build and takes every messaging channel offline (issue #3712).
+    // Rewrite it to the managed cloud backend (current default) + cloud-default
+    // model/dims. Guard on `== 6` so an earlier failed step doesn't get skipped.
+    if config.schema_version == 6 {
+        match migrate_legacy_embedding_provider::run(config) {
+            Ok(stats) => {
+                let previous_version = config.schema_version;
+                config.schema_version = 7;
+                if let Err(err) = config.save().await {
+                    config.schema_version = previous_version;
+                    log::warn!(
+                        "[migrations] migrate_legacy_embedding_provider ran but config.save \
+                         failed: {err:#} — rolled in-memory schema_version back to \
+                         {previous_version}, will retry on next launch"
+                    );
+                    return;
+                }
+                log::info!(
+                    "[migrations] schema_version bumped to 7 (migrate_legacy_embedding_provider \
+                     provider_migrated={} old_dims={} new_dims={})",
+                    stats.provider_migrated,
+                    stats.old_dimensions,
+                    stats.new_dimensions,
+                );
+            }
+            Err(err) => {
+                log::warn!(
+                    "[migrations] migrate_legacy_embedding_provider failed: {err:#} — \
+                     will retry on next launch"
+                );
+            }
         }
     }
 }

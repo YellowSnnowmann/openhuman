@@ -634,6 +634,167 @@ async fn channel_status_reports_managed_dm_credential_as_connected() {
     assert!(managed_dm.has_credentials);
 }
 
+// ---------------------------------------------------------------------------
+// Issue #3712: `channel_status` must reflect the *live* supervised-listener
+// health, not just credential/config presence, so the Messaging tab never
+// shows a false "Connected" while the listener is actually failing.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_listener_health_ignores_modes_without_a_listener() {
+    // managed-DM and other listener-less modes have no `channel:<id>` health
+    // component — presence must pass through untouched and never set an error.
+    assert_eq!(
+        merge_listener_health(true, false, Some("error"), Some("boom")),
+        (true, None)
+    );
+    assert_eq!(
+        merge_listener_health(false, false, None, None),
+        (false, None)
+    );
+}
+
+#[test]
+fn merge_listener_health_error_overrides_presence_and_surfaces_reason() {
+    // Configured (presence == connected) but the live listener is failing →
+    // report disconnected and carry the reason to the UI.
+    assert_eq!(
+        merge_listener_health(true, true, Some("error"), Some("gateway 4004")),
+        (false, Some("gateway 4004".to_string()))
+    );
+}
+
+#[test]
+fn merge_listener_health_ok_confirms_connected() {
+    assert_eq!(
+        merge_listener_health(true, true, Some("ok"), None),
+        (true, None)
+    );
+}
+
+#[test]
+fn merge_listener_health_starting_keeps_presence() {
+    // Before the first connect attempt the component is "starting" (or absent):
+    // keep the presence-based value so a freshly-configured channel isn't shown
+    // as broken prematurely.
+    assert_eq!(
+        merge_listener_health(true, true, Some("starting"), None),
+        (true, None)
+    );
+    assert_eq!(merge_listener_health(true, true, None, None), (true, None));
+}
+
+#[tokio::test]
+async fn channel_status_surfaces_live_listener_error() {
+    let (_tmp, mut config) = isolated_test_config();
+
+    // Configure a bot_token Discord channel (materialises a runtime listener).
+    config.channels_config.discord = Some(DiscordConfig {
+        bot_token: "tok".to_string(),
+        guild_id: None,
+        channel_id: None,
+        allowed_users: vec![],
+        listen_to_bots: false,
+        mention_only: false,
+    });
+
+    // Simulate the supervisor reporting the listener as failed.
+    crate::openhuman::health::mark_component_error("channel:discord", "gateway closed (4004)");
+
+    let result = channel_status(&config, Some("discord"))
+        .await
+        .expect("channel_status should succeed");
+
+    let bot_token = result
+        .value
+        .iter()
+        .find(|e| e.auth_mode == ChannelAuthMode::BotToken)
+        .expect("bot_token entry");
+    assert!(
+        !bot_token.connected,
+        "a failing listener must report not-connected: {:?}",
+        result.value
+    );
+    assert_eq!(
+        bot_token.error.as_deref(),
+        Some("gateway closed (4004)"),
+        "the disconnect reason must be surfaced: {:?}",
+        result.value
+    );
+
+    // Recovery: once the supervisor marks the listener healthy, status flips
+    // back to connected with the error cleared.
+    crate::openhuman::health::mark_component_ok("channel:discord");
+    let recovered = channel_status(&config, Some("discord"))
+        .await
+        .expect("channel_status should succeed");
+    let bot_token = recovered
+        .value
+        .iter()
+        .find(|e| e.auth_mode == ChannelAuthMode::BotToken)
+        .expect("bot_token entry");
+    assert!(bot_token.connected, "healthy listener should report connected");
+    assert!(bot_token.error.is_none(), "error should clear on recovery");
+}
+
+// ---------------------------------------------------------------------------
+// Issue #3712: default messaging channel switch (Telegram↔Discord). Setting the
+// default must persist to `channels_config.active_channel`; an unknown channel
+// must be rejected without clobbering the current value.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn set_default_channel_persists_known_channels() {
+    let (_tmp, mut config) = isolated_test_config();
+    assert!(config.channels_config.active_channel.is_none());
+
+    set_default_channel(&mut config, "Discord")
+        .await
+        .expect("set discord");
+    assert_eq!(
+        config.channels_config.active_channel.as_deref(),
+        Some("discord"),
+        "channel must be canonicalised to lowercase and persisted"
+    );
+
+    set_default_channel(&mut config, "telegram")
+        .await
+        .expect("set telegram");
+    assert_eq!(
+        config.channels_config.active_channel.as_deref(),
+        Some("telegram")
+    );
+}
+
+#[tokio::test]
+async fn set_default_channel_rejects_unknown_and_empty() {
+    let (_tmp, mut config) = isolated_test_config();
+    set_default_channel(&mut config, "discord")
+        .await
+        .expect("seed discord");
+
+    assert!(
+        set_default_channel(&mut config, "myspace")
+            .await
+            .unwrap_err()
+            .contains("unknown channel"),
+    );
+    assert!(set_default_channel(&mut config, "   ").await.is_err());
+
+    // A rejected set must not clobber the previously persisted value.
+    assert_eq!(
+        config.channels_config.active_channel.as_deref(),
+        Some("discord")
+    );
+}
+
+#[test]
+fn get_default_channel_defaults_to_web_when_unset() {
+    let (_tmp, config) = isolated_test_config();
+    let out = get_default_channel(&config).expect("get default");
+    assert_eq!(out.value["active_channel"], "web");
+}
+
 #[tokio::test]
 async fn connected_channel_slugs_merges_credentials_and_config() {
     let (_tmp, mut config) = isolated_test_config();

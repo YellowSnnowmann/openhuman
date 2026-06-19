@@ -74,6 +74,10 @@ export interface ChannelStatusEntry {
   auth_mode: ChannelAuthMode;
   connected: boolean;
   has_credentials: boolean;
+  /** Live failure reason from the supervised listener when the channel is
+   *  configured but its runtime listener is currently failing (issue #3712).
+   *  Absent when healthy, still starting, or for listener-less modes. */
+  error?: string;
 }
 
 export interface ChannelConnectionResult {

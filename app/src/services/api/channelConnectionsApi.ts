@@ -244,8 +244,27 @@ export const channelConnectionsApi = {
     return normalizePermissionCheck(result);
   },
 
-  /** Placeholder for default channel preference sync. */
+  /**
+   * Persist the default messaging channel to the core (issue #3712). The core
+   * stores it in `channels_config.active_channel` and applies it live, so the
+   * agent's proactive delivery follows the selection without a restart.
+   */
   updatePreferences: async (defaultMessagingChannel: ChannelType): Promise<void> => {
-    void defaultMessagingChannel;
+    await callCoreRpc({
+      method: 'openhuman.channels_set_default',
+      params: { channel: defaultMessagingChannel },
+    });
+  },
+
+  /** Read the core's persisted default messaging channel. */
+  getDefaultChannel: async (): Promise<ChannelType | null> => {
+    const result = await callCoreRpc<unknown>({
+      method: 'openhuman.channels_get_default',
+      params: {},
+    });
+    const record = expectObject<{ active_channel?: unknown }>(result, 'Channel get_default');
+    return typeof record.active_channel === 'string'
+      ? (record.active_channel as ChannelType)
+      : null;
   },
 };

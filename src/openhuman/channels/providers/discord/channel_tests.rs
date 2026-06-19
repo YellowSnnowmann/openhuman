@@ -22,10 +22,13 @@ fn bot_user_id_extraction() {
 }
 
 #[test]
-fn empty_allowlist_denies_everyone() {
+fn empty_allowlist_allows_everyone() {
+    // Issue #3712: an unconfigured (empty) allowlist must apply no per-user
+    // restriction — otherwise a UI-connected bot silently ignores every message
+    // and never replies. Scope is still enforced by guild/channel filters.
     let ch = DiscordChannel::new("fake".into(), None, None, vec![], false, false);
-    assert!(!ch.is_user_allowed("12345"));
-    assert!(!ch.is_user_allowed("anyone"));
+    assert!(ch.is_user_allowed("12345"));
+    assert!(ch.is_user_allowed("anyone"));
 }
 
 #[test]

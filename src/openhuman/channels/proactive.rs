@@ -97,6 +97,41 @@ impl ProactiveMessageSubscriber {
     }
 }
 
+/// Process-wide override for the active external channel, set by the
+/// `channels_set_default` RPC (issue #3712 — "switch default channel
+/// Telegram↔Discord"). When set, it takes precedence over every subscriber's
+/// config-seeded `active_channel`, so a default-channel switch from the UI takes
+/// effect immediately and reaches whichever proactive subscriber is live —
+/// regardless of registration order or how many are registered (web-only vs the
+/// full channel runtime). `None` (the unset default) means "no override — use
+/// the config-seeded value". Cleared on process exit; the choice is also
+/// persisted to `config.channels_config.active_channel`, so the next start
+/// seeds correctly.
+static ACTIVE_CHANNEL_OVERRIDE: std::sync::OnceLock<RwLock<Option<String>>> =
+    std::sync::OnceLock::new();
+
+fn active_channel_override() -> &'static RwLock<Option<String>> {
+    ACTIVE_CHANNEL_OVERRIDE.get_or_init(|| RwLock::new(None))
+}
+
+/// Set (or clear) the runtime active-channel override. Pass `Some(channel)` to
+/// route proactive messages to that channel now; the value also persists to
+/// config so it survives restarts.
+pub fn set_runtime_active_channel(channel: Option<String>) {
+    if let Ok(mut guard) = active_channel_override().write() {
+        tracing::debug!(channel = ?channel, "[proactive] runtime active-channel override set");
+        *guard = channel;
+    }
+}
+
+/// Read the runtime active-channel override, if any.
+fn runtime_active_channel_override() -> Option<String> {
+    active_channel_override()
+        .read()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
 #[async_trait]
 impl EventHandler for ProactiveMessageSubscriber {
     fn name(&self) -> &str {
@@ -159,11 +194,15 @@ impl EventHandler for ProactiveMessageSubscriber {
         });
 
         // 2. If an active external channel is configured, deliver there too.
-        let active = self
-            .active_channel
-            .read()
-            .ok()
-            .and_then(|guard| guard.clone());
+        //    A runtime override (set by the channels_set_default RPC) wins over
+        //    this subscriber's config-seeded value so a UI default-channel
+        //    switch takes effect live (issue #3712).
+        let active = runtime_active_channel_override().or_else(|| {
+            self.active_channel
+                .read()
+                .ok()
+                .and_then(|guard| guard.clone())
+        });
 
         if let Some(ref channel_name) = active {
             // "web" is already handled above — skip to avoid noise.

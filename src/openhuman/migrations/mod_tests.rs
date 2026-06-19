@@ -113,8 +113,8 @@ async fn run_pending_runs_phase_out_when_version_zero() {
 
     let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 6"),
-        "saved config.toml must record schema_version=6, got:\n{on_disk}"
+        on_disk.contains("schema_version = 7"),
+        "saved config.toml must record schema_version=7, got:\n{on_disk}"
     );
 }
 
@@ -129,7 +129,7 @@ async fn run_pending_bumps_version_on_fresh_install() {
 
     assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
     let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
-    assert!(on_disk.contains("schema_version = 6"));
+    assert!(on_disk.contains("schema_version = 7"));
 }
 
 #[tokio::test]
@@ -253,8 +253,8 @@ async fn run_pending_expands_autonomy_defaults_from_v3() {
     // On-disk config must reflect the new schema_version.
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 6"),
-        "saved config.toml must record schema_version=6, got:\n{on_disk}"
+        on_disk.contains("schema_version = 7"),
+        "saved config.toml must record schema_version=7, got:\n{on_disk}"
     );
 }
 
@@ -286,8 +286,8 @@ async fn run_pending_v4_to_v5_removes_write_tools_from_auto_approve() {
 
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 6"),
-        "saved config.toml must record schema_version=6, got:\n{on_disk}"
+        on_disk.contains("schema_version = 7"),
+        "saved config.toml must record schema_version=7, got:\n{on_disk}"
     );
 }
 
@@ -322,8 +322,8 @@ async fn run_pending_v5_to_v6_repairs_http_request_limits() {
     // The version bump must be persisted to disk too.
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 6"),
-        "saved config.toml must record schema_version=6, got:\n{on_disk}"
+        on_disk.contains("schema_version = 7"),
+        "saved config.toml must record schema_version=7, got:\n{on_disk}"
     );
 }
 
@@ -357,8 +357,8 @@ async fn run_pending_v5_to_v6_reconciles_orphaned_providers() {
 
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 6"),
-        "saved config.toml must record schema_version=6, got:\n{on_disk}"
+        on_disk.contains("schema_version = 7"),
+        "saved config.toml must record schema_version=7, got:\n{on_disk}"
     );
 }
 
