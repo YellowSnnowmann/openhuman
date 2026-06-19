@@ -85,6 +85,13 @@ export const FALLBACK_DEFINITIONS: ChannelDefinition[] = [
             required: false,
             placeholder: 'Optional: restrict to a specific server',
           },
+          {
+            key: 'allowed_users',
+            label: 'Allowed Users',
+            field_type: 'string',
+            required: false,
+            placeholder: 'Comma-separated Discord user IDs, or * for everyone (blank = everyone)',
+          },
         ],
         auth_action: undefined,
       },

@@ -55,6 +55,8 @@ describe('DiscordConfig', () => {
     renderWithProviders(<DiscordConfig definition={discordDef} />);
     expect(screen.getByPlaceholderText(/Your Discord bot token/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/restrict to a specific server/)).toBeInTheDocument();
+    // Issue #3763: the allowlist must be settable in the connect UI.
+    expect(screen.getByPlaceholderText(/Discord user IDs, or \* for everyone/)).toBeInTheDocument();
   });
 
   it('shows Connect buttons for each auth mode', () => {

@@ -247,6 +247,14 @@ fn discord_definition() -> ChannelDefinition {
                         required: false,
                         placeholder: "Optional: default channel for outbound messages",
                     },
+                    FieldRequirement {
+                        key: "allowed_users",
+                        label: "Allowed Users",
+                        field_type: "string",
+                        required: false,
+                        placeholder:
+                            "Comma-separated Discord user IDs, or * for everyone (blank = everyone)",
+                    },
                 ],
                 auth_action: None,
             },
