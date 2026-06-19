@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { createElement, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -63,8 +63,9 @@ describe('resolveStatusPatch (issue #3712)', () => {
 });
 
 describe('useChannelDefinitions loadDefinitions (issue #3794)', () => {
-  const wrapper = ({ children }: { children: ReactNode }) =>
-    createElement(Provider, { store }, children);
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <Provider store={store}>{children}</Provider>
+  );
 
   beforeEach(() => {
     store.dispatch(resetChannelConnectionsState());
