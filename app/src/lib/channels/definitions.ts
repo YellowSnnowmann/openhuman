@@ -86,6 +86,13 @@ export const FALLBACK_DEFINITIONS: ChannelDefinition[] = [
             placeholder: 'Optional: restrict to a specific server',
           },
           {
+            key: 'channel_id',
+            label: 'Channel ID',
+            field_type: 'string',
+            required: false,
+            placeholder: 'Optional: default channel for outbound messages',
+          },
+          {
             key: 'allowed_users',
             label: 'Allowed Users',
             field_type: 'string',

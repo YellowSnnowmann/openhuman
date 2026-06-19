@@ -503,3 +503,42 @@ fn channel_id_defaults_to_none() {
     let ch = DiscordChannel::new("token".into(), None, None, vec![], false, false);
     assert!(ch.channel_id.is_none());
 }
+
+#[test]
+fn passes_guild_scope_covers_guild_dm_and_unscoped_cases() {
+    // No configured guild → everything passes (filter inactive).
+    assert!(DiscordChannel::passes_guild_scope(None, Some("g1"), true));
+    assert!(DiscordChannel::passes_guild_scope(None, None, true));
+    // Configured guild: same guild passes, other guild blocked.
+    assert!(DiscordChannel::passes_guild_scope(
+        Some("g1"),
+        Some("g1"),
+        true
+    ));
+    assert!(!DiscordChannel::passes_guild_scope(
+        Some("g1"),
+        Some("g2"),
+        true
+    ));
+    // #3794 review (Codex P1): DM (no guild_id) under guild scope is blocked
+    // with a blank allowlist, allowed with an explicit one.
+    assert!(!DiscordChannel::passes_guild_scope(Some("g1"), None, true));
+    assert!(DiscordChannel::passes_guild_scope(Some("g1"), None, false));
+}
+
+#[test]
+fn resolve_recipient_prefers_explicit_then_configured_channel() {
+    // #3794 review (Codex P2): recipient-less proactive sends fall back to the
+    // configured channel_id; an explicit recipient always wins.
+    assert_eq!(
+        DiscordChannel::resolve_recipient("123", Some("999")),
+        Some("123")
+    );
+    assert_eq!(
+        DiscordChannel::resolve_recipient("", Some("999")),
+        Some("999")
+    );
+    // Neither available → None, so the caller errors instead of POSTing to "".
+    assert_eq!(DiscordChannel::resolve_recipient("", None), None);
+    assert_eq!(DiscordChannel::resolve_recipient("", Some("")), None);
+}
