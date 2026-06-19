@@ -21,6 +21,22 @@ const SORT_LABEL_KEYS: Record<FeedbackSort, string> = {
   new: 'feedback.sort.new',
 };
 
+/**
+ * Whether a freshly-accepted submission belongs in the currently-filtered list.
+ * Prevents a new item (e.g. a Feature) from showing — and bumping the total —
+ * while the board is filtered to something it doesn't match (e.g. Bugs).
+ */
+export function acceptedItemMatchesFilters(
+  item: FeedbackItem,
+  typeFilter: FeedbackType | 'all',
+  statusFilter: FeedbackStatus | 'all'
+): boolean {
+  return (
+    (typeFilter === 'all' || item.type === typeFilter) &&
+    (statusFilter === 'all' || item.status === statusFilter)
+  );
+}
+
 const Feedback = () => {
   const { t } = useT();
   const { user } = useUser();
@@ -79,8 +95,11 @@ const Feedback = () => {
   };
 
   const handleAccepted = (result: { feedback: FeedbackItem | null }) => {
-    if (result.feedback) {
-      setItems(prev => [result.feedback as FeedbackItem, ...prev]);
+    const accepted = result.feedback;
+    // Only surface the new item if it matches the active filters, so a filtered
+    // board (and its count) stays consistent with the underlying query.
+    if (accepted && acceptedItemMatchesFilters(accepted, typeFilter, statusFilter)) {
+      setItems(prev => [accepted, ...prev]);
       setTotal(prev => prev + 1);
     }
   };

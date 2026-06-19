@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../test/test-utils';
 import type { FeedbackItem } from '../types/feedback';
-import Feedback from './Feedback';
+import Feedback, { acceptedItemMatchesFilters } from './Feedback';
 
 const mockList = vi.fn();
 const mockVote = vi.fn();
@@ -78,5 +78,26 @@ describe('<Feedback />', () => {
     renderWithProviders(<Feedback />);
 
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+  });
+});
+
+describe('acceptedItemMatchesFilters', () => {
+  const feature = makeItem({ type: 'feature', status: 'open' });
+
+  it('matches when filters are "all"', () => {
+    expect(acceptedItemMatchesFilters(feature, 'all', 'all')).toBe(true);
+  });
+
+  it('excludes an item whose type does not match the active type filter', () => {
+    expect(acceptedItemMatchesFilters(feature, 'bug', 'all')).toBe(false);
+  });
+
+  it('excludes an item whose status does not match the active status filter', () => {
+    // New submissions are always "open", so a board filtered to "completed" must not show them.
+    expect(acceptedItemMatchesFilters(feature, 'all', 'completed')).toBe(false);
+  });
+
+  it('includes an item that matches both active filters', () => {
+    expect(acceptedItemMatchesFilters(feature, 'feature', 'open')).toBe(true);
   });
 });
