@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -661,6 +661,38 @@ describe('VoicePanel', () => {
     await waitFor(() => expect(ttsSelect.value).toBe('piper'));
 
     await waitFor(() => expect(screen.getByTestId('test-tts-button')).toBeEnabled());
+  });
+
+  it('live-polls install status on an interval while a download is in flight', async () => {
+    // Seed an in-flight download so `installInFlight` is true and the polling
+    // effect mounts its 2s interval. The interval body re-reads both engine
+    // statuses and writes them back to state.
+    runtime.whisperStatus = makeInstallStatus('whisper', { state: 'installing', progress: 25 });
+
+    vi.useFakeTimers();
+    try {
+      renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
+
+      // Flush the mount effect's async loadData() so the installing status
+      // lands in state and the poll interval is set up.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const callsBeforeTick = vi.mocked(whisperInstallStatus).mock.calls.length;
+
+      // The download finishes between ticks; advancing past one 2s interval
+      // must make the poller observe the new `installed` status.
+      runtime.whisperStatus = makeInstallStatus('whisper', { state: 'installed', progress: 100 });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      expect(vi.mocked(whisperInstallStatus).mock.calls.length).toBeGreaterThan(callsBeforeTick);
+      expect(vi.mocked(piperInstallStatus)).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // ─── Whisper model picker in routing section ────────────────────────────────
