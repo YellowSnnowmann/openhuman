@@ -85,6 +85,10 @@ describe('<FeedbackFilterSelect />', () => {
     expect(activeOptionText(listbox)).toContain('All types');
     fireEvent.keyDown(listbox, { key: 'ArrowDown' }); // all -> Feature
     expect(activeOptionText(listbox)).toContain('Feature');
+    fireEvent.keyDown(listbox, { key: 'Home' }); // -> All types
+    expect(activeOptionText(listbox)).toContain('All types');
+    fireEvent.keyDown(listbox, { key: 'ArrowUp' }); // wraps -> Bug
+    expect(activeOptionText(listbox)).toContain('Bug');
     fireEvent.keyDown(listbox, { key: 'End' }); // -> Bug
     expect(activeOptionText(listbox)).toContain('Bug');
     fireEvent.keyDown(listbox, { key: 'ArrowDown' }); // wraps -> All types
