@@ -202,6 +202,9 @@ mod tests {
             .send(&SendMessage::new("hello", "bob"))
             .await
             .is_ok());
+        // A provider that does not override `proactive_target` opts out of
+        // recipient-less proactive delivery (#3794).
+        assert_eq!(channel.proactive_target(), None);
     }
 
     #[tokio::test]
