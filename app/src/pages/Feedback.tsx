@@ -111,6 +111,15 @@ const Feedback = () => {
     }
   };
 
+  // A comment post only bumps the count, but it resolves asynchronously, so merge the
+  // delta against the latest row by id — a full reconstructed item from the comment
+  // panel could carry stale fields and clobber a concurrent vote or status change.
+  const handleCommentAdded = useCallback((id: string) => {
+    setItems(prev =>
+      prev.map(item => (item.id === id ? { ...item, commentCount: item.commentCount + 1 } : item))
+    );
+  }, []);
+
   const handleAccepted = (result: { feedback: FeedbackItem | null }) => {
     const accepted = result.feedback;
     // Reload only when the new item belongs in the current view. Reloading rather than
@@ -205,6 +214,7 @@ const Feedback = () => {
                   item={item}
                   isAdmin={isAdmin}
                   onChange={handleItemChange}
+                  onCommentAdded={handleCommentAdded}
                 />
               ))}
             </div>

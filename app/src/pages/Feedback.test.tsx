@@ -10,6 +10,8 @@ const mockList = vi.fn();
 const mockVote = vi.fn();
 const mockSubmit = vi.fn();
 const mockUpdateStatus = vi.fn();
+const mockGetFeedback = vi.fn();
+const mockAddComment = vi.fn();
 
 vi.mock('../services/api/feedbackApi', () => ({
   feedbackApi: {
@@ -17,6 +19,8 @@ vi.mock('../services/api/feedbackApi', () => ({
     voteFeedback: (...args: unknown[]) => mockVote(...args),
     submitFeedback: (...args: unknown[]) => mockSubmit(...args),
     updateStatus: (...args: unknown[]) => mockUpdateStatus(...args),
+    getFeedback: (...args: unknown[]) => mockGetFeedback(...args),
+    addComment: (...args: unknown[]) => mockAddComment(...args),
   },
 }));
 
@@ -60,6 +64,8 @@ describe('<Feedback />', () => {
     mockVote.mockReset();
     mockSubmit.mockReset();
     mockUpdateStatus.mockReset();
+    mockGetFeedback.mockReset();
+    mockAddComment.mockReset();
     userRole.current = 'user';
   });
 
@@ -101,6 +107,8 @@ describe('<Feedback /> keeps the board in sync after local mutations', () => {
     mockVote.mockReset();
     mockSubmit.mockReset();
     mockUpdateStatus.mockReset();
+    mockGetFeedback.mockReset();
+    mockAddComment.mockReset();
     userRole.current = 'user';
   });
 
@@ -211,6 +219,35 @@ describe('<Feedback /> keeps the board in sync after local mutations', () => {
     await user.click(screen.getByRole('button', { name: 'Upvote' }));
 
     expect(await screen.findByText('6')).toBeInTheDocument();
+    expect(mockList).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges a comment-count bump in place without refetching the board', async () => {
+    mockList.mockResolvedValueOnce({
+      items: [makeItem({ id: 'f1', title: 'Commentable', commentCount: 2 })],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+    mockGetFeedback.mockResolvedValueOnce({ feedback: makeItem({ id: 'f1' }), comments: [] });
+    mockAddComment.mockResolvedValueOnce({
+      id: 'c1',
+      user: 'u2',
+      userName: null,
+      body: 'Great call',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<Feedback />);
+    await screen.findByText('Commentable');
+
+    await user.click(screen.getByText('Show more'));
+    await user.type(await screen.findByPlaceholderText('Add a comment'), 'Great call');
+    await user.click(screen.getByRole('button', { name: 'Post' }));
+
+    // The posted comment renders and the count merges locally — no board refetch.
+    expect(await screen.findByText('Great call')).toBeInTheDocument();
     expect(mockList).toHaveBeenCalledTimes(1);
   });
 

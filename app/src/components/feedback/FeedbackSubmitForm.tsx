@@ -124,7 +124,11 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
         </button>
       </div>
 
+      <label htmlFor="feedback-title" className="sr-only">
+        {t('feedback.submit.titlePlaceholder')}
+      </label>
       <input
+        id="feedback-title"
         type="text"
         value={title}
         maxLength={TITLE_MAX}
@@ -134,7 +138,11 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
         className={`${INPUT_CLASS} mb-3`}
       />
 
+      <label htmlFor="feedback-body" className="sr-only">
+        {t('feedback.submit.bodyPlaceholder')}
+      </label>
       <textarea
+        id="feedback-body"
         value={body}
         maxLength={BODY_MAX}
         onChange={e => setBody(e.target.value)}

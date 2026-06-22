@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../test/test-utils';
@@ -6,11 +6,12 @@ import type { FeedbackItem } from '../../types/feedback';
 import FeedbackItemRow from './FeedbackItemRow';
 
 const mockGetFeedback = vi.fn();
+const mockAddComment = vi.fn();
 vi.mock('../../services/api/feedbackApi', () => ({
   feedbackApi: {
     voteFeedback: vi.fn(),
     updateStatus: vi.fn(),
-    addComment: vi.fn(),
+    addComment: (...args: unknown[]) => mockAddComment(...args),
     getFeedback: (...args: unknown[]) => mockGetFeedback(...args),
   },
 }));
@@ -85,6 +86,34 @@ describe('<FeedbackItemRow />', () => {
     fireEvent.click(screen.getByText('Show more'));
     expect(await screen.findByText('No comments yet.')).toBeInTheDocument();
     expect(screen.getByText('Show less')).toBeInTheDocument();
+  });
+
+  it('bubbles only the item id (not a reconstructed item) when a comment is posted', async () => {
+    mockGetFeedback.mockResolvedValueOnce({ feedback: makeItem(), comments: [] });
+    mockAddComment.mockResolvedValueOnce({
+      id: 'c1',
+      user: 'u2',
+      userName: null,
+      body: 'Nice idea',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const onCommentAdded = vi.fn();
+    renderWithProviders(
+      <FeedbackItemRow
+        item={makeItem()}
+        isAdmin={false}
+        onChange={() => {}}
+        onCommentAdded={onCommentAdded}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Show more'));
+    fireEvent.change(await screen.findByPlaceholderText('Add a comment'), {
+      target: { value: 'Nice idea' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Post' }));
+
+    await waitFor(() => expect(onCommentAdded).toHaveBeenCalledWith('f1'));
   });
 
   it('links to the GitHub issue when one exists', () => {

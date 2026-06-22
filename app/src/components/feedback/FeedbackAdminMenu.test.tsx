@@ -39,6 +39,11 @@ describe('<FeedbackAdminMenu />', () => {
     expect(screen.getByRole('combobox')).toHaveValue('planned');
   });
 
+  it('associates the status label with the select for assistive tech', () => {
+    render(<FeedbackAdminMenu item={makeItem({ status: 'open' })} onUpdated={() => {}} />);
+    expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument();
+  });
+
   it('updates the status and bubbles the result', async () => {
     const updated = makeItem({ status: 'completed' });
     mockUpdateStatus.mockResolvedValueOnce(updated);

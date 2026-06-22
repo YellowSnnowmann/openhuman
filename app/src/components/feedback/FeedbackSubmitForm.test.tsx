@@ -47,6 +47,14 @@ function fillForm(title: string, body: string) {
 describe('<FeedbackSubmitForm />', () => {
   beforeEach(() => mockSubmit.mockReset());
 
+  it('exposes accessible labels for the title and body fields', () => {
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    expect(screen.getByRole('textbox', { name: 'Title' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: 'Describe your idea or the problem you hit' })
+    ).toBeInTheDocument();
+  });
+
   it('disables submit until both title and body are present', () => {
     render(<FeedbackSubmitForm onAccepted={() => {}} />);
     const submit = screen.getByRole('button', { name: 'Submit' });

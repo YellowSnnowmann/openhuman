@@ -12,6 +12,9 @@ interface FeedbackItemRowProps {
   isAdmin: boolean;
   /** Bubbles an updated item (from a vote or status change) up to the list. */
   onChange: (updated: FeedbackItem) => void;
+  /** Bubbles a comment-count bump by id so the parent merges it against the latest
+   * row, rather than this row passing a reconstructed item built from stale props. */
+  onCommentAdded?: (id: string) => void;
 }
 
 // Deterministic avatar tint from the author id, drawn from the app's palette.
@@ -35,7 +38,12 @@ function formatDate(value: string): string {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-export default function FeedbackItemRow({ item, isAdmin, onChange }: FeedbackItemRowProps) {
+export default function FeedbackItemRow({
+  item,
+  isAdmin,
+  onChange,
+  onCommentAdded,
+}: FeedbackItemRowProps) {
   const { t } = useT();
   const [expanded, setExpanded] = useState(false);
 
@@ -115,10 +123,7 @@ export default function FeedbackItemRow({ item, isAdmin, onChange }: FeedbackIte
         </div>
 
         {expanded && (
-          <FeedbackComments
-            feedbackId={item.id}
-            onCommentAdded={() => onChange({ ...item, commentCount: item.commentCount + 1 })}
-          />
+          <FeedbackComments feedbackId={item.id} onCommentAdded={() => onCommentAdded?.(item.id)} />
         )}
 
         {isAdmin && (

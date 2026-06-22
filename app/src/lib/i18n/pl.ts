@@ -12,7 +12,7 @@ const messages: TranslationMap = {
   'feedback.loadError': 'Nie udało się wczytać opinii',
   'feedback.expand': 'Pokaż więcej',
   'feedback.collapse': 'Pokaż mniej',
-  'feedback.comments': 'komentarzy',
+  'feedback.comments': 'Komentarze',
   'feedback.viewIssue': 'Zobacz zgłoszenie',
   'feedback.status.open': 'Otwarte',
   'feedback.status.planned': 'Zaplanowane',
