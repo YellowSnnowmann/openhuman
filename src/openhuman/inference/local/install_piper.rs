@@ -371,7 +371,36 @@ async fn run_install(config: &Config, voice: &str) -> Result<(), String> {
     }
     let _ = std::fs::remove_file(&archive_path);
 
+    // Defensive: ensure the extracted binary is executable. `tar.unpack`
+    // preserves archive mode bits, but a corrupted/odd archive (or a future
+    // zip path) could land a non-executable binary, which fails the spawn
+    // with a confusing "permission denied". chmod it explicitly on Unix.
+    ensure_piper_executable(config);
+
     Ok(())
+}
+
+/// Mark every present Piper binary candidate executable (Unix only).
+/// No-op on Windows, where executability is determined by extension.
+fn ensure_piper_executable(config: &Config) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for candidate in paths::workspace_piper_binary_candidates(config) {
+            if !candidate.is_file() {
+                continue;
+            }
+            match std::fs::set_permissions(&candidate, std::fs::Permissions::from_mode(0o755)) {
+                Ok(()) => log::debug!(
+                    "{LOG_PREFIX} ensured executable bit on {}",
+                    candidate.display()
+                ),
+                Err(e) => log::warn!("{LOG_PREFIX} failed to chmod {}: {e}", candidate.display()),
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = config;
 }
 
 fn update_stage(stage: String) {
@@ -413,6 +442,9 @@ fn extract_zip(zip_path: &std::path::Path, dest_dir: &std::path::Path) -> Result
                 .map_err(|e| format!("{LOG_PREFIX} copy {}: {e}", out_path.display()))?;
         }
     }
+    // The executable bit is restored uniformly for both archive kinds by
+    // `ensure_piper_executable` after extraction (see `run_install`), so the
+    // per-entry mode is intentionally not re-applied here.
     Ok(())
 }
 
@@ -666,5 +698,23 @@ mod tests {
         let (_tmp, config) = temp_config();
         wipe_shared_install_dir(&config);
         assert!(find_workspace_piper_binary(&config).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_piper_executable_chmods_existing_binary() {
+        use std::os::unix::fs::PermissionsExt;
+        let _g = shared_install_lock();
+        let (_tmp, config) = temp_config();
+        wipe_shared_install_dir(&config);
+        let target = paths::workspace_piper_binary_candidates(&config)[0].clone();
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, b"stub").unwrap();
+        // Force a non-executable mode, then ensure the helper repairs it.
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+        ensure_piper_executable(&config);
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode();
+        assert_ne!(mode & 0o111, 0, "ensure_piper_executable must set +x");
+        wipe_shared_install_dir(&config);
     }
 }

@@ -254,6 +254,41 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
     void loadData(true);
   }, []);
 
+  // A download is in flight when either the local RPC kickoff is still
+  // resolving (`isInstalling*`) or the polled status table reports
+  // `installing`. Combining both avoids a gap between click and the first
+  // status tick.
+  const installInFlight =
+    isInstallingWhisper ||
+    isInstallingPiper ||
+    whisperInstall?.state === 'installing' ||
+    piperInstall?.state === 'installing';
+
+  // Live-poll the installer status while a download runs so the progress
+  // percentage advances without user interaction and the Test buttons
+  // re-enable the instant a model finishes. The interval tears down as
+  // soon as neither engine is installing (state flips to installed/error),
+  // so there is no idle polling once the workspace is set up.
+  useEffect(() => {
+    if (!installInFlight) return;
+    let cancelled = false;
+    const intervalId = window.setInterval(() => {
+      void (async () => {
+        const [whisper, piper] = await Promise.all([
+          whisperInstallStatus().catch(() => null),
+          piperInstallStatus().catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (whisper) setWhisperInstall(whisper);
+        if (piper) setPiperInstall(piper);
+      })();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [installInFlight]);
+
   const persistProviders = async (
     update: Partial<VoiceProvidersSnapshot> & {
       stt_provider?: string;
@@ -482,6 +517,13 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
 
   const whisperReady = whisperInstall?.state === 'installed';
   const piperReady = piperInstall?.state === 'installed';
+
+  // A local engine must finish downloading before its Test button does
+  // anything useful — exercising an un-installed Whisper/Piper just errors
+  // out on a missing model/binary. Cloud + external providers carry no
+  // local artifact, so they are never gated here.
+  const sttTestBlockedByInstall = sttProvider === 'whisper' && !whisperReady;
+  const ttsTestBlockedByInstall = ttsProvider === 'piper' && !piperReady;
 
   return (
     <PanelPage
@@ -972,7 +1014,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                       variant="secondary"
                       size="xs"
                       data-testid="test-stt-button"
-                      disabled={isTestingStt || !sttProvider}
+                      disabled={isTestingStt || !sttProvider || sttTestBlockedByInstall}
+                      title={
+                        sttTestBlockedByInstall ? t('voice.providers.notInstalled') : undefined
+                      }
                       onClick={async () => {
                         setIsTestingStt(true);
                         setSttTestResult(null);
@@ -1065,7 +1110,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                       variant="secondary"
                       size="xs"
                       data-testid="test-tts-button"
-                      disabled={isTestingTts || !ttsProvider}
+                      disabled={isTestingTts || !ttsProvider || ttsTestBlockedByInstall}
+                      title={
+                        ttsTestBlockedByInstall ? t('voice.providers.notInstalled') : undefined
+                      }
                       onClick={async () => {
                         setIsTestingTts(true);
                         setTtsTestResult(null);
