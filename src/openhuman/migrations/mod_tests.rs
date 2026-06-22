@@ -133,6 +133,33 @@ async fn run_pending_bumps_version_on_fresh_install() {
 }
 
 #[tokio::test]
+async fn run_pending_migrates_fastembed_to_managed_without_local_ollama() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+    let mut config = config_in(&tmp);
+    config.schema_version = 6;
+    config.memory.embedding_provider = "fastembed".to_string();
+    config.memory.embedding_model = "BGESmallENV15".to_string();
+    config.memory.embedding_dimensions = 384;
+    // Point the local-Ollama probe at a guaranteed-dead address so the rewrite
+    // target is deterministic (managed) regardless of whether the host happens
+    // to run Ollama on the default port.
+    config.local_ai.base_url = Some("http://127.0.0.1:1".to_string());
+
+    run_pending(&mut config).await;
+
+    assert_eq!(config.schema_version, 7);
+    assert_eq!(
+        config.memory.embedding_provider, "managed",
+        "no reachable local Ollama ⇒ managed cloud target"
+    );
+    assert_eq!(config.memory.embedding_dimensions, 1024);
+    let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
+    assert!(on_disk.contains("schema_version = 7"));
+}
+
+#[tokio::test]
 async fn run_pending_rolls_back_schema_version_when_save_fails() {
     let tmp = TempDir::new().unwrap();
     seed_tainted_transcript(&tmp.path().join("workspace"));
