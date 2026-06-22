@@ -92,12 +92,16 @@ describe('<Feedback />', () => {
     ).toBeInTheDocument();
   });
 
-  it('surfaces a load error', async () => {
+  it('surfaces a load error without also showing the empty state', async () => {
     mockList.mockRejectedValueOnce(new Error('boom'));
 
     renderWithProviders(<Feedback />);
 
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+    // The empty-state copy must not render alongside the error banner.
+    expect(
+      screen.queryByText('No feedback yet. Be the first to share an idea.')
+    ).not.toBeInTheDocument();
   });
 });
 

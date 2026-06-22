@@ -218,7 +218,7 @@ const Feedback = () => {
                 />
               ))}
             </div>
-          ) : (
+          ) : loadError ? null : (
             <div className="rounded-2xl border border-dashed border-neutral-200 py-12 text-center dark:border-neutral-800">
               <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-neutral-100 dark:bg-white/5">
                 <svg
