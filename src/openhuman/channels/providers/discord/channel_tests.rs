@@ -542,3 +542,34 @@ fn resolve_recipient_prefers_explicit_then_configured_channel() {
     assert_eq!(DiscordChannel::resolve_recipient("", None), None);
     assert_eq!(DiscordChannel::resolve_recipient("", Some("")), None);
 }
+
+#[test]
+fn proactive_target_uses_configured_channel_id() {
+    use crate::openhuman::channels::traits::Channel;
+
+    // Configured channel_id ⇒ recipient-less proactive sends have a target.
+    let with_channel = DiscordChannel::new(
+        "fake".into(),
+        None,
+        Some("12345".into()),
+        vec![],
+        false,
+        false,
+    );
+    assert_eq!(with_channel.proactive_target(), Some("12345".to_string()));
+
+    // No channel_id ⇒ None, so proactive routing skips Discord (#3794 Codex P2).
+    let no_channel = DiscordChannel::new("fake".into(), None, None, vec![], false, false);
+    assert_eq!(no_channel.proactive_target(), None);
+
+    // Whitespace-only channel_id is treated as unset.
+    let blank_channel = DiscordChannel::new(
+        "fake".into(),
+        None,
+        Some("   ".into()),
+        vec![],
+        false,
+        false,
+    );
+    assert_eq!(blank_channel.proactive_target(), None);
+}

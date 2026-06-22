@@ -239,6 +239,18 @@ impl Channel for DiscordChannel {
         "discord"
     }
 
+    /// Recipient-less proactive sends (cron/heartbeat) deliver to the bot's
+    /// configured default `channel_id`. `None` when unconfigured, so proactive
+    /// routing skips Discord rather than letting `send` bail on an empty target
+    /// (#3794 review — Codex P2).
+    fn proactive_target(&self) -> Option<String> {
+        self.channel_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    }
+
     async fn send(&self, message: &SendMessage) -> anyhow::Result<()> {
         // Resolve the target channel: explicit recipient (replies) or the
         // configured default channel (recipient-less proactive sends). Bail with

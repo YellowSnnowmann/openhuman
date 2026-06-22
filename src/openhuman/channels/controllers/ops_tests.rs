@@ -307,6 +307,85 @@ async fn connect_discord_bot_token_persists_runtime_config() {
     );
 }
 
+/// Read the persisted Discord `allowed_users` array from the saved config.toml.
+async fn reload_discord_allowed_users(config: &Config) -> Vec<String> {
+    let raw = tokio::fs::read_to_string(&config.config_path)
+        .await
+        .expect("saved config should exist");
+    let parsed: toml::Value = toml::from_str(&raw).expect("saved config should parse");
+    parsed
+        .get("channels_config")
+        .and_then(|v| v.get("discord"))
+        .and_then(|v| v.get("allowed_users"))
+        .and_then(toml::Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(toml::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn seed_discord_with_allowlist(config: &mut Config) {
+    config.channels_config.discord = Some(DiscordConfig {
+        bot_token: "discord-token-abc".to_string(),
+        guild_id: None,
+        channel_id: None,
+        allowed_users: vec!["111".to_string(), "222".to_string()],
+        listen_to_bots: false,
+        mention_only: false,
+    });
+}
+
+#[tokio::test]
+async fn connect_discord_omitted_allowlist_reuses_existing() {
+    // Reconnecting without resending `allowed_users` keeps the saved list — the
+    // reconnect-convenience path (#3794 review — Codex P2).
+    let (_tmp, mut config) = isolated_test_config();
+    seed_discord_with_allowlist(&mut config);
+    config.save().await.expect("seed should persist");
+
+    connect_channel(
+        &config,
+        "discord",
+        ChannelAuthMode::BotToken,
+        serde_json::json!({ "bot_token": "discord-token-abc" }),
+    )
+    .await
+    .expect("reconnect should succeed");
+
+    assert_eq!(
+        reload_discord_allowed_users(&config).await,
+        vec!["111".to_string(), "222".to_string()],
+        "omitted allowed_users must reuse the previously-saved list"
+    );
+}
+
+#[tokio::test]
+async fn connect_discord_cleared_allowlist_allows_everyone() {
+    // Clearing the allowlist in the UI submits an explicit empty value; the
+    // backend must honor it (empty ⇒ allow-all) instead of reusing the old list
+    // (#3794 review — Codex P2).
+    let (_tmp, mut config) = isolated_test_config();
+    seed_discord_with_allowlist(&mut config);
+    config.save().await.expect("seed should persist");
+
+    connect_channel(
+        &config,
+        "discord",
+        ChannelAuthMode::BotToken,
+        serde_json::json!({ "bot_token": "discord-token-abc", "allowed_users": "" }),
+    )
+    .await
+    .expect("reconnect should succeed");
+
+    assert!(
+        reload_discord_allowed_users(&config).await.is_empty(),
+        "an explicit empty allowed_users must clear the list (allow-all), not reuse it"
+    );
+}
+
 #[tokio::test]
 async fn disconnect_discord_bot_token_clears_runtime_config() {
     let (_tmp, mut config) = isolated_test_config();

@@ -346,13 +346,21 @@ pub async fn connect_channel(
 
         let mut persisted = config.clone();
         let existing = persisted.channels_config.discord.as_ref();
-        let parsed_allowed_users = parse_allowed_users(creds_map.get("allowed_users"));
-        let allowed_users = if parsed_allowed_users.is_empty() {
-            existing
+        // Distinguish an *explicitly cleared* allowlist from an *omitted* one.
+        // The field is advertised as "blank = everyone" (definitions.rs) and the
+        // provider treats an empty list as allow-all, but the old logic reused
+        // the saved list whenever the parsed value was empty — so a user who
+        // cleared the allowlist on reconnect stayed restricted to the previous
+        // users (#3794 review — Codex P2). The key is present in `creds_map`
+        // (even as an empty string) only when the FE sends it; a cleared field
+        // now submits an explicit empty value. So: present ⇒ honor literally
+        // (empty ⇒ allow-all); absent ⇒ reuse the saved list (reconnect
+        // convenience for callers that don't resend the field at all).
+        let allowed_users = match creds_map.get("allowed_users") {
+            Some(raw) => parse_allowed_users(Some(raw)),
+            None => existing
                 .map(|cfg| cfg.allowed_users.clone())
-                .unwrap_or_default()
-        } else {
-            parsed_allowed_users
+                .unwrap_or_default(),
         };
         let allowed_users_count = allowed_users.len();
         let listen_to_bots = parse_optional_bool(creds_map.get("listen_to_bots"))
