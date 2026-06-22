@@ -283,6 +283,16 @@ pub async fn connect_channel(
             .to_string();
         let allowed_users = parse_allowed_users(creds_map.get("allowed_users"));
         let allowed_users_count = allowed_users.len();
+        // Default chat for recipient-less proactive sends (mirrors Discord's
+        // `channel_id`). Read fresh from the form each connect: present ⇒ use it
+        // (empty ⇒ cleared); absent ⇒ unset.
+        let chat_id = creds_map
+            .get("chat_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let has_chat_id = chat_id.is_some();
 
         let mut persisted = config.clone();
         let (stream_mode, draft_update_interval_ms, silent_streaming, mention_only) =
@@ -304,6 +314,7 @@ pub async fn connect_channel(
 
         persisted.channels_config.telegram = Some(TelegramConfig {
             bot_token,
+            chat_id,
             allowed_users,
             stream_mode,
             draft_update_interval_ms,
@@ -319,6 +330,7 @@ pub async fn connect_channel(
         tracing::info!(
             target: "openhuman::channels",
             allowed_users_count,
+            has_chat_id,
             mention_only,
             "[telegram] connect_channel: wrote channels_config.telegram; restart core for listener to load token"
         );

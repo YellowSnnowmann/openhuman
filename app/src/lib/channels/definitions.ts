@@ -49,6 +49,13 @@ export const FALLBACK_DEFINITIONS: ChannelDefinition[] = [
             placeholder: '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11',
           },
           {
+            key: 'chat_id',
+            label: 'Chat ID',
+            field_type: 'string',
+            required: false,
+            placeholder: 'Optional: default chat for outbound messages',
+          },
+          {
             key: 'allowed_users',
             label: 'Allowed Users',
             field_type: 'string',

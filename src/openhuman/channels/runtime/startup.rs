@@ -476,7 +476,8 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
                 tg.stream_mode,
                 tg.draft_update_interval_ms,
                 tg.silent_streaming,
-            ),
+            )
+            .with_chat_id(tg.chat_id.clone()),
         ));
     } else {
         tracing::info!(

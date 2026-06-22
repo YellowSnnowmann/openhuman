@@ -52,6 +52,7 @@ fn channel_config_connected_covers_config_backed_modes() {
 
     config.channels_config.telegram = Some(TelegramConfig {
         bot_token: "telegram-token".into(),
+        chat_id: None,
         allowed_users: vec![],
         stream_mode: Default::default(),
         draft_update_interval_ms: 1000,
@@ -304,6 +305,41 @@ async fn connect_discord_bot_token_persists_runtime_config() {
     assert_eq!(
         discord.get("channel_id").and_then(toml::Value::as_str),
         Some("channel-2")
+    );
+}
+
+#[tokio::test]
+async fn connect_telegram_bot_token_persists_chat_id() {
+    let (_tmp, config) = isolated_test_config();
+    let result = connect_channel(
+        &config,
+        "telegram",
+        ChannelAuthMode::BotToken,
+        serde_json::json!({
+            "bot_token": "telegram-token-123",
+            "chat_id": "  987654  "
+        }),
+    )
+    .await
+    .expect("telegram connect should succeed");
+
+    assert_eq!(result.value.status, "connected");
+    assert!(result.value.restart_required);
+
+    let raw = tokio::fs::read_to_string(&config.config_path)
+        .await
+        .expect("saved config should exist");
+    let parsed: toml::Value = toml::from_str(&raw).expect("saved config should parse");
+    let telegram = parsed
+        .get("channels_config")
+        .and_then(|v| v.get("telegram"))
+        .and_then(toml::Value::as_table)
+        .expect("channels_config.telegram should be persisted");
+
+    // chat_id is trimmed before persistence (mirrors Discord channel_id).
+    assert_eq!(
+        telegram.get("chat_id").and_then(toml::Value::as_str),
+        Some("987654")
     );
 }
 
