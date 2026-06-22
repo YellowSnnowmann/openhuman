@@ -68,7 +68,7 @@ use log::debug;
 
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::paths::{
-    resolve_piper_binary_with_config, resolve_piper_dir_with_config, resolve_tts_voice_path,
+    resolve_piper_binary_with_config, resolve_tts_voice_path,
 };
 use crate::rpc::RpcOutcome;
 
@@ -78,17 +78,6 @@ const LOG_PREFIX: &str = "[voice-tts]";
 
 /// Default Piper voice id.
 pub const DEFAULT_PIPER_VOICE: &str = "en_US-lessac-medium";
-
-/// Bundled espeak-ng data directory next to the Piper binary, if present.
-///
-/// The rhasspy tarball extracts an `espeak-ng-data/` folder alongside the
-/// binary. Returns `Some` only when that folder exists so callers can skip
-/// `ESPEAK_DATA_PATH` for `brew`-installed Piper (which has no bundled data
-/// and relies on the library's compiled-in default).
-fn piper_espeak_data_dir(piper_dir: &std::path::Path) -> Option<PathBuf> {
-    let data = piper_dir.join("espeak-ng-data");
-    data.is_dir().then_some(data)
-}
 
 /// Caller-tunable knobs for local Piper synthesis.
 #[derive(Debug, Default, Clone)]
@@ -173,28 +162,6 @@ pub async fn synthesize_piper(
     .stdin(std::process::Stdio::piped())
     .stdout(std::process::Stdio::null())
     .stderr(std::process::Stdio::piped());
-
-    // The rhasspy tarball is self-contained: `libespeak-ng`, the onnxruntime
-    // dylibs, and `espeak-ng-data/` ship next to the binary. Piper finds the
-    // dylibs relative to its working directory and reads its phoneme data
-    // from `ESPEAK_DATA_PATH`, so pointing both at the install dir lets local
-    // TTS work with NO `brew install espeak-ng` (issue #3425). We deliberately
-    // do not set `DYLD_*` — macOS SIP strips those from children of a signed
-    // app, so the cwd is the reliable lever. When Piper came from `brew`
-    // instead (no bundled data dir), the `is_dir` guard skips the env var so
-    // the system espeak-ng default is preserved.
-    if let Some(piper_dir) = resolve_piper_dir_with_config(config) {
-        if let Some(espeak_data) = piper_espeak_data_dir(&piper_dir) {
-            debug!(
-                "{LOG_PREFIX} using bundled espeak data ESPEAK_DATA_PATH={}",
-                espeak_data.display()
-            );
-            cmd.env("ESPEAK_DATA_PATH", &espeak_data);
-        }
-        debug!("{LOG_PREFIX} piper cwd={}", piper_dir.display());
-        cmd.current_dir(&piper_dir);
-    }
-
     // Suppress the Windows console window that would otherwise flash on
     // every TTS request (piper.exe is a console subsystem binary).
     #[cfg(windows)]
@@ -233,15 +200,9 @@ pub async fn synthesize_piper(
         let stderr = String::from_utf8_lossy(&output.stderr);
         let detail = stderr.trim();
         if detail.contains("libespeak-ng") || detail.contains("Library not loaded") {
-            // espeak-ng ships INSIDE the Piper tarball — a load failure here
-            // means the bundled engine/data couldn't be located (e.g. a
-            // partial or hand-moved install), not a genuinely missing system
-            // package. Point the user at Reinstall, which restores the
-            // self-contained layout the spawn relies on.
             return Err(format!(
-                "{LOG_PREFIX} piper could not load its speech engine. \
-                 Reinstall Piper from Settings → Voice → Voice Providers to \
-                 restore the bundled espeak-ng engine."
+                "{LOG_PREFIX} piper requires espeak-ng which is not installed. \
+                 Run: brew install espeak-ng"
             ));
         }
         return Err(format!(
@@ -332,25 +293,6 @@ mod tests {
             err.contains("required"),
             "whitespace text must error: {err}"
         );
-    }
-
-    #[test]
-    fn piper_espeak_data_dir_detects_bundled_folder() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        // No folder yet → None (mirrors a brew install with no bundled data).
-        assert!(piper_espeak_data_dir(tmp.path()).is_none());
-        // Create the bundled folder → Some(<dir>/espeak-ng-data).
-        let data = tmp.path().join("espeak-ng-data");
-        std::fs::create_dir_all(&data).expect("mkdir espeak data");
-        assert_eq!(piper_espeak_data_dir(tmp.path()), Some(data));
-    }
-
-    #[test]
-    fn piper_espeak_data_dir_ignores_non_directory() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        // A FILE named espeak-ng-data must not be treated as the data dir.
-        std::fs::write(tmp.path().join("espeak-ng-data"), b"not a dir").expect("write");
-        assert!(piper_espeak_data_dir(tmp.path()).is_none());
     }
 
     #[tokio::test]

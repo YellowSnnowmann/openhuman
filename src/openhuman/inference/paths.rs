@@ -275,17 +275,6 @@ pub(crate) fn resolve_piper_binary_with_config(config: &Config) -> Option<PathBu
     resolve_piper_binary()
 }
 
-/// Directory containing the resolved Piper binary. The rhasspy macOS/Linux
-/// tarball is self-contained — `libespeak-ng`, `espeak-ng-data/`, and the
-/// onnxruntime dylibs all sit **next to** the `piper` binary. Piper resolves
-/// those relative to its working directory, so callers spawn it with this
-/// dir as `current_dir` (and point `ESPEAK_DATA_PATH` at the bundled data)
-/// instead of requiring a system-wide `brew install espeak-ng`. Returns
-/// `None` when no binary resolves.
-pub(crate) fn resolve_piper_dir_with_config(config: &Config) -> Option<PathBuf> {
-    resolve_piper_binary_with_config(config).and_then(|bin| bin.parent().map(PathBuf::from))
-}
-
 // ---------------------------------------------------------------------------
 // Workspace install paths — used by install_whisper / install_piper.
 // ---------------------------------------------------------------------------
