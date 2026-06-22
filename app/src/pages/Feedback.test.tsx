@@ -1,4 +1,5 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../test/test-utils';
@@ -17,6 +18,18 @@ vi.mock('../services/api/feedbackApi', () => ({
     submitFeedback: (...args: unknown[]) => mockSubmit(...args),
     updateStatus: (...args: unknown[]) => mockUpdateStatus(...args),
   },
+}));
+
+// Drive `isAdmin` (which gates the status control) without standing up a full
+// core-state snapshot; flip `role` to 'admin' only in the tests that need it.
+const userRole = vi.hoisted(() => ({ current: 'user' as 'user' | 'admin' }));
+vi.mock('../hooks/useUser', () => ({
+  useUser: () => ({
+    user: { role: userRole.current },
+    isLoading: false,
+    error: null,
+    refetch: () => {},
+  }),
 }));
 
 function makeItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
@@ -47,6 +60,7 @@ describe('<Feedback />', () => {
     mockVote.mockReset();
     mockSubmit.mockReset();
     mockUpdateStatus.mockReset();
+    userRole.current = 'user';
   });
 
   it('loads and renders feedback items from the board', async () => {
@@ -78,6 +92,152 @@ describe('<Feedback />', () => {
     renderWithProviders(<Feedback />);
 
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+  });
+});
+
+describe('<Feedback /> keeps the board in sync after local mutations', () => {
+  beforeEach(() => {
+    mockList.mockReset();
+    mockVote.mockReset();
+    mockSubmit.mockReset();
+    mockUpdateStatus.mockReset();
+    userRole.current = 'user';
+  });
+
+  async function openFilter(
+    user: ReturnType<typeof userEvent.setup>,
+    triggerLabel: string,
+    optionName: string
+  ) {
+    await user.click(screen.getByLabelText(triggerLabel));
+    const listbox = await screen.findByRole('listbox');
+    await user.click(within(listbox).getByRole('button', { name: optionName }));
+  }
+
+  async function submitFeature(user: ReturnType<typeof userEvent.setup>, title: string) {
+    await user.type(screen.getByPlaceholderText('Title'), title);
+    await user.type(
+      screen.getByPlaceholderText('Describe your idea or the problem you hit'),
+      'Some supporting detail'
+    );
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
+  }
+
+  it('reloads from page 1 when an accepted submission matches the active filters', async () => {
+    mockList
+      .mockResolvedValueOnce({
+        items: [makeItem({ id: 'f1', title: 'Existing' })],
+        total: 1,
+        page: 1,
+        limit: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          makeItem({ id: 'f2', title: 'Brand new' }),
+          makeItem({ id: 'f1', title: 'Existing' }),
+        ],
+        total: 2,
+        page: 1,
+        limit: 20,
+      });
+    mockSubmit.mockResolvedValueOnce({
+      accepted: true,
+      feedback: makeItem({ id: 'f2', title: 'Brand new', type: 'feature', status: 'open' }),
+      reason: null,
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<Feedback />);
+    await screen.findByText('Existing');
+
+    await submitFeature(user, 'Brand new');
+
+    // The new item is shown via a fresh page-1 fetch, not an optimistic prepend.
+    expect(await screen.findByText('Brand new')).toBeInTheDocument();
+    expect(mockList).toHaveBeenCalledTimes(2);
+    expect(mockList).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
+  });
+
+  it('does not refetch when an accepted submission falls outside the active filter', async () => {
+    mockList
+      .mockResolvedValueOnce({
+        items: [makeItem({ id: 'b1', type: 'bug', title: 'A bug' })],
+        total: 1,
+        page: 1,
+        limit: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [makeItem({ id: 'b1', type: 'bug', title: 'A bug' })],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+    mockSubmit.mockResolvedValueOnce({
+      accepted: true,
+      feedback: makeItem({ id: 'f9', type: 'feature', status: 'open', title: 'New feature idea' }),
+      reason: null,
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<Feedback />);
+    await screen.findByText('A bug');
+
+    await openFilter(user, 'All types', 'Bug');
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+
+    await submitFeature(user, 'New feature idea');
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+
+    // The feature can't belong to a Bugs view, so no extra fetch and it never appears.
+    expect(mockList).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('New feature idea')).not.toBeInTheDocument();
+  });
+
+  it('patches a row in place on vote without refetching the board', async () => {
+    mockList.mockResolvedValueOnce({
+      items: [makeItem({ id: 'f1', title: 'Votable', score: 5, upvoteCount: 5, myVote: 0 })],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+    mockVote.mockResolvedValueOnce(
+      makeItem({ id: 'f1', title: 'Votable', score: 6, upvoteCount: 6, myVote: 1 })
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<Feedback />);
+    await screen.findByText('Votable');
+
+    await user.click(screen.getByRole('button', { name: 'Upvote' }));
+
+    expect(await screen.findByText('6')).toBeInTheDocument();
+    expect(mockList).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a row and reloads when an admin status change leaves the active filter', async () => {
+    userRole.current = 'admin';
+    const openItem = makeItem({ id: 'f1', title: 'Open item', status: 'open' });
+    mockList
+      .mockResolvedValueOnce({ items: [openItem], total: 1, page: 1, limit: 20 }) // initial (all statuses)
+      .mockResolvedValueOnce({ items: [openItem], total: 1, page: 1, limit: 20 }) // filtered to Open
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 }); // reload after it leaves the filter
+    mockUpdateStatus.mockResolvedValueOnce(
+      makeItem({ id: 'f1', title: 'Open item', status: 'completed' })
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<Feedback />);
+    await screen.findByText('Open item');
+
+    await openFilter(user, 'All statuses', 'Open');
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+
+    await user.selectOptions(screen.getByRole('combobox'), 'completed');
+
+    await waitFor(() => expect(mockUpdateStatus).toHaveBeenCalledWith('f1', 'completed'));
+    // The completed row no longer matches the Open filter: reload drops it.
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.queryByText('Open item')).not.toBeInTheDocument());
   });
 });
 

@@ -22,9 +22,10 @@ const SORT_LABEL_KEYS: Record<FeedbackSort, string> = {
 };
 
 /**
- * Whether a freshly-accepted submission belongs in the currently-filtered list.
- * Prevents a new item (e.g. a Feature) from showing — and bumping the total —
- * while the board is filtered to something it doesn't match (e.g. Bugs).
+ * Whether an item belongs in the currently-filtered list. Used both to decide if
+ * a freshly-accepted submission should appear (and bump the total) and to detect
+ * when a status change pushes a row out of the active filter (e.g. a Feature must
+ * not show while the board is filtered to Bugs, an Open item once marked Closed).
  */
 export function acceptedItemMatchesFilters(
   item: FeedbackItem,
@@ -90,17 +91,34 @@ const Feedback = () => {
     };
   }, [load]);
 
+  // Re-anchor the board to the server from page 1. Called after a mutation that can
+  // change which rows belong in the current query — a new submission, or a status
+  // change that moves a row out of the active filter. Reloading (instead of patching
+  // local state) keeps the visible list, the total, and "Load more" paging consistent
+  // with the filtered/sorted query rather than letting optimistic edits drift from it.
+  const reload = useCallback(() => {
+    void load(1, false);
+  }, [load]);
+
   const handleItemChange = (updated: FeedbackItem) => {
-    setItems(prev => prev.map(item => (item.id === updated.id ? updated : item)));
+    // Votes, comments, and in-filter status edits don't change membership — patch the
+    // row in place. Once a status change pushes it out of the active filter, reload so
+    // it leaves the list and the total/paging realign with the underlying query.
+    if (acceptedItemMatchesFilters(updated, typeFilter, statusFilter)) {
+      setItems(prev => prev.map(item => (item.id === updated.id ? updated : item)));
+    } else {
+      reload();
+    }
   };
 
   const handleAccepted = (result: { feedback: FeedbackItem | null }) => {
     const accepted = result.feedback;
-    // Only surface the new item if it matches the active filters, so a filtered
-    // board (and its count) stays consistent with the underlying query.
+    // Reload only when the new item belongs in the current view. Reloading rather than
+    // prepending keeps the filtered total and pagination aligned with the server
+    // ordering the next "Load more" pages through; a non-matching item changes neither
+    // the filtered list nor its total, so there's nothing to refetch.
     if (accepted && acceptedItemMatchesFilters(accepted, typeFilter, statusFilter)) {
-      setItems(prev => [accepted, ...prev]);
-      setTotal(prev => prev + 1);
+      reload();
     }
   };
 
