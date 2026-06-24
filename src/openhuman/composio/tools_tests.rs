@@ -275,7 +275,10 @@ async fn connect_tool_refuses_without_interactive_chat_context() {
 #[test]
 fn canonicalize_toolkit_slug_maps_known_aliases_and_passes_through() {
     // Mirrors the FE `canonicalizeComposioToolkitSlug` map (#3993).
-    assert_eq!(super::canonicalize_toolkit_slug("google_drive"), "googledrive");
+    assert_eq!(
+        super::canonicalize_toolkit_slug("google_drive"),
+        "googledrive"
+    );
     assert_eq!(
         super::canonicalize_toolkit_slug("Google_Calendar"),
         "googlecalendar"
@@ -305,7 +308,10 @@ async fn connect_tool_validates_before_gating_in_chat_context() {
         client_id: "c-test".into(),
     };
     let result = APPROVAL_CHAT_CONTEXT
-        .scope(ctx, tool.execute(serde_json::json!({ "toolkit": "google_drive" })))
+        .scope(
+            ctx,
+            tool.execute(serde_json::json!({ "toolkit": "google_drive" })),
+        )
         .await
         .unwrap();
     assert!(result.is_error);

@@ -295,10 +295,7 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
 
           {connecting && (
             <p className="mt-1.5 flex items-center gap-1.5 text-xs text-primary-700 dark:text-primary-300">
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-500"
-              />
+              <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-500" />
               {t('composio.connect.waitingHint')}
             </p>
           )}

@@ -224,9 +224,7 @@ describe('IntegrationConnectCard', () => {
     fireEvent.click(screen.getByText('Connect'));
 
     // Error line renders as "⚠ {msg}", so match the substring.
-    await waitFor(() =>
-      expect(screen.getByText(/Additional config required/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Additional config required/)).toBeInTheDocument());
   });
 
   it('resolves the gate as deny when the OAuth poll times out', async () => {
