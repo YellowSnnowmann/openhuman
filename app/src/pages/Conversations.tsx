@@ -11,6 +11,7 @@ import ChatComposer from '../components/chat/ChatComposer';
 import ChatFilesChip from '../components/chat/ChatFilesChip';
 import ChatNewWindowHero from '../components/chat/ChatNewWindowHero';
 import ComposerTokenStats from '../components/chat/ComposerTokenStats';
+import IntegrationConnectCard from '../components/chat/IntegrationConnectCard';
 import { ConfirmationModal } from '../components/intelligence/ConfirmationModal';
 import { SidebarContent } from '../components/layout/shell/SidebarSlot';
 import { settingsNavState } from '../components/settings/modal/settingsOverlay';
@@ -2429,11 +2430,19 @@ const Conversations = ({
           const pendingApproval = approvalThreadId
             ? pendingApprovalByThread[approvalThreadId]
             : undefined;
-          return pendingApproval && approvalThreadId ? (
+          if (!pendingApproval || !approvalThreadId) return null;
+          // `composio_connect` parks on the same gate but needs a Connect
+          // button + OAuth poll rather than approve/deny (#3993).
+          const isConnect = pendingApproval.toolName === 'composio_connect';
+          return (
             <div className="mb-2">
-              <ApprovalRequestCard threadId={approvalThreadId} approval={pendingApproval} />
+              {isConnect ? (
+                <IntegrationConnectCard threadId={approvalThreadId} approval={pendingApproval} />
+              ) : (
+                <ApprovalRequestCard threadId={approvalThreadId} approval={pendingApproval} />
+              )}
             </div>
-          ) : null;
+          );
         })()}
 
         {(() => {
