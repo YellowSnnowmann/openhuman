@@ -106,8 +106,8 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
   );
 
   // Resolve the parked `composio_connect` tool call. `approve_once` once the
-  // connection is live; `deny` when the user cancels. Clears the card either
-  // way — ChatRuntimeProvider also clears on turn end.
+  // connection is live; `deny` when the user cancels. Clears the card on a
+  // successful decide — ChatRuntimeProvider also clears on turn end.
   const resolveGate = useCallback(
     async (decision: 'approve_once' | 'deny') => {
       try {
@@ -116,11 +116,18 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
           params: { request_id: approval.requestId, decision },
         });
       } catch (e) {
+        // The backend request is still parked. Clearing the card here would
+        // drop the only surface that can retry/deny it, blocking the thread
+        // until the gate TTL expires — so keep the card mounted and surface
+        // the failure instead of clearing it (#4062, coderabbit review).
         log('approval_decide(%s) failed: %o', decision, e);
+        setPhase('error');
+        setErrorMsg(t('chat.approval.error'));
+        return;
       }
       dispatch(clearPendingApprovalForThread({ threadId }));
     },
-    [approval.requestId, dispatch, threadId]
+    [approval.requestId, dispatch, threadId, t]
   );
 
   const startPolling = useCallback(() => {
@@ -186,6 +193,10 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
 
   const connect = useCallback(async () => {
     if (phase === 'connecting' || !toolkit) return;
+    // A prior Deny (or a failed decide that kept the card mounted) may have set
+    // cancelledRef — clear it so this fresh, user-initiated attempt isn't
+    // aborted by the post-authorize cancellation guard.
+    cancelledRef.current = false;
 
     // Collect + validate provider-specific required fields before the OAuth
     // handoff so field-gated toolkits don't hit a 612 error mid-flow.
@@ -288,7 +299,7 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
                     <input
                       type="text"
                       value={fieldValues[field.key] ?? ''}
-                      placeholder={field.placeholder}
+                      placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
                       onChange={e =>
                         setFieldValues(prev => ({ ...prev, [field.key]: e.target.value }))
                       }

@@ -685,30 +685,36 @@ fn canonicalize_toolkit_slug(slug: &str) -> String {
     }
 }
 
-/// Fresh (uncached) check of whether `toolkit` has an ACTIVE connection.
+/// Fresh (uncached) liveness check for `toolkit`.
+///
+/// Tri-state via `Result`:
+/// - `Ok(true)`  — a connection is verified ACTIVE.
+/// - `Ok(false)` — the read succeeded but no ACTIVE connection exists.
+/// - `Err(_)`    — the state could **not** be verified (client construction or
+///   the list call failed).
 ///
 /// Used to confirm liveness after the approval gate resolves `Allow`. The
 /// card-driven path only approves once it has polled the connection ACTIVE,
 /// but other approval surfaces (a typed `yes`, Telegram's approval prompt, or
 /// an existing auto-approve entry) resolve `Allow` with no OAuth poll — so
 /// `Allow` alone must NOT be treated as "connected" (#3993, codex review).
-async fn connection_is_active(config: &Config, toolkit: &str) -> bool {
+///
+/// Distinguishing `Err` from `Ok(false)` lets the caller fail closed on a
+/// transient backend/auth failure **without** fabricating an "OAuth not
+/// complete" reason that wrongly blames the user (#4062, coderabbit review).
+async fn connection_is_active(config: &Config, toolkit: &str) -> anyhow::Result<bool> {
     let active_match = |connections: &[super::types::ComposioConnection]| {
         connections
             .iter()
             .any(|c| c.is_active() && c.normalized_toolkit().eq_ignore_ascii_case(toolkit))
     };
-    match create_composio_client(config) {
-        Ok(ComposioClientKind::Backend(client)) => client
-            .list_connections()
-            .await
-            .map(|r| active_match(&r.connections))
-            .unwrap_or(false),
-        Ok(ComposioClientKind::Direct(direct)) => direct_list_connections(&direct)
-            .await
-            .map(|r| active_match(&r.connections))
-            .unwrap_or(false),
-        Err(_) => false,
+    match create_composio_client(config)? {
+        ComposioClientKind::Backend(client) => {
+            Ok(active_match(&client.list_connections().await?.connections))
+        }
+        ComposioClientKind::Direct(direct) => {
+            Ok(active_match(&direct_list_connections(&direct).await?.connections))
+        }
     }
 }
 
@@ -886,19 +892,36 @@ impl Tool for ComposioConnectTool {
                 // with a fresh read, because non-card approval surfaces (typed
                 // "yes", Telegram, auto-approve) resolve Allow without running
                 // the OAuth poll (#3993, codex review).
-                if connection_is_active(&live_config, &toolkit).await {
-                    tracing::debug!(toolkit = %toolkit, "[composio] connect.execute: connection active");
-                    Ok(ToolResult::success(serde_json::to_string(&json!({
-                        "toolkit": toolkit,
-                        "connected": true,
-                    }))?))
-                } else {
-                    tracing::info!(toolkit = %toolkit, "[composio] connect.execute: approved but not yet active");
-                    Ok(ToolResult::success(serde_json::to_string(&json!({
-                        "toolkit": toolkit,
-                        "connected": false,
-                        "reason": "Approved, but the connection is not active yet — the user still needs to complete the OAuth flow.",
-                    }))?))
+                match connection_is_active(&live_config, &toolkit).await {
+                    Ok(true) => {
+                        tracing::debug!(toolkit = %toolkit, "[composio] connect.execute: connection active");
+                        Ok(ToolResult::success(serde_json::to_string(&json!({
+                            "toolkit": toolkit,
+                            "connected": true,
+                        }))?))
+                    }
+                    Ok(false) => {
+                        tracing::info!(toolkit = %toolkit, "[composio] connect.execute: approved but not yet active");
+                        Ok(ToolResult::success(serde_json::to_string(&json!({
+                            "toolkit": toolkit,
+                            "connected": false,
+                            "reason": "Approved, but the connection is not active yet — the user still needs to complete the OAuth flow.",
+                        }))?))
+                    }
+                    Err(e) => {
+                        // Couldn't verify liveness — a transient backend/auth
+                        // failure, NOT proof the user skipped OAuth. Fail closed
+                        // (connected:false) but report a verification error
+                        // rather than fabricating an "OAuth incomplete" reason
+                        // that blames the user and can drive the agent into
+                        // reconnect loops (#4062, coderabbit review).
+                        tracing::warn!(toolkit = %toolkit, error = %e, "[composio] connect.execute: liveness check failed");
+                        Ok(ToolResult::success(serde_json::to_string(&json!({
+                            "toolkit": toolkit,
+                            "connected": false,
+                            "reason": "Approved, but the connection state could not be verified right now (a temporary problem reaching Composio). Please try connecting again in a moment.",
+                        }))?))
+                    }
                 }
             }
             crate::openhuman::approval::GateOutcome::Deny { reason } => {

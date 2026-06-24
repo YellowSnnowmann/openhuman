@@ -323,12 +323,13 @@ async fn connect_tool_validates_before_gating_in_chat_context() {
 }
 
 #[tokio::test]
-async fn connection_is_active_is_false_without_a_client() {
+async fn connection_is_active_errs_without_a_client() {
     // Liveness re-check (#3993): with no composio client (no creds) we cannot
-    // confirm a connection, so it must fail closed to `false` — never report a
-    // toolkit connected on a bare gate `Allow`.
+    // confirm a connection. This must surface as `Err` (state unverifiable) —
+    // NOT `Ok(false)` — so the caller fails closed without fabricating an
+    // "OAuth incomplete" reason that blames the user (#4062, coderabbit).
     let cfg = crate::openhuman::config::Config::default();
-    assert!(!super::connection_is_active(&cfg, "gmail").await);
+    assert!(super::connection_is_active(&cfg, "gmail").await.is_err());
 }
 
 #[test]

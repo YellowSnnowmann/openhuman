@@ -2535,9 +2535,21 @@ const Conversations = ({
           return (
             <div className="mb-2">
               {isConnect ? (
-                <IntegrationConnectCard threadId={approvalThreadId} approval={pendingApproval} />
+                // Key by requestId so switching from one parked approval to
+                // another remounts the card with fresh local state (phase,
+                // field values, cancellation refs, poll timers) instead of
+                // bleeding the previous request's state in (#4062, coderabbit).
+                <IntegrationConnectCard
+                  key={pendingApproval.requestId}
+                  threadId={approvalThreadId}
+                  approval={pendingApproval}
+                />
               ) : (
-                <ApprovalRequestCard threadId={approvalThreadId} approval={pendingApproval} />
+                <ApprovalRequestCard
+                  key={pendingApproval.requestId}
+                  threadId={approvalThreadId}
+                  approval={pendingApproval}
+                />
               )}
             </div>
           );

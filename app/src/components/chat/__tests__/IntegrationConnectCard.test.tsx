@@ -98,6 +98,29 @@ describe('IntegrationConnectCard', () => {
     );
   });
 
+  it('keeps the card mounted and surfaces an error when approval_decide fails', async () => {
+    // The decide RPC throws — the backend request is still parked, so clearing
+    // the card would strand the thread until the gate TTL expires. The card
+    // must stay (so the user can retry/deny) and surface the failure (#4062).
+    vi.mocked(callCoreRpc).mockRejectedValueOnce(new Error('rpc down'));
+    const { store } = renderCard();
+
+    fireEvent.click(screen.getByText('Deny'));
+
+    await waitFor(() =>
+      expect(callCoreRpc).toHaveBeenCalledWith({
+        method: 'openhuman.approval_decide',
+        params: { request_id: 'req-connect-1', decision: 'deny' },
+      })
+    );
+    // The parked approval survives the failed decide — not cleared.
+    expect(store.getState().chatRuntime.pendingApprovalByThread[THREAD]).toBeDefined();
+    // The failure is shown rather than silently swallowed.
+    await waitFor(() =>
+      expect(screen.getByText(/Could not record your decision/)).toBeInTheDocument()
+    );
+  });
+
   it('collects required fields inline before authorizing (whatsapp waba_id)', async () => {
     vi.mocked(authorize).mockResolvedValue({
       connectUrl: 'https://hosted.composio.dev/wa',
