@@ -322,6 +322,15 @@ async fn connect_tool_validates_before_gating_in_chat_context() {
     assert!(!txt.contains("[policy-denied]"), "{txt}");
 }
 
+#[tokio::test]
+async fn connection_is_active_is_false_without_a_client() {
+    // Liveness re-check (#3993): with no composio client (no creds) we cannot
+    // confirm a connection, so it must fail closed to `false` — never report a
+    // toolkit connected on a bare gate `Allow`.
+    let cfg = crate::openhuman::config::Config::default();
+    assert!(!super::connection_is_active(&cfg, "gmail").await);
+}
+
 #[test]
 fn list_tools_tool_metadata_accepts_optional_toolkits_filter() {
     let t = ComposioListToolsTool::new(fake_config_arc());

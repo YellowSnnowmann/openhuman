@@ -685,6 +685,33 @@ fn canonicalize_toolkit_slug(slug: &str) -> String {
     }
 }
 
+/// Fresh (uncached) check of whether `toolkit` has an ACTIVE connection.
+///
+/// Used to confirm liveness after the approval gate resolves `Allow`. The
+/// card-driven path only approves once it has polled the connection ACTIVE,
+/// but other approval surfaces (a typed `yes`, Telegram's approval prompt, or
+/// an existing auto-approve entry) resolve `Allow` with no OAuth poll — so
+/// `Allow` alone must NOT be treated as "connected" (#3993, codex review).
+async fn connection_is_active(config: &Config, toolkit: &str) -> bool {
+    let active_match = |connections: &[super::types::ComposioConnection]| {
+        connections
+            .iter()
+            .any(|c| c.is_active() && c.normalized_toolkit().eq_ignore_ascii_case(toolkit))
+    };
+    match create_composio_client(config) {
+        Ok(ComposioClientKind::Backend(client)) => client
+            .list_connections()
+            .await
+            .map(|r| active_match(&r.connections))
+            .unwrap_or(false),
+        Ok(ComposioClientKind::Direct(direct)) => direct_list_connections(&direct)
+            .await
+            .map(|r| active_match(&r.connections))
+            .unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
 /// Connect a Composio integration **inline in the chat** instead of
 /// sending the user off to Settings → Connections.
 ///
@@ -855,11 +882,24 @@ impl Tool for ComposioConnectTool {
             .await;
         match outcome {
             crate::openhuman::approval::GateOutcome::Allow => {
-                tracing::debug!(toolkit = %toolkit, "[composio] connect.execute: connection active");
-                Ok(ToolResult::success(serde_json::to_string(&json!({
-                    "toolkit": toolkit,
-                    "connected": true,
-                }))?))
+                // `Allow` only means the prompt was approved — re-check liveness
+                // with a fresh read, because non-card approval surfaces (typed
+                // "yes", Telegram, auto-approve) resolve Allow without running
+                // the OAuth poll (#3993, codex review).
+                if connection_is_active(&live_config, &toolkit).await {
+                    tracing::debug!(toolkit = %toolkit, "[composio] connect.execute: connection active");
+                    Ok(ToolResult::success(serde_json::to_string(&json!({
+                        "toolkit": toolkit,
+                        "connected": true,
+                    }))?))
+                } else {
+                    tracing::info!(toolkit = %toolkit, "[composio] connect.execute: approved but not yet active");
+                    Ok(ToolResult::success(serde_json::to_string(&json!({
+                        "toolkit": toolkit,
+                        "connected": false,
+                        "reason": "Approved, but the connection is not active yet — the user still needs to complete the OAuth flow.",
+                    }))?))
+                }
             }
             crate::openhuman::approval::GateOutcome::Deny { reason } => {
                 tracing::info!(toolkit = %toolkit, reason = %reason, "[composio] connect.execute: declined");

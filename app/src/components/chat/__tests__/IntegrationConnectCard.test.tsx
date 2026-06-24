@@ -227,6 +227,65 @@ describe('IntegrationConnectCard', () => {
     await waitFor(() => expect(screen.getByText(/Additional config required/)).toBeInTheDocument());
   });
 
+  it('approves when any matching row is ACTIVE even behind a stale FAILED row', async () => {
+    vi.mocked(authorize).mockResolvedValueOnce({
+      connectUrl: 'https://hosted.composio.dev/m',
+      connectionId: 'conn-m',
+    } as Awaited<ReturnType<typeof authorize>>);
+    // First row is an old FAILED handoff; the freshly-authorized row is ACTIVE.
+    vi.mocked(listConnections).mockResolvedValue({
+      connections: [
+        { toolkit: 'gmail', status: 'FAILED' },
+        { toolkit: 'gmail', status: 'ACTIVE' },
+      ],
+    } as Awaited<ReturnType<typeof listConnections>>);
+    vi.mocked(deriveComposioState).mockImplementation(
+      (c?: { status: string }) => (c?.status === 'ACTIVE' ? 'connected' : 'error')
+    );
+    vi.mocked(callCoreRpc).mockResolvedValue({});
+
+    renderCard();
+    fireEvent.click(screen.getByText('Connect'));
+
+    // The ACTIVE row wins over the stale FAILED row → approve.
+    await waitFor(() =>
+      expect(callCoreRpc).toHaveBeenCalledWith({
+        method: 'openhuman.approval_decide',
+        params: { request_id: 'req-connect-1', decision: 'approve_once' },
+      })
+    );
+  });
+
+  it('aborts the authorize continuation if the card is dismissed mid-flight', async () => {
+    let resolveAuthorize!: (v: Awaited<ReturnType<typeof authorize>>) => void;
+    vi.mocked(authorize).mockReturnValueOnce(
+      new Promise(resolve => {
+        resolveAuthorize = resolve;
+      })
+    );
+    vi.mocked(callCoreRpc).mockResolvedValue({});
+
+    renderCard();
+    fireEvent.click(screen.getByText('Connect'));
+    // Deny while authorize is still in flight.
+    fireEvent.click(screen.getByText('Deny'));
+    await waitFor(() =>
+      expect(callCoreRpc).toHaveBeenCalledWith({
+        method: 'openhuman.approval_decide',
+        params: { request_id: 'req-connect-1', decision: 'deny' },
+      })
+    );
+
+    // authorize finally resolves — the continuation must NOT open OAuth.
+    resolveAuthorize({
+      connectUrl: 'https://hosted.composio.dev/x',
+      connectionId: 'conn-x',
+    } as Awaited<ReturnType<typeof authorize>>);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
   it('resolves the gate as deny when the OAuth poll times out', async () => {
     vi.useFakeTimers();
     try {

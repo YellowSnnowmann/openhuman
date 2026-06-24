@@ -83,6 +83,9 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
   const pollDeadlineRef = useRef<number>(0);
   const isPollingRef = useRef<boolean>(false);
   const inFlightRef = useRef<boolean>(false);
+  // Set once the card is dismissed (Deny) or unmounted, so an `authorize()`
+  // call still in flight doesn't open OAuth / start polling afterwards.
+  const cancelledRef = useRef<boolean>(false);
 
   const stopPolling = useCallback(() => {
     isPollingRef.current = false;
@@ -92,8 +95,15 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
     }
   }, []);
 
-  // Stop polling if the card unmounts (turn ended, thread switched, decided).
-  useEffect(() => () => stopPolling(), [stopPolling]);
+  // Stop polling if the card unmounts (turn ended, thread switched, decided),
+  // and mark cancelled so any in-flight authorize continuation aborts.
+  useEffect(
+    () => () => {
+      cancelledRef.current = true;
+      stopPolling();
+    },
+    [stopPolling]
+  );
 
   // Resolve the parked `composio_connect` tool call. `approve_once` once the
   // connection is live; `deny` when the user cancels. Clears the card either
@@ -138,22 +148,29 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
       inFlightRef.current = true;
       try {
         const resp = await listConnections();
-        const hit = resp.connections.find(c => c.toolkit.toLowerCase() === toolkit.toLowerCase());
-        if (hit) {
-          const state = deriveComposioState(hit);
-          if (state === 'connected') {
-            stopPolling();
-            await resolveGate('approve_once');
-            return;
-          }
-          if (state === 'error') {
-            stopPolling();
-            setPhase('error');
-            setErrorMsg(
-              t('composio.connect.connectionFailed').replace('{status}', String(hit.status))
-            );
-            return;
-          }
+        // Scan ALL rows for this toolkit — list_connections returns every row
+        // (failed / pending / multiple accounts), so the freshly-authorized
+        // ACTIVE row can sit behind an older FAILED or pending one (#3993,
+        // codex review). Approve if any row is connected.
+        const matches = resp.connections.filter(
+          c => c.toolkit.toLowerCase() === toolkit.toLowerCase()
+        );
+        if (matches.some(c => deriveComposioState(c) === 'connected')) {
+          stopPolling();
+          await resolveGate('approve_once');
+          return;
+        }
+        // Keep waiting while any handoff is still in flight; only surface an
+        // error once a failed row exists and nothing is pending.
+        const pending = matches.some(c => deriveComposioState(c) === 'pending');
+        const errored = matches.find(c => deriveComposioState(c) === 'error');
+        if (errored && !pending) {
+          stopPolling();
+          setPhase('error');
+          setErrorMsg(
+            t('composio.connect.connectionFailed').replace('{status}', String(errored.status))
+          );
+          return;
         }
       } catch (err) {
         // Transient poll failures are expected mid-handoff — retry next tick.
@@ -191,6 +208,10 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
     setRetryable(true);
     try {
       const resp = await authorize(toolkit, extraParams);
+      // The user may have hit Deny / dismissed the card while authorize was in
+      // flight — abort so we don't open OAuth or start polling after the gate
+      // was already denied, nor race a second approval_decide (codex review).
+      if (cancelledRef.current) return;
       try {
         await openUrl(resp.connectUrl);
       } catch (openErr) {
@@ -232,6 +253,7 @@ export const IntegrationConnectCard: React.FC<Props> = ({ threadId, approval }) 
   }, [phase, requiredFields, fieldValues, startPolling, t, toolkit]);
 
   const cancel = useCallback(async () => {
+    cancelledRef.current = true;
     stopPolling();
     await resolveGate('deny');
   }, [resolveGate, stopPolling]);
