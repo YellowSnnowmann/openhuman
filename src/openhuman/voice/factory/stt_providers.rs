@@ -46,10 +46,18 @@ fn choose_whisper_route(config: &Config, audio_bytes: &[u8]) -> WhisperRoute {
 }
 
 /// Ensure the in-process engine has the requested model loaded, loading or
-/// reloading under the shared load lock when needed. The engine holds a
-/// single model, so a per-request size change (`tiny` → `large-v3-turbo`)
-/// triggers an unload + reload so the right weights are used.
-async fn ensure_engine_loaded(
+/// reloading when needed. The engine holds a single model, so a per-request
+/// size change (`tiny` → `large-v3-turbo`) triggers an unload + reload so the
+/// right weights are used.
+///
+/// **Precondition:** the caller MUST hold `service.whisper_load_lock`. That
+/// same guard is then held across the subsequent transcription (see
+/// [`WhisperSttProvider::try_in_process`]), so the load check, the reload, and
+/// the inference form one critical section — a concurrent dispatch for a
+/// different model size cannot unload/reload the engine mid-flight (which would
+/// otherwise transcribe with the wrong weights or drop the request onto the
+/// subprocess path).
+async fn ensure_model_loaded_locked(
     service: &LocalAiService,
     config: &Config,
     model_id: &str,
@@ -57,13 +65,7 @@ async fn ensure_engine_loaded(
     let model_path = resolve_stt_model_path_by_id(model_id, config)?;
     let target = std::path::PathBuf::from(&model_path);
 
-    // Fast path: the right model is already resident.
-    if whisper_engine::loaded_model_path(&service.whisper).as_deref() == Some(target.as_path()) {
-        return Ok(());
-    }
-
-    let _guard = service.whisper_load_lock.lock().await;
-    // Re-check under the lock — a concurrent request may have just loaded it.
+    // The right model is already resident — nothing to do.
     if whisper_engine::loaded_model_path(&service.whisper).as_deref() == Some(target.as_path()) {
         return Ok(());
     }
@@ -174,7 +176,14 @@ impl WhisperSttProvider {
         }
 
         let service = local_ai::global(config);
-        if let Err(e) = ensure_engine_loaded(&service, config, &self.model).await {
+
+        // Hold the load lock across BOTH the load step and the transcription so
+        // a concurrent dispatch for a different model size can't unload/reload
+        // the single-model engine between load and inference. Transcriptions
+        // already serialize on the engine handle lock, so extending the
+        // critical section over the load step adds no new contention.
+        let load_guard = service.whisper_load_lock.lock().await;
+        if let Err(e) = ensure_model_loaded_locked(&service, config, &self.model).await {
             warn!("{LOG_PREFIX} in-process load failed ({e}); falling back to subprocess");
             return None;
         }
@@ -186,6 +195,9 @@ impl WhisperSttProvider {
             whisper_engine::transcribe_wav_bytes(&handle, &bytes, lang.as_deref(), None)
         })
         .await;
+        // Release only after inference completes — the resident model is
+        // guaranteed to be `self.model` for the whole transcription above.
+        drop(load_guard);
 
         match result {
             Ok(Ok(r)) => {
