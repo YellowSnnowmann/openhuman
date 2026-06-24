@@ -712,9 +712,9 @@ async fn connection_is_active(config: &Config, toolkit: &str) -> anyhow::Result<
         ComposioClientKind::Backend(client) => {
             Ok(active_match(&client.list_connections().await?.connections))
         }
-        ComposioClientKind::Direct(direct) => {
-            Ok(active_match(&direct_list_connections(&direct).await?.connections))
-        }
+        ComposioClientKind::Direct(direct) => Ok(active_match(
+            &direct_list_connections(&direct).await?.connections,
+        )),
     }
 }
 
