@@ -239,8 +239,8 @@ describe('IntegrationConnectCard', () => {
         { toolkit: 'gmail', status: 'ACTIVE' },
       ],
     } as Awaited<ReturnType<typeof listConnections>>);
-    vi.mocked(deriveComposioState).mockImplementation(
-      (c?: { status: string }) => (c?.status === 'ACTIVE' ? 'connected' : 'error')
+    vi.mocked(deriveComposioState).mockImplementation((c?: { status: string }) =>
+      c?.status === 'ACTIVE' ? 'connected' : 'error'
     );
     vi.mocked(callCoreRpc).mockResolvedValue({});
 
