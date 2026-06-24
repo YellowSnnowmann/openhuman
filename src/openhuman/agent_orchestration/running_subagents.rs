@@ -19,6 +19,7 @@
 //! mode — openai/codex#18335).
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -50,6 +51,8 @@ impl SubagentStatus {
 struct RunningSubagentEntry {
     agent_id: String,
     parent_session: String,
+    subagent_session_id: Option<String>,
+    workspace_dir: PathBuf,
     /// Parent chat thread that spawned this sub-agent, captured at registration.
     /// `None` for a headless spawn with no originating thread. Used to abort the
     /// sub-agent when its parent thread is deleted (see [`cancel_for_thread`]).
@@ -57,6 +60,13 @@ struct RunningSubagentEntry {
     run_queue: Arc<RunQueue>,
     abort: AbortHandle,
     status: watch::Receiver<SubagentStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubagentResumeRef {
+    pub task_id: String,
+    pub agent_id: String,
+    pub subagent_session_id: Option<String>,
 }
 
 /// Soft cap on registry size. Terminal entries are only swept when the table
@@ -93,6 +103,8 @@ pub fn register(
     task_id: String,
     agent_id: String,
     parent_session: String,
+    subagent_session_id: Option<String>,
+    workspace_dir: PathBuf,
     parent_thread_id: Option<String>,
     run_queue: Arc<RunQueue>,
     abort: AbortHandle,
@@ -101,6 +113,8 @@ pub fn register(
     let entry = RunningSubagentEntry {
         agent_id,
         parent_session,
+        subagent_session_id,
+        workspace_dir,
         parent_thread_id,
         run_queue,
         abort,
@@ -119,6 +133,53 @@ pub fn register(
         task_id,
         map.len()
     );
+}
+
+/// Resolve a durable `subagent_session_id` to the currently-running transient
+/// `task_id`, enforcing parent-session ownership.
+pub fn task_id_for_session(
+    subagent_session_id: &str,
+    parent_session: &str,
+) -> Result<String, WaitError> {
+    let map = registry().lock().expect("running_subagents mutex poisoned");
+    let mut saw_unowned = false;
+    let mut owned_terminal: Option<String> = None;
+    for (task_id, entry) in map
+        .iter()
+        .filter(|(_, entry)| entry.subagent_session_id.as_deref() == Some(subagent_session_id))
+    {
+        if entry.parent_session != parent_session {
+            saw_unowned = true;
+            continue;
+        }
+        if !entry.status.borrow().is_terminal() {
+            return Ok(task_id.clone());
+        }
+        owned_terminal.get_or_insert_with(|| task_id.clone());
+    }
+    if let Some(task_id) = owned_terminal {
+        return Ok(task_id);
+    }
+    if saw_unowned {
+        return Err(WaitError::NotOwned);
+    }
+    Err(WaitError::Unknown)
+}
+
+pub fn resume_ref_for_task(
+    task_id: &str,
+    parent_session: &str,
+) -> Result<SubagentResumeRef, WaitError> {
+    let map = registry().lock().expect("running_subagents mutex poisoned");
+    let entry = map.get(task_id).ok_or(WaitError::Unknown)?;
+    if entry.parent_session != parent_session {
+        return Err(WaitError::NotOwned);
+    }
+    Ok(SubagentResumeRef {
+        task_id: task_id.to_string(),
+        agent_id: entry.agent_id.clone(),
+        subagent_session_id: entry.subagent_session_id.clone(),
+    })
 }
 
 /// Why a steer could not be delivered.
@@ -167,6 +228,43 @@ pub async fn steer(
         .await;
     log::info!(
         "[running_subagents] steered task_id={} mode={}",
+        task_id,
+        mode
+    );
+    Ok(())
+}
+
+/// Trusted-control variant used by JSON-RPC sub-agent controls.
+///
+/// This intentionally does not require the caller to provide `parent_session`:
+/// the RPC layer is already bearer-protected and mirrors the existing
+/// `subagent_cancel` control surface, which can abort a task by id. The function
+/// still refuses unknown or terminal tasks and never logs the steered text.
+pub async fn steer_control(task_id: &str, text: String, mode: QueueMode) -> Result<(), SteerError> {
+    let run_queue = {
+        let map = registry().lock().expect("running_subagents mutex poisoned");
+        let entry = map.get(task_id).ok_or(SteerError::Unknown)?;
+        if entry.status.borrow().is_terminal() {
+            return Err(SteerError::AlreadyDone);
+        }
+        entry.run_queue.clone()
+    };
+
+    run_queue
+        .push(QueuedMessage {
+            text,
+            mode,
+            client_id: "subagent_control_rpc".to_string(),
+            thread_id: task_id.to_string(),
+            queued_at_ms: now_ms(),
+            model_override: None,
+            temperature: None,
+            profile_id: None,
+            locale: None,
+        })
+        .await;
+    log::info!(
+        "[running_subagents] control_steered task_id={} mode={}",
         task_id,
         mode
     );
@@ -243,6 +341,8 @@ pub async fn wait(
 pub struct CancelledSubagent {
     pub agent_id: String,
     pub parent_session: String,
+    pub subagent_session_id: Option<String>,
+    pub workspace_dir: PathBuf,
     pub parent_thread_id: Option<String>,
 }
 
@@ -267,8 +367,18 @@ pub fn cancel_by_task(task_id: &str) -> Option<CancelledSubagent> {
     Some(CancelledSubagent {
         agent_id: entry.agent_id,
         parent_session: entry.parent_session,
+        subagent_session_id: entry.subagent_session_id,
+        workspace_dir: entry.workspace_dir,
         parent_thread_id: entry.parent_thread_id,
     })
+}
+
+pub fn cancel_by_session(
+    subagent_session_id: &str,
+    parent_session: &str,
+) -> Option<CancelledSubagent> {
+    let task_id = task_id_for_session(subagent_session_id, parent_session).ok()?;
+    cancel_by_task(&task_id)
 }
 
 /// Abort a running sub-agent and drop its registry entry. Kept for a future
@@ -396,12 +506,122 @@ mod tests {
             task_id.into(),
             "researcher".into(),
             parent_session.into(),
+            None,
+            std::env::temp_dir(),
             parent_thread_id.map(Into::into),
             rq,
             dummy_abort(),
             rx,
         );
         tx
+    }
+
+    #[tokio::test]
+    async fn task_id_for_session_enforces_parent_ownership() {
+        let _guard = test_guard();
+        let rq = RunQueue::new();
+        let (tx, rx) = status_channel();
+        register(
+            "task-session".into(),
+            "researcher".into(),
+            "session-owner".into(),
+            Some("subsess-1".into()),
+            std::env::temp_dir(),
+            Some("thread-1".into()),
+            rq,
+            dummy_abort(),
+            rx,
+        );
+
+        assert_eq!(
+            task_id_for_session("subsess-1", "session-owner").unwrap(),
+            "task-session"
+        );
+        assert!(matches!(
+            task_id_for_session("subsess-1", "session-other"),
+            Err(WaitError::NotOwned)
+        ));
+        let _ = tx.send(SubagentStatus::Completed {
+            output: "done".into(),
+            iterations: 1,
+        });
+        prune("task-session");
+    }
+
+    #[tokio::test]
+    async fn resume_ref_for_task_includes_resume_fields_and_enforces_ownership() {
+        let _guard = test_guard();
+        let (tx, rx) = status_channel();
+        register(
+            "task-resume".into(),
+            "researcher".into(),
+            "session-owner".into(),
+            Some("subsess-resume".into()),
+            std::env::temp_dir(),
+            Some("thread-1".into()),
+            RunQueue::new(),
+            dummy_abort(),
+            rx,
+        );
+
+        let reference =
+            resume_ref_for_task("task-resume", "session-owner").expect("resume reference");
+        assert_eq!(reference.task_id, "task-resume");
+        assert_eq!(reference.agent_id, "researcher");
+        assert_eq!(
+            reference.subagent_session_id.as_deref(),
+            Some("subsess-resume")
+        );
+        assert!(matches!(
+            resume_ref_for_task("task-resume", "session-other"),
+            Err(WaitError::NotOwned)
+        ));
+
+        let _ = tx.send(SubagentStatus::Completed {
+            output: "done".into(),
+            iterations: 1,
+        });
+        prune("task-resume");
+    }
+
+    #[tokio::test]
+    async fn task_id_for_session_prefers_live_task_over_terminal_task() {
+        let _guard = test_guard();
+        let (old_tx, old_rx) = status_channel();
+        register(
+            "task-old".into(),
+            "researcher".into(),
+            "session-owner".into(),
+            Some("subsess-live".into()),
+            std::env::temp_dir(),
+            Some("thread-1".into()),
+            RunQueue::new(),
+            dummy_abort(),
+            old_rx,
+        );
+        let _ = old_tx.send(SubagentStatus::Completed {
+            output: "old".into(),
+            iterations: 1,
+        });
+        let (_new_tx, new_rx) = status_channel();
+        register(
+            "task-new".into(),
+            "researcher".into(),
+            "session-owner".into(),
+            Some("subsess-live".into()),
+            std::env::temp_dir(),
+            Some("thread-1".into()),
+            RunQueue::new(),
+            dummy_abort(),
+            new_rx,
+        );
+
+        assert_eq!(
+            task_id_for_session("subsess-live", "session-owner").unwrap(),
+            "task-new"
+        );
+        prune("task-old");
+        prune("task-new");
     }
 
     #[tokio::test]

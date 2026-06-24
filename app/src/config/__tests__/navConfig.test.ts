@@ -52,6 +52,10 @@ describe('NAV_TABS', () => {
     expect(NAV_TABS.find(t => t.id === 'settings')).toBeUndefined();
   });
 
+  it('no longer contains a feedback tab (moved to the sidebar footer row)', () => {
+    expect(NAV_TABS.find(t => t.id === 'feedback')).toBeUndefined();
+  });
+
   it('does not contain an activity tab', () => {
     expect(NAV_TABS.find(t => t.id === 'activity')).toBeUndefined();
   });

@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "OpenHuman"
-version = "0.57.52"
+version = "0.57.54"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4548,9 +4548,9 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "memmap2"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
@@ -5354,7 +5354,7 @@ dependencies = [
 
 [[package]]
 name = "openhuman"
-version = "0.57.52"
+version = "0.57.54"
 dependencies = [
  "aes-gcm",
  "aho-corasick",
@@ -5401,6 +5401,7 @@ dependencies = [
  "image",
  "keyring",
  "lettre",
+ "libc",
  "log",
  "mail-parser",
  "motosan-ai-oauth",
@@ -6456,9 +6457,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.14"
+version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
+checksum = "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e"
 dependencies = [
  "aws-lc-rs",
  "bytes",

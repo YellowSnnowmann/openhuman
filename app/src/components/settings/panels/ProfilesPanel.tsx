@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { LuPlus } from 'react-icons/lu';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import {
@@ -19,14 +19,15 @@ import {
   selectAgentProfiles,
 } from '../../../store/agentProfileSlice';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
-import PanelPage from '../../layout/PanelPage';
 import Button from '../../ui/Button';
-import SettingsBackButton from '../components/SettingsBackButton';
 import { SettingsEmptyState, SettingsSection } from '../controls';
+import SettingsPanel from '../layout/SettingsPanel';
+import { settingsNavState } from '../modal/settingsOverlay';
 
 const ProfilesPanel = () => {
   const { t } = useT();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useAppDispatch();
   const profiles = useAppSelector(selectAgentProfiles);
   const activeId = useAppSelector(selectActiveAgentProfileId);
@@ -64,22 +65,19 @@ const ProfilesPanel = () => {
   );
 
   return (
-    <PanelPage
-      className="z-10"
-      contentClassName=""
+    <SettingsPanel
       description={t('settings.profiles.menuDesc')}
-      leading={<SettingsBackButton onBack={() => navigate('/settings')} />}
       action={
         <Button
           type="button"
           variant="primary"
           size="sm"
-          onClick={() => navigate('/settings/profiles/new')}>
+          onClick={() => navigate('/settings/profiles/new', settingsNavState(location))}>
           <LuPlus className="h-4 w-4" />
           {t('settings.profiles.new')}
         </Button>
       }>
-      <div className="space-y-4 p-4">
+      <>
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
           {t('settings.profiles.subtitle')}
         </p>
@@ -144,7 +142,12 @@ const ProfilesPanel = () => {
                         type="button"
                         variant="secondary"
                         size="sm"
-                        onClick={() => navigate(`/settings/profiles/edit/${profile.id}`)}>
+                        onClick={() =>
+                          navigate(
+                            `/settings/profiles/edit/${profile.id}`,
+                            settingsNavState(location)
+                          )
+                        }>
                         {t('common.edit')}
                       </Button>
                       {!profile.builtIn && (
@@ -163,8 +166,8 @@ const ProfilesPanel = () => {
             </ul>
           </SettingsSection>
         )}
-      </div>
-    </PanelPage>
+      </>
+    </SettingsPanel>
   );
 };
 

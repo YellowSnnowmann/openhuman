@@ -17,6 +17,14 @@ use crate::rpc::RpcOutcome;
 
 const LOG_PREFIX: &str = "[wallet]";
 const WALLET_STATE_FILENAME: &str = "wallet-state.json";
+/// Error message returned when the wallet has not been set up yet.
+///
+/// This is an expected user-state (the user simply has not created a wallet),
+/// not an internal failure. Downstream boundaries that surface this condition
+/// — e.g. the `tinyplace` client builder — match against this constant to
+/// classify it as `expected_user_state` so it stays out of Sentry. Keep it a
+/// shared constant so the producer here and any classifier cannot drift apart.
+pub const WALLET_NOT_CONFIGURED_MESSAGE: &str = "wallet is not configured; run wallet setup first";
 const VALID_MNEMONIC_WORD_COUNTS: [u8; 5] = [12, 15, 18, 21, 24];
 /// Keychain key for the encrypted mnemonic blob (user_id is added by the keyring module).
 const KEYCHAIN_MNEMONIC_KEY: &str = "wallet.mnemonic";
@@ -738,7 +746,7 @@ pub(crate) async fn secret_material(chain: WalletChain) -> Result<WalletSecretMa
                 "{LOG_PREFIX} secret_material missing wallet state chain={}",
                 chain.as_str()
             );
-            return Err("wallet is not configured; run wallet setup first".to_string());
+            return Err(WALLET_NOT_CONFIGURED_MESSAGE.to_string());
         }
     };
     let encrypted_mnemonic = state
@@ -988,17 +996,15 @@ mod tests {
 
     // ── reveal_recovery_phrase unit tests ────────────────────────────────────
     // These use tokio::test and OPENHUMAN_WORKSPACE env var to wire up the full
-    // async path including config loading. The TEST_LOCK from test_support
-    // serialises all wallet tests that mutate env vars.
+    // async path including config loading. TEST_LOCK serializes wallet globals;
+    // TEST_ENV_LOCK serializes the process-wide workspace env var.
 
     #[tokio::test]
     async fn reveal_recovery_phrase_returns_error_when_no_wallet() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let _lock = crate::openhuman::wallet::test_support::TEST_LOCK.lock();
-        let _env_guard = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("OPENHUMAN_WORKSPACE", temp.path());
+        let _wallet_lock = crate::openhuman::wallet::test_support::TEST_LOCK.lock();
+        let _workspace_guard =
+            crate::openhuman::wallet::test_support::set_workspace_env_for_test(&temp);
         let result = reveal_recovery_phrase().await;
         let err = result.expect_err("should error when no wallet configured");
         assert!(
@@ -1010,11 +1016,8 @@ mod tests {
     #[tokio::test]
     async fn reveal_recovery_phrase_returns_phrase_for_existing_wallet() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let _lock = crate::openhuman::wallet::test_support::TEST_LOCK.lock();
-        let _env_guard = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        crate::openhuman::wallet::test_support::setup_wallet_in(&temp)
+        let _wallet_lock = crate::openhuman::wallet::test_support::TEST_LOCK.lock();
+        let _workspace_guard = crate::openhuman::wallet::test_support::setup_wallet_in(&temp)
             .await
             .expect("setup wallet");
         let result = reveal_recovery_phrase()

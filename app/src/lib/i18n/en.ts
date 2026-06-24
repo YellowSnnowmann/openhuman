@@ -23,16 +23,16 @@ const en: TranslationMap = {
   'nav.noAgentProfiles': 'No agent profiles found',
   'nav.activity': 'Activity',
   'nav.brain': 'Brain',
-  'nav.agentWorld': 'Tiny.Place',
+  'nav.agentWorld': 'Tiny Place',
   'nav.wallet': 'Wallet',
   // Agent World section sub-navigation labels
   'agentWorld.description':
     'Tiny.Place is a social network for AI agents. Use OpenHuman to interact, find and post jobs, trade, and grow together.',
   'agentWorld.world': 'World',
   'agentWorld.world.booting': 'Booting renderer...',
-  'agentWorld.world.title': 'Agent World',
+  'agentWorld.world.title': 'Tiny Place',
   'agentWorld.world.description':
-    'Register your agent in tiny.place to get it to start moving around.',
+    'Join tiny.place so your agent can coordinate with other agents — find and post jobs, trade, message, and team up on bounties.',
   'agentWorld.world.room': 'Room',
   'agentWorld.world.rooms.poker.name': 'Poker',
   'agentWorld.world.rooms.poker.description': 'Eight seats around a felt table.',
@@ -77,16 +77,70 @@ const en: TranslationMap = {
   'nav.avatarMenu.rewards': 'Rewards',
   'nav.avatarMenu.invites': 'Invite a friend',
   'nav.avatarMenu.wallet': 'Wallet',
+  'nav.feedback': 'Share Feedback',
 
   // Brain — full-page memory knowledge-graph surface
   'brain.subtitle': 'Your knowledge graph, memory sources, and controls.',
   'brain.tabs.memory': 'Memory',
   'brain.tabs.subconscious': 'Subconscious',
   'brain.tabs.graph': 'Graph',
+  'brain.tabs.goals': 'Goals',
   'brain.tabs.sources': 'Sources',
   'brain.tabs.sync': 'Sync',
   'brain.empty': 'Your brain is empty for now — connect a source to start building memory.',
   'brain.error': "Couldn't load your brain. Please try again.",
+  'brain.goals.title': 'Long-term Goals',
+  'brain.goals.description':
+    "The agent's durable goals for working with you. Edit them here or let Reflect update them.",
+  'brain.goals.reflect': 'Reflect',
+  'brain.goals.reflecting': 'Reflecting…',
+  'brain.goals.reflectDone': 'Goals updated.',
+  'brain.goals.add': 'Add',
+  'brain.goals.addPlaceholder': 'Add a long-term goal…',
+  'brain.goals.empty':
+    'No goals yet. Add one, or use Reflect to populate them from recent context.',
+  'brain.goals.editGoal': 'Edit goal',
+  'brain.goals.deleteGoal': 'Delete goal',
+  'brain.goals.actionError': 'Something went wrong. Please try again.',
+
+  // Feedback board
+  'feedback.board': 'Feedback board',
+  'feedback.empty': 'No feedback yet. Be the first to share an idea.',
+  'feedback.loadMore': 'Load more',
+  'feedback.loadError': 'Failed to load feedback',
+  'feedback.expand': 'Show more',
+  'feedback.collapse': 'Show less',
+  'feedback.comments': 'comments',
+  'feedback.viewIssue': 'View issue',
+  'feedback.status.open': 'Open',
+  'feedback.status.planned': 'Planned',
+  'feedback.status.completed': 'Completed',
+  'feedback.status.closed': 'Closed',
+  'feedback.type.feature': 'Feature',
+  'feedback.type.bug': 'Bug',
+  'feedback.sort.hot': 'Hot',
+  'feedback.sort.top': 'Top',
+  'feedback.sort.new': 'New',
+  'feedback.filter.allTypes': 'All types',
+  'feedback.filter.allStatuses': 'All statuses',
+  'feedback.vote.up': 'Upvote',
+  'feedback.vote.down': 'Downvote',
+  'feedback.submit.heading': 'Share feedback',
+  'feedback.submit.subheading': 'Suggest a feature or report a bug. Others can vote on it.',
+  'feedback.submit.titlePlaceholder': 'Title',
+  'feedback.submit.bodyPlaceholder': 'Describe your idea or the problem you hit',
+  'feedback.submit.action': 'Submit',
+  'feedback.submit.success': 'Thanks! Your feedback is now on the board.',
+  'feedback.submit.rejected': "Your feedback couldn't be published.",
+  'feedback.submit.error': 'Something went wrong. Please try again.',
+  'feedback.admin.status': 'Status',
+  'feedback.admin.updateFailed': 'Failed to update status',
+  'feedback.comments.empty': 'No comments yet.',
+  'feedback.comments.placeholder': 'Add a comment',
+  'feedback.comments.post': 'Post',
+  'feedback.comments.loadError': 'Failed to load comments',
+  'feedback.comments.postError': 'Failed to post comment',
+  'feedback.comments.you': 'You',
 
   // Common
   'common.cancel': 'Cancel',
@@ -97,6 +151,21 @@ const en: TranslationMap = {
   'common.create': 'Create',
   'common.search': 'Search',
   'common.loading': 'Loading…',
+  'sync.runs': 'sync runs',
+  'sync.totalCost': 'total',
+  'sync.when': 'When',
+  'sync.source': 'Source',
+  'sync.items': 'Items',
+  'sync.tokens': 'Tokens',
+  'sync.cost': 'Cost',
+  'sync.duration': 'Duration',
+  'sync.noAuditEntries': 'No sync runs recorded yet.',
+  'sync.timeAgo.justNow': 'just now',
+  'sync.timeAgo.minutes': '{n}m ago',
+  'sync.timeAgo.hours': '{n}h ago',
+  'sync.timeAgo.days': '{n}d ago',
+  'sync.status.success': 'Success',
+  'sync.status.failed': 'Failed',
   'common.error': 'Error',
   'common.success': 'Success',
   'common.back': 'Back',
@@ -1456,6 +1525,16 @@ const en: TranslationMap = {
   'settings.embeddings.providerAria': 'Embedding provider',
   'settings.embeddings.statusConfigured': 'Configured',
   'settings.embeddings.statusNeedsKey': 'Needs API key',
+  'settings.embeddings.requiresSignIn': 'Requires OpenHuman sign-in',
+  'settings.embeddings.managedLoginRequired':
+    'Managed embeddings require OpenHuman sign-in. Sign in to use the OpenHuman backend.',
+  'settings.embeddings.managedBannerIntro':
+    'Managed embeddings route through the OpenHuman backend and require an OpenHuman account session.',
+  'settings.embeddings.managedBannerLocalSession':
+    'Exit local session and sign in to use this provider, or switch to a local or bring-your-own embeddings provider.',
+  'settings.embeddings.managedBannerRemoteSession':
+    'Sign in again to refresh your OpenHuman session, or switch to a local or bring-your-own embeddings provider.',
+  'settings.embeddings.signInAgain': 'Sign in again',
   'settings.embeddings.apiKeyLabel': '{provider} API key',
   'settings.embeddings.placeholderStored': '•••••••• (stored)',
   'settings.embeddings.placeholderKey': 'Paste your API key…',
@@ -1473,6 +1552,7 @@ const en: TranslationMap = {
   'settings.embeddings.testConnection': 'Test connection',
   'settings.embeddings.testing': 'Testing…',
   'settings.embeddings.testSuccess': 'Connected — {dims} dimensions',
+  'settings.embeddings.connectionTestFailed': 'Test failed',
   'settings.embeddings.testFailed': 'Failed: {error}',
   'settings.embeddings.saving': 'Saving…',
   'settings.embeddings.saved': 'Saved.',
@@ -2920,6 +3000,22 @@ const en: TranslationMap = {
   'subconscious.decision.cancelled': 'Cancelled',
   'subconscious.decision.skipped': 'Skipped',
 
+  // Subconscious triggers (event-driven orchestrator) debug panel
+  'subconsciousTriggers.title': 'Subconscious Triggers',
+  'subconsciousTriggers.subtitle': 'Event-driven background orchestrator',
+  'subconsciousTriggers.pipeline': 'Pipeline',
+  'subconsciousTriggers.mode': 'Mode',
+  'subconsciousTriggers.orchestrator': 'Orchestrator',
+  'subconsciousTriggers.running': 'Running',
+  'subconsciousTriggers.stopped': 'Stopped',
+  'subconsciousTriggers.promotionsPerHour': 'Promotions / hour',
+  'subconsciousTriggers.queueDepth': 'Queue depth',
+  'subconsciousTriggers.orchestratorThread': 'Orchestrator thread',
+  'subconsciousTriggers.userThread': 'User thread',
+  'subconsciousTriggers.disabledHint': 'Enable event-driven mode to activate the pipeline.',
+  'subconsciousTriggers.enable': 'Enable',
+  'subconsciousTriggers.disable': 'Disable',
+
   // Actionable
   'actionable.complete': 'Complete',
   'actionable.dismiss': 'Dismiss',
@@ -3003,6 +3099,13 @@ const en: TranslationMap = {
   'bootCheck.portConflictFixing': 'Fixing…',
   'bootCheck.portConflictFixFailed':
     "Automatic fix didn't work. Please restart your computer and try again.",
+  'bootCheck.portConflictOwner': '{name} (PID {pid}) is using the network port OpenHuman needs.',
+  'bootCheck.portConflictGuidance':
+    'Close that program to free the port, or force-quit it below, then try again.',
+  'bootCheck.portConflictForceQuit': 'Force-quit {name}',
+  'bootCheck.portConflictForceQuitting': 'Closing {name}…',
+  'bootCheck.portConflictForceQuitFailed':
+    "Couldn't close that program. You may need to close it manually, then retry.",
 
   // Notifications: category labels & timestamps
   'notifications.justNow': 'just now',
@@ -3141,11 +3244,16 @@ const en: TranslationMap = {
   'app.connectionIndicator.offline': 'Offline',
   'app.connectionIndicator.reconnecting': 'Reconnecting…',
   'app.errorFallback.componentStack': 'Component stack',
+  'app.errorFallback.contactSupport': 'Contact support',
+  'app.errorFallback.copyEventId': 'Copy',
   'app.errorFallback.downloadLatest': 'Download latest',
+  'app.errorFallback.eventIdCopied': 'Copied',
+  'app.errorFallback.eventIdLabel': 'Error ID',
   'app.errorFallback.heading': 'Something went wrong',
   'app.errorFallback.hint':
     'Try reloading the app. If the problem persists, download the latest version.',
   'app.errorFallback.reloadApp': 'Reload app',
+  'app.errorFallback.revealLogs': 'Reveal logs',
   'app.errorFallback.subheading': 'An unexpected error occurred',
   'app.errorFallback.tryRecover': 'Try recover',
   'app.localAiDownload.installing': 'Installing...',
@@ -3428,6 +3536,7 @@ const en: TranslationMap = {
   'conversations.taskKanban.moveLeft': 'Move left',
   'conversations.taskKanban.moveRight': 'Move right',
   'conversations.taskKanban.title': 'Tasks',
+  'conversations.threadTodo.title': 'Plan',
   'conversations.taskKanban.approval.default': 'Default',
   'conversations.taskKanban.approval.notRequired': 'Not required',
   'conversations.taskKanban.approval.notRequiredBadge': 'no approval',
@@ -3475,10 +3584,14 @@ const en: TranslationMap = {
   'conversations.subagent.viewProcessing': 'View full processing',
   'conversations.subagent.parent': 'Parent',
   'conversations.subagent.thinking': 'Thinking',
+  'conversations.subagent.thoughts': 'Thoughts',
   'conversations.subagent.response': 'Response',
   'conversations.subagent.toolCalls': 'Tool calls',
   'conversations.subagent.working': 'Working…',
   'conversations.subagent.noOutputYet': 'No output yet',
+  'conversations.subagent.input': 'Input',
+  'conversations.subagent.output': 'Output',
+  'conversations.subagent.noOutput': 'No output returned',
   'conversations.subagent.close': 'Close',
   'conversations.subagent.cancel': 'Cancel task',
   'conversations.subagent.cancelling': 'Cancelling…',
@@ -3506,11 +3619,13 @@ const en: TranslationMap = {
   'conversations.subagent.statusAwaitingUser': 'awaiting user',
   'conversations.subagent.statusCancelled': 'cancelled',
   'conversations.agentTaskInsights.title': 'Agentic task insights',
+  'conversations.agentTaskInsights.response': 'Response',
   'conversations.agentTaskInsights.processSourceTitle': 'Agent Process Source',
   'conversations.agentTaskInsights.stepsHeading': 'Steps',
   'conversations.agentTaskInsights.sourcesHeading': 'Sources',
   'conversations.agentTaskInsights.noSteps': 'No steps recorded',
   'conversations.agentTaskInsights.viewProcessSource': 'View full agent process Source',
+  'conversations.agentTaskInsights.processing': 'Processing',
   'daemon.serviceBlockingGate.body':
     'Retrying in the background. This usually resolves in a few seconds.',
   'daemon.serviceBlockingGate.downloadHint':
@@ -4199,6 +4314,9 @@ const en: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Memory worker polls',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Managed',
+  'settings.ai.routing.managedAlwaysOn': 'Always on',
+  'settings.ai.routing.managedHint':
+    'Managed is always available as a fallback. To use your own model, choose a routing mode below.',
   'settings.ai.routing.managedDesc':
     'OpenHuman will run all inference in the cloud, choose the best model for the task, optimize for cost, and keep the safest routing defaults.',
   'settings.ai.routing.managedMsg':
@@ -4928,6 +5046,10 @@ const en: TranslationMap = {
   'settings.agentAccess.requireTaskPlanApproval.label': 'Require task plan approval',
   'settings.agentAccess.requireTaskPlanApproval.desc':
     'Pause before an assigned agent executes an agent-authored task brief.',
+  'settings.agentAccess.tinyplaceAutopilot.title': 'Autonomous tiny.place agent',
+  'settings.agentAccess.tinyplaceAutopilot.desc':
+    'Let OpenHuman act on tiny.place on its own: on a schedule it finds worthwhile work — open bounties first — does what fits its skills, and acts from your identity. It runs unattended and can spend, so keep it on devnet while testing. Off by default.',
+  'settings.agentAccess.tinyplaceAutopilot.label': 'Run automatically',
   'settings.agentAccess.timeout.label': 'Action timeout',
   'settings.agentAccess.timeout.desc':
     'How long a single tool or action may run before it is cancelled. Increase this if a large local model is interrupted before it finishes responding.',
@@ -5101,6 +5223,9 @@ const en: TranslationMap = {
   'settings.appearance.assistantTextMode': 'Plain assistant responses',
   'settings.appearance.assistantTextModeDesc':
     'Render assistant replies as unframed text while keeping your messages in bubbles.',
+  'settings.appearance.hideAgentInsights': 'Hide agent thinking',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Collapse the live step-by-step agent timeline in chat. A blinking “Processing” link still lets you open the full run.',
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterHeading': 'Character',
@@ -5545,6 +5670,45 @@ const en: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'Resets in {time}',
   'upsell.usageLimit.upgradePlan': 'Upgrade plan',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'Start in chat',
+  'walkthrough.steps.startChat.content':
+    'Chat is your starting point. New windows open with the same greeting and quick actions you saw after setup.',
+  'walkthrough.steps.sayHello.title': 'Say hello',
+  'walkthrough.steps.sayHello.content':
+    'Tap here to start a conversation with your AI assistant anytime.',
+  'walkthrough.steps.meetAi.title': 'Meet your AI',
+  'walkthrough.steps.meetAi.content':
+    'This is where conversations happen. Ask questions, get summaries, or brainstorm. Everything stays searchable.',
+  'walkthrough.steps.connectWorld.title': 'Connect your world',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp, and more - each connection gives your assistant superpowers.',
+  'walkthrough.steps.messagingApps.title': 'Chat where you already are',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord - connect your messaging apps so your assistant can reach you anywhere.',
+  'walkthrough.steps.settings.title': 'Make it yours',
+  'walkthrough.steps.settings.content':
+    'Preferences, privacy, notifications - everything is here. You can restart this tour anytime from this page.',
+  'walkthrough.steps.chatTab.title': 'Jump back to chat',
+  'walkthrough.steps.chatTab.content':
+    'Use the Chat tab whenever you want to return to conversations.',
+  'walkthrough.steps.humanTab.title': 'Meet your human profile',
+  'walkthrough.steps.humanTab.content':
+    'Human is where your personal context, identity, and assistant-facing profile come together.',
+  'walkthrough.steps.brainTab.title': 'Open your Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain is the memory graph: the place to inspect what OpenHuman knows and how ideas connect.',
+  'walkthrough.steps.agentWorldTab.title': 'Explore Agent World',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World is where reusable agents and shared automations live.',
+  'walkthrough.steps.connectionsTab.title': 'Manage connections',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections is always available from the main nav when you want to add or adjust services.',
+  'walkthrough.steps.feedbackTab.title': 'Send feedback',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback gives you a direct place to report rough edges or ask for improvements.',
+  'walkthrough.steps.allSet.title': "You're all set!",
+  'walkthrough.steps.allSet.content':
+    'Your assistant left you a welcome note - this is your space to chat, ask questions, or brainstorm. Have fun!',
   'walkthrough.tooltip.letsGo': "Let's go!",
   'walkthrough.tooltip.next': 'Next →',
   'walkthrough.tooltip.skip': 'Skip tour',
@@ -5979,6 +6143,24 @@ const en: TranslationMap = {
   'chat.files.error.download_failed': 'Download failed. Please try again.',
   'chat.files.error.delete_failed': 'Couldn’t delete the file. Please try again.',
 
+  // First-run initialization (harness_init)
+  'harnessInit.title': 'Setting things up',
+  'harnessInit.subtitle': 'OpenHuman is preparing components it needs on first launch.',
+  'harnessInit.stepPython': 'Python runtime',
+  'harnessInit.stepSpacy': 'Language model',
+  'harnessInit.stepNode': 'Node.js runtime',
+  'harnessInit.statePending': 'Waiting',
+  'harnessInit.stateRunning': 'Installing…',
+  'harnessInit.stateDone': 'Ready',
+  'harnessInit.stateSkipped': 'Skipped',
+  'harnessInit.stateFailed': 'Failed',
+  'harnessInit.failedMessage':
+    'Some setup steps did not finish. You can retry, or continue — OpenHuman will use a built-in fallback.',
+  'harnessInit.retry': 'Retry',
+  'harnessInit.continueAnyway': 'Continue anyway',
+  'harnessInit.runInBackground': 'Run in background',
+  'harnessInit.backgroundHint': 'You can keep using OpenHuman while this finishes.',
+
   // Keyring consent & security
   'keyring.consent.title': 'Secure Storage Unavailable',
   'keyring.consent.description':
@@ -6089,6 +6271,21 @@ const en: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'Cancel',
   'agentworld.jobs.applyModal.submit': 'Submit Application',
   'agentworld.jobs.applyModal.submitting': 'Applying…',
+  'agentworld.messaging.missingSignalBundle':
+    "This user hasn't enabled encrypted messaging yet. Ask them to open Agent World and enable secure DMs before sending a message.",
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Action needed',
+  'userErrors.dismiss': 'Dismiss',
+  'userErrors.action.openBilling': 'Open billing',
+  'userErrors.action.openProviderSettings': 'Provider settings',
+  'userErrors.budgetExceeded.title': 'Managed budget reached',
+  'userErrors.budgetExceeded.body':
+    'Your managed AI budget is used up. Add budget or change your plan to continue.',
+  'userErrors.insufficientCredits.title': 'Provider credits required',
+  'userErrors.insufficientCredits.body':
+    'Your AI provider is out of credits. Top it up or update its API key to continue.',
+  'userErrors.scope.chat': 'Chat',
 };
 
 export default en;

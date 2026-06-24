@@ -130,6 +130,21 @@ pub enum DomainEvent {
         reason: Option<String>,
     },
 
+    // ── Subconscious orchestrator ───────────────────────────────────────
+    /// A subconscious trigger finished gate evaluation (promote or drop).
+    /// Observability only — lets dashboards see ingestion volume and the
+    /// gate's promote/drop ratio without reading logs.
+    SubconsciousTriggerProcessed {
+        /// Trigger source family (`cron` / `user_message` / …).
+        source: String,
+        /// Gate decision (`promote` / `drop`).
+        decision: String,
+        /// Whether the trigger was promoted into the long-lived session.
+        promoted: bool,
+        /// Gate evaluation latency in milliseconds.
+        latency_ms: u64,
+    },
+
     // ── Run Queue ──────────────────────────────────────────────────────
     /// A message was queued into the active-run queue instead of interrupting.
     RunQueueMessageQueued {
@@ -910,6 +925,20 @@ pub enum DomainEvent {
     },
     /// A component restart was observed.
     HealthRestarted { component: String },
+    /// A one-time harness-init step changed state (pending → running → done /
+    /// failed / skipped). Surfaced to the frontend initialization screen.
+    HarnessInitProgress {
+        step_id: String,
+        state: String,
+        message: Option<String>,
+        percent: Option<u8>,
+    },
+    /// The harness-init run reached a terminal state. `failed_required` is true
+    /// only when a *required* step failed (no required steps today).
+    HarnessInitCompleted {
+        overall: String,
+        failed_required: bool,
+    },
 
     // ── Keyring ─────────────────────────────────────────────────────────
     /// The OS keyring is unavailable and no user consent for local fallback
@@ -1199,7 +1228,9 @@ impl DomainEvent {
             | Self::AutonomyConfigChanged
             | Self::AgentPathsChanged
             | Self::HealthChanged { .. }
-            | Self::HealthRestarted { .. } => "system",
+            | Self::HealthRestarted { .. }
+            | Self::HarnessInitProgress { .. }
+            | Self::HarnessInitCompleted { .. } => "system",
 
             Self::KeyringConsentRequired | Self::KeyringDecryptFailed { .. } => "keyring",
 
@@ -1210,6 +1241,8 @@ impl DomainEvent {
             | Self::TaskSourceFetchFailed { .. } => "task_sources",
 
             Self::TaskPlanAwaitingApproval { .. } | Self::TaskRunReclaimed { .. } => "agent",
+
+            Self::SubconsciousTriggerProcessed { .. } => "subconscious",
 
             Self::Voice(_) => "voice",
 
@@ -1263,6 +1296,7 @@ impl DomainEvent {
             Self::AgentOrchestrationCompleted { .. } => "AgentOrchestrationCompleted",
             Self::AgentOrchestrationFailed { .. } => "AgentOrchestrationFailed",
             Self::AgentOrchestrationClosed { .. } => "AgentOrchestrationClosed",
+            Self::SubconsciousTriggerProcessed { .. } => "SubconsciousTriggerProcessed",
             Self::RunQueueMessageQueued { .. } => "RunQueueMessageQueued",
             Self::RunQueueMessageDelivered { .. } => "RunQueueMessageDelivered",
             Self::RunQueueFollowupDispatched { .. } => "RunQueueFollowupDispatched",
@@ -1334,6 +1368,8 @@ impl DomainEvent {
             Self::AgentPathsChanged => "AgentPathsChanged",
             Self::HealthChanged { .. } => "HealthChanged",
             Self::HealthRestarted { .. } => "HealthRestarted",
+            Self::HarnessInitProgress { .. } => "HarnessInitProgress",
+            Self::HarnessInitCompleted { .. } => "HarnessInitCompleted",
             Self::KeyringConsentRequired => "KeyringConsentRequired",
             Self::KeyringDecryptFailed { .. } => "KeyringDecryptFailed",
             Self::SessionExpired { .. } => "SessionExpired",
