@@ -207,6 +207,37 @@ pub fn list_servers_conn(conn: &Connection) -> Result<Vec<InstalledServer>> {
     Ok(servers)
 }
 
+/// First installed server with this qualified name, if any. The schema allows
+/// multiple installs of the same `qualified_name` (the PK is `server_id`), so
+/// this returns the earliest by `installed_at` — used to keep install
+/// idempotent (one install per service).
+pub fn find_server_by_qualified_name(
+    config: &Config,
+    qualified_name: &str,
+) -> Result<Option<InstalledServer>> {
+    with_connection(config, |conn| {
+        find_server_by_qualified_name_conn(conn, qualified_name)
+    })
+}
+
+pub fn find_server_by_qualified_name_conn(
+    conn: &Connection,
+    qualified_name: &str,
+) -> Result<Option<InstalledServer>> {
+    let mut stmt = conn.prepare(
+        "SELECT server_id, qualified_name, display_name, description, icon_url,
+                command_kind, command, args_json, env_keys_json, config_json,
+                installed_at, last_connected_at, transport, deployment_url, enabled
+         FROM mcp_servers WHERE qualified_name = ?1
+         ORDER BY installed_at ASC LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![qualified_name])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(map_server_row(row)?)),
+        None => Ok(None),
+    }
+}
+
 pub fn get_server(config: &Config, server_id: &str) -> Result<InstalledServer> {
     with_connection(config, |conn| get_server_conn(conn, server_id))
 }
@@ -473,6 +504,28 @@ mod tests {
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].server_id, "srv-1");
         assert_eq!(servers[0].command_kind, CommandKind::Node);
+    }
+
+    #[test]
+    fn find_server_by_qualified_name_returns_earliest_install() {
+        let (_f, conn) = open_test_conn();
+        // Two installs of the same service (different ids, different times).
+        let mut early = sample_server("srv-early");
+        early.installed_at = 100;
+        let mut late = sample_server("srv-late");
+        late.installed_at = 200;
+        // Insert the later one first to prove ordering is by installed_at.
+        insert_server_conn(&conn, &late).unwrap();
+        insert_server_conn(&conn, &early).unwrap();
+
+        let found = find_server_by_qualified_name_conn(&conn, "@test/server")
+            .unwrap()
+            .expect("server present");
+        assert_eq!(found.server_id, "srv-early");
+
+        assert!(find_server_by_qualified_name_conn(&conn, "@nope/missing")
+            .unwrap()
+            .is_none());
     }
 
     #[test]

@@ -123,6 +123,26 @@ pub async fn mcp_clients_install(
         env.keys().collect::<Vec<_>>()
     );
 
+    // Idempotent install: one server per qualified_name. If this service is
+    // already installed, return the existing record instead of writing a second
+    // row (the table PK is server_id, so nothing else prevents duplicates).
+    if let Some(existing) = store::find_server_by_qualified_name(config, qualified_name.trim())
+        .map_err(|e| e.to_string())?
+    {
+        tracing::debug!(
+            "[mcp-client] install no-op: {} already installed as server_id={}",
+            qualified_name.trim(),
+            existing.server_id
+        );
+        return Ok(RpcOutcome::new(
+            json!({ "server": existing, "already_installed": true }),
+            vec![format!(
+                "already installed qualified_name={}",
+                qualified_name.trim()
+            )],
+        ));
+    }
+
     // Fetch registry detail to resolve command/args/env_keys
     let detail = registry::registry_get(config, qualified_name.trim())
         .await

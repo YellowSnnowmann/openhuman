@@ -239,6 +239,12 @@ pub struct SmitheryServerSummary {
     /// originating upstream.
     #[serde(default)]
     pub source: String,
+    /// `true` when this is a hosted server for a service we've confirmed
+    /// connects (see `super::curation`). The UI shows verified servers by
+    /// default and tucks the unverified long tail behind an "advanced" view.
+    /// Set by the dispatcher; never trusted from the wire.
+    #[serde(default)]
+    pub verified: bool,
     /// Raw extra fields preserved for future use.
     #[serde(flatten, default)]
     pub extra: std::collections::HashMap<String, Value>,
@@ -500,6 +506,7 @@ mod tests {
             use_count: 10,
             is_deployed: true,
             source: "mcp_official".to_string(),
+            verified: false,
             extra: Default::default(),
         };
         let v = serde_json::to_value(&s).unwrap();

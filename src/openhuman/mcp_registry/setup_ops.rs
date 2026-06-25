@@ -385,42 +385,47 @@ const _: Option<CommandKind> = None;
 
 /// Choose the best [`SmitheryConnection`] from a registry detail response.
 ///
-/// Preference order:
-/// 1. **Published `stdio`** — no behaviour regression for any server that
-///    used to install before HTTP-remote support landed.
-/// 2. **Any `stdio`** (even unpublished) — also pre-existing fallback.
-/// 3. **Published `http_remote`** — the new path. Smithery serves ~99% of
-///    their listings as HTTP-remote.
-/// 4. **Any `http_remote`** — last-resort.
+/// Preference order — **hosted remote first**:
+/// 1. **Published `http_remote`** — the hosted endpoint. Connecting here avoids
+///    spawning a local subprocess (no node/uvx runtime, no package resolution,
+///    no broken-package failures) and routes auth to the server's OAuth/token
+///    challenge, which is far more likely to succeed than a local spawn.
+/// 2. **Any `http_remote`** (even unpublished).
+/// 3. **Published `stdio`** — local subprocess fallback for servers with no
+///    hosted endpoint.
+/// 4. **Any `stdio`**.
 /// 5. `None` — nothing dialable.
 ///
-/// Stdio is preferred because it's privacy-strict (everything runs locally)
-/// and because most of the existing OpenHuman ecosystem assumes stdio. HTTP
-/// is the fallback that finally lets a Smithery-only server install at all.
+/// Rationale: most registry servers expose both a stdio package and a hosted
+/// remote. Preferring stdio meant the local subprocess had to spawn and find
+/// its runtime + credentials, which fails for the majority of community
+/// servers. Preferring the hosted remote eliminates that failure class. The
+/// trade-off is that data flows to the hosted endpoint and a network is
+/// required — a deliberate choice favouring "it connects" over local-first.
 pub(super) fn pick_connection(connections: &[SmitheryConnection]) -> Option<&SmitheryConnection> {
     // Treat the canonical wire names ("stdio", "http") AND the persisted
     // dispatch kinds ("http_remote") as equivalent — registry payloads
     // historically use "http" while our `Transport` discriminator uses
     // "http_remote". `transport_kind` normalises that mapping.
-    let stdio_pub = connections
-        .iter()
-        .find(|c| c.transport_kind() == "stdio" && c.published);
-    if stdio_pub.is_some() {
-        return stdio_pub;
-    }
-    let stdio_any = connections.iter().find(|c| c.transport_kind() == "stdio");
-    if stdio_any.is_some() {
-        return stdio_any;
-    }
     let http_pub = connections
         .iter()
         .find(|c| c.transport_kind() == "http_remote" && c.published);
     if http_pub.is_some() {
         return http_pub;
     }
-    connections
+    let http_any = connections
         .iter()
-        .find(|c| c.transport_kind() == "http_remote")
+        .find(|c| c.transport_kind() == "http_remote");
+    if http_any.is_some() {
+        return http_any;
+    }
+    let stdio_pub = connections
+        .iter()
+        .find(|c| c.transport_kind() == "stdio" && c.published);
+    if stdio_pub.is_some() {
+        return stdio_pub;
+    }
+    connections.iter().find(|c| c.transport_kind() == "stdio")
 }
 
 /// Resolve the persisted [`Transport`] + launch command for an install from the
@@ -488,24 +493,48 @@ mod tests {
         }
     }
 
-    /// Stdio wins when both transports are offered, even when stdio is
-    /// unpublished and http is published. This pins the "no regression
-    /// for existing stdio installs" promise.
+    /// Hosted remote wins when both transports are offered — connecting to the
+    /// endpoint avoids the local-spawn failure class that broke most servers.
     #[test]
-    fn pick_connection_prefers_stdio_over_http() {
+    fn pick_connection_prefers_http_over_stdio() {
         let conns = vec![
+            conn("stdio", true, None),
             conn("http", true, Some("https://x.io/mcp")),
-            conn("stdio", false, None),
         ];
-        let picked = pick_connection(&conns).expect("stdio should be picked");
-        assert_eq!(picked.r#type, "stdio");
+        let picked = pick_connection(&conns).expect("http_remote should be picked");
+        assert_eq!(picked.transport_kind(), "http_remote");
     }
 
-    /// Published stdio beats unpublished stdio.
+    /// Even an *unpublished* hosted remote beats a published stdio package —
+    /// the hosted endpoint is still preferred over spawning locally.
     #[test]
-    fn pick_connection_prefers_published_stdio_first() {
+    fn pick_connection_prefers_unpublished_http_over_published_stdio() {
+        let conns = vec![
+            conn("stdio", true, None),
+            conn("http", false, Some("https://x.io/mcp")),
+        ];
+        let picked = pick_connection(&conns).expect("http_remote should be picked");
+        assert_eq!(picked.transport_kind(), "http_remote");
+    }
+
+    /// Published http beats unpublished http.
+    #[test]
+    fn pick_connection_prefers_published_http_first() {
+        let conns = vec![
+            conn("http", false, Some("https://any.io/mcp")),
+            conn("http", true, Some("https://pub.io/mcp")),
+        ];
+        let picked = pick_connection(&conns).expect("published http should win");
+        assert!(picked.published);
+        assert_eq!(picked.deployment_url.as_deref(), Some("https://pub.io/mcp"));
+    }
+
+    /// With no hosted remote, stdio is the fallback — published stdio first.
+    #[test]
+    fn pick_connection_falls_back_to_stdio_when_no_http() {
         let conns = vec![conn("stdio", false, None), conn("stdio", true, None)];
         let picked = pick_connection(&conns).expect("published stdio should win");
+        assert_eq!(picked.transport_kind(), "stdio");
         assert!(picked.published);
     }
 

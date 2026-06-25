@@ -566,6 +566,7 @@ impl OfficialServer {
             use_count: 0,
             is_deployed: !self.remotes.is_empty(),
             source: SOURCE_MCP_OFFICIAL.to_string(),
+            verified: false, // tagged later by the registry dispatcher
             extra: std::collections::HashMap::new(),
         }
     }
