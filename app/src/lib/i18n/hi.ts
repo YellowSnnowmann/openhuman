@@ -1558,7 +1558,6 @@ const messages: TranslationMap = {
   'mcp.connectAuth.headerValue': 'मान',
   'mcp.connectAuth.removeHeader': 'हेडर हटाएं',
   'mcp.connectAuth.howToGetToken': 'सहायता और कॉन्फ़िगर करें',
-  'mcp.connectAuth.getKey': 'अपनी कुंजी प्राप्त करें →',
   'mcp.connectAuth.hideHelp': 'सहायता छिपाएं',
   'mcp.connectAuth.schemeLabel': 'मान को कैसे भेजें',
   'mcp.connectAuth.schemeBearer': 'Bearer',

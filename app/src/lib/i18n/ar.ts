@@ -1528,7 +1528,6 @@ const messages: TranslationMap = {
   'mcp.connectAuth.headerValue': 'القيمة',
   'mcp.connectAuth.removeHeader': 'إزالة الرأس',
   'mcp.connectAuth.howToGetToken': 'المساعدة والإعداد',
-  'mcp.connectAuth.getKey': 'احصل على مفتاحك ←',
   'mcp.connectAuth.hideHelp': 'إخفاء المساعدة',
   'mcp.connectAuth.schemeLabel': 'كيفية إرسال القيمة',
   'mcp.connectAuth.schemeBearer': 'Bearer',

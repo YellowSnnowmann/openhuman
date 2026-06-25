@@ -563,53 +563,9 @@ struct OfficialServer {
     /// Installable subprocess packages (npm, pip, brew, …).
     #[serde(default)]
     packages: Vec<OfficialPackage>,
-    /// Vendor/site URL, when declared. Used as a fallback "where to get your
-    /// key" target when a declared field's description carries no URL.
-    #[serde(default, rename = "websiteUrl")]
-    website_url: Option<String>,
-    /// Source repository, used as the last-resort credential-help link.
-    #[serde(default)]
-    repository: Option<OfficialRepository>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct OfficialRepository {
-    #[serde(default)]
-    url: Option<String>,
-}
-
-/// First `http(s)://` URL in a string (e.g. a header/env description like
-/// "API key — generate at https://example.com/keys"). Trailing sentence
-/// punctuation is trimmed. Used to deep-link the user to the credential page.
-fn first_url(text: &str) -> Option<String> {
-    let start = text.find("http://").or_else(|| text.find("https://"))?;
-    let rest = &text[start..];
-    let end = rest
-        .find(|c: char| c.is_whitespace() || matches!(c, ')' | '>' | ']' | '"' | '\''))
-        .unwrap_or(rest.len());
-    Some(
-        rest[..end]
-            .trim_end_matches(['.', ',', ';', ':'])
-            .to_string(),
-    )
 }
 
 impl OfficialServer {
-    /// Best-effort "where do I get the credential" link for the whole server,
-    /// used to fill the per-field get-key URL when a field's own description has
-    /// none: the declared `websiteUrl`, else the source `repository` URL.
-    fn credential_help_url(&self) -> Option<&str> {
-        self.website_url
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                self.repository
-                    .as_ref()
-                    .and_then(|r| r.url.as_deref())
-                    .filter(|s| !s.trim().is_empty())
-            })
-    }
-
     fn display_name(&self) -> String {
         if let Some(title) = self.title.as_deref().filter(|s| !s.trim().is_empty()) {
             return title.to_string();
@@ -643,9 +599,6 @@ impl OfficialServer {
 
     fn into_detail(self) -> SmitheryServerDetail {
         let display = self.display_name();
-        // Server-level credential page, used to fill a field's get-key URL when
-        // its own description carries none.
-        let help_url = self.credential_help_url().map(str::to_string);
         let mut connections: Vec<SmitheryConnection> = Vec::new();
         for r in &self.remotes {
             connections.push(SmitheryConnection {
@@ -653,7 +606,7 @@ impl OfficialServer {
                 deployment_url: r.url.clone(),
                 // Declared `headers` (e.g. `Authorization`) become the install
                 // form's input fields so the user can supply the remote's token.
-                config_schema: r.to_config_schema(help_url.as_deref()),
+                config_schema: r.to_config_schema(),
                 example_config: None,
                 published: true,
                 extra: std::collections::HashMap::new(),
@@ -663,7 +616,7 @@ impl OfficialServer {
             connections.push(SmitheryConnection {
                 r#type: "stdio".to_string(),
                 deployment_url: None,
-                config_schema: p.to_config_schema(help_url.as_deref()),
+                config_schema: p.to_config_schema(),
                 example_config: p.to_example_config(),
                 published: true,
                 extra: std::collections::HashMap::new(),
@@ -708,7 +661,7 @@ impl OfficialRemote {
     /// Build a config schema (same shape as a package's env-var schema) from
     /// the remote's declared headers, so the install form renders an input per
     /// required header. Returns `None` when the remote declares no headers.
-    fn to_config_schema(&self, fallback_url: Option<&str>) -> Option<Value> {
+    fn to_config_schema(&self) -> Option<Value> {
         if self.headers.is_empty() {
             return None;
         }
@@ -723,16 +676,6 @@ impl OfficialRemote {
             }
             if h.is_secret == Some(true) {
                 prop.insert("x-secret".into(), Value::Bool(true));
-            }
-            // Deep-link to where the user obtains this credential: a URL in the
-            // field's own description wins; else the server-level fallback.
-            if let Some(url) = h
-                .description
-                .as_deref()
-                .and_then(first_url)
-                .or_else(|| fallback_url.map(str::to_string))
-            {
-                prop.insert("x-get-key-url".into(), Value::String(url));
             }
             properties.insert(h.name.clone(), Value::Object(prop));
         }
@@ -828,7 +771,7 @@ impl OfficialPackage {
         }))
     }
 
-    fn to_config_schema(&self, fallback_url: Option<&str>) -> Option<Value> {
+    fn to_config_schema(&self) -> Option<Value> {
         if !self.environment_variables.is_empty() {
             let mut properties = serde_json::Map::new();
             for ev in &self.environment_variables {
@@ -838,14 +781,6 @@ impl OfficialPackage {
                 }
                 if ev.is_secret == Some(true) {
                     prop.insert("x-secret".into(), Value::Bool(true));
-                }
-                if let Some(url) = ev
-                    .description
-                    .as_deref()
-                    .and_then(first_url)
-                    .or_else(|| fallback_url.map(str::to_string))
-                {
-                    prop.insert("x-get-key-url".into(), Value::String(url));
                 }
                 properties.insert(ev.name.clone(), Value::Object(prop));
             }
@@ -1113,7 +1048,7 @@ mod tests {
             ],
         }))
         .unwrap();
-        let schema = pkg.to_config_schema(None).unwrap();
+        let schema = pkg.to_config_schema().unwrap();
         let props = schema["properties"].as_object().unwrap();
         assert!(props.contains_key("API_KEY"));
         assert!(props.contains_key("REGION"));
@@ -1125,76 +1060,6 @@ mod tests {
             .map(|v| v.as_str().unwrap())
             .collect();
         assert_eq!(required, vec!["API_KEY"]);
-    }
-
-    #[test]
-    fn first_url_extracts_and_trims() {
-        assert_eq!(
-            first_url("Get your key at https://app.x.ai/keys."),
-            Some("https://app.x.ai/keys".to_string())
-        );
-        assert_eq!(
-            first_url("see (https://a.io/b) for docs"),
-            Some("https://a.io/b".to_string())
-        );
-        assert_eq!(first_url("no url here"), None);
-    }
-
-    #[test]
-    fn config_schema_stamps_get_key_url_from_description_then_fallback() {
-        let pkg: OfficialPackage = serde_json::from_value(json!({
-            "registryType": "npm",
-            "identifier": "x",
-            "environmentVariables": [
-                { "name": "WITH_URL", "description": "Generate at https://x.io/keys", "isSecret": true },
-                { "name": "NO_URL", "description": "An API key", "isSecret": true },
-            ],
-        }))
-        .unwrap();
-        // Field description URL wins; the field without one inherits the fallback.
-        let schema = pkg
-            .to_config_schema(Some("https://vendor.example"))
-            .unwrap();
-        let props = &schema["properties"];
-        assert_eq!(props["WITH_URL"]["x-get-key-url"], "https://x.io/keys");
-        assert_eq!(props["NO_URL"]["x-get-key-url"], "https://vendor.example");
-
-        // No fallback + no description URL -> no key URL stamped.
-        let schema2 = pkg.to_config_schema(None).unwrap();
-        assert!(schema2["properties"]["NO_URL"]
-            .get("x-get-key-url")
-            .is_none());
-    }
-
-    #[test]
-    fn into_detail_uses_website_then_repository_as_credential_help() {
-        let with_site: OfficialServer = serde_json::from_value(json!({
-            "name": "x/y", "websiteUrl": "https://site.example",
-            "repository": { "url": "https://github.com/x/y" },
-            "remotes": [{ "url": "https://r/mcp",
-                "headers": [{ "name": "Authorization", "isSecret": true }] }],
-        }))
-        .unwrap();
-        let d = with_site.into_detail();
-        let cs = d.connections[0].config_schema.as_ref().unwrap();
-        assert_eq!(
-            cs["properties"]["Authorization"]["x-get-key-url"],
-            "https://site.example"
-        );
-
-        let repo_only: OfficialServer = serde_json::from_value(json!({
-            "name": "x/y",
-            "repository": { "url": "https://github.com/x/y" },
-            "remotes": [{ "url": "https://r/mcp",
-                "headers": [{ "name": "Authorization", "isSecret": true }] }],
-        }))
-        .unwrap();
-        let d2 = repo_only.into_detail();
-        let cs2 = d2.connections[0].config_schema.as_ref().unwrap();
-        assert_eq!(
-            cs2["properties"]["Authorization"]["x-get-key-url"],
-            "https://github.com/x/y"
-        );
     }
 
     // ── display_name / title derivation ────────────────────────────────────

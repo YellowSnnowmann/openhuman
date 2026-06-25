@@ -348,36 +348,4 @@ describe('ConnectAuthModal', () => {
     await screen.findByRole('button', { name: 'Sign in with browser' });
     expect(screen.queryByDisplayValue('Authorization')).not.toBeInTheDocument();
   });
-
-  it('does not seed a token box for open/local servers (authKind=none)', async () => {
-    mockDetectAuth.mockResolvedValue({ kind: 'none', grant_types: [] });
-    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
-    await screen.findByRole('dialog');
-    // No declared keys + open/local (none) → no auto-seeded Authorization row;
-    // the server just connects. Only a `token` probe seeds a paste field.
-    await waitFor(() => {
-      expect(screen.queryByDisplayValue('Authorization')).not.toBeInTheDocument();
-    });
-  });
-
-  it('renders a "Get your key →" link from x-get-key-url and opens it', async () => {
-    mockRegistryGet.mockResolvedValue({
-      qualified_name: 'acme/test-server',
-      display_name: 'Test Server',
-      connections: [
-        {
-          type: 'http',
-          config_schema: {
-            properties: { 'X-API-Key': { 'x-secret': true, 'x-get-key-url': 'https://x.io/keys' } },
-            required: ['X-API-Key'],
-          },
-        },
-      ],
-      required_env_keys: [],
-    });
-    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
-    await screen.findByLabelText('X-API-Key');
-    fireEvent.click(screen.getByRole('button', { name: 'Get your key →' }));
-    expect(mockOpenUrl).toHaveBeenCalledWith('https://x.io/keys');
-  });
 });

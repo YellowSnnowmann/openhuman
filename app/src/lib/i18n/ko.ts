@@ -1551,7 +1551,6 @@ const messages: TranslationMap = {
   'mcp.connectAuth.headerValue': '값',
   'mcp.connectAuth.removeHeader': '헤더 제거',
   'mcp.connectAuth.howToGetToken': '도움말 및 구성',
-  'mcp.connectAuth.getKey': '키 받기 →',
   'mcp.connectAuth.hideHelp': '도움말 숨기기',
   'mcp.connectAuth.schemeLabel': '값을 보내는 방법',
   'mcp.connectAuth.schemeBearer': 'Bearer',
