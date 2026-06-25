@@ -1481,6 +1481,16 @@ const messages: TranslationMap = {
   'mcp.tab.column.source': 'Source',
   'mcp.tab.column.author': 'Auteur',
   'mcp.tab.column.action': 'Action',
+  'mcp.tab.source.official': 'Officiel',
+  'mcp.tab.source.smithery': 'Smithery',
+  'mcp.tab.transport.hosted': 'Hébergé',
+  'mcp.tab.transport.local': 'Local',
+  'mcp.tab.transport.hostedHint':
+    "S'exécute sur un serveur distant — la connexion ou le jeton est configuré lors de l'installation",
+  'mcp.tab.transport.localHint':
+    "S'exécute sur votre appareil — peut nécessiter un jeton lors de l'installation",
+  'mcp.tab.verifiedBadge': 'Vérifié',
+  'mcp.tab.verifiedHint': 'Connexion confirmée',
   'mcp.tab.badge.installed': 'Installé',
   'mcp.tab.badge.registry': 'Registre',
   'mcp.tab.action.manage': 'Gérer',

@@ -1477,6 +1477,16 @@ const messages: TranslationMap = {
   'mcp.tab.column.source': 'Origem',
   'mcp.tab.column.author': 'Autor',
   'mcp.tab.column.action': 'Ação',
+  'mcp.tab.source.official': 'Oficial',
+  'mcp.tab.source.smithery': 'Smithery',
+  'mcp.tab.transport.hosted': 'Hospedado',
+  'mcp.tab.transport.local': 'Local',
+  'mcp.tab.transport.hostedHint':
+    'Executa em um servidor remoto — login ou token é configurado ao instalar',
+  'mcp.tab.transport.localHint':
+    'Executa no seu dispositivo — pode precisar de um token ao instalar',
+  'mcp.tab.verifiedBadge': 'Verificado',
+  'mcp.tab.verifiedHint': 'Conexão confirmada',
   'mcp.tab.badge.installed': 'Instalado',
   'mcp.tab.badge.registry': 'Registro',
   'mcp.tab.action.manage': 'Gerenciar',

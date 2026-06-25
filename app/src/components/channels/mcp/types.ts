@@ -10,6 +10,19 @@ export type SmitheryServer = {
   icon_url?: string;
   use_count?: number;
   is_deployed?: boolean;
+  /**
+   * Upstream registry this row came from — `'mcp_official'` (the official
+   * modelcontextprotocol.io registry) or `'smithery'`. Stamped by the Rust
+   * dispatcher; used to attribute each row to its source registry.
+   */
+  source?: string;
+  /**
+   * `true` for a hosted server whose service we've confirmed connects. The core
+   * keeps only curated canonical rows and verified servers; the unverified long
+   * tail is dropped server-side, so the catalog renders the vetted set directly
+   * with nothing hidden behind a toggle.
+   */
+  verified?: boolean;
 };
 
 export type SmitheryConnection = {

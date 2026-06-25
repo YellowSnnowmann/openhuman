@@ -1438,6 +1438,16 @@ const messages: TranslationMap = {
   'mcp.tab.column.source': 'स्रोत',
   'mcp.tab.column.author': 'लेखक',
   'mcp.tab.column.action': 'क्रिया',
+  'mcp.tab.source.official': 'आधिकारिक',
+  'mcp.tab.source.smithery': 'Smithery',
+  'mcp.tab.transport.hosted': 'होस्टेड',
+  'mcp.tab.transport.local': 'लोकल',
+  'mcp.tab.transport.hostedHint':
+    'दूरस्थ सर्वर पर चलता है — इंस्टॉल करते समय साइन-इन या टोकन सेट किया जाता है',
+  'mcp.tab.transport.localHint':
+    'आपके डिवाइस पर चलता है — इंस्टॉल करते समय टोकन की ज़रूरत हो सकती है',
+  'mcp.tab.verifiedBadge': 'सत्यापित',
+  'mcp.tab.verifiedHint': 'कनेक्ट होना पुष्ट',
   'mcp.tab.badge.installed': 'इंस्टॉल किया गया',
   'mcp.tab.badge.registry': 'रजिस्ट्री',
   'mcp.tab.action.manage': 'प्रबंधित करें',
