@@ -1566,6 +1566,7 @@ const messages: TranslationMap = {
   'mcp.connectAuth.headerValue': 'Nilai',
   'mcp.connectAuth.removeHeader': 'Hapus header',
   'mcp.connectAuth.howToGetToken': 'Bantuan & konfigurasi',
+  'mcp.connectAuth.getKey': 'Dapatkan kunci Anda →',
   'mcp.connectAuth.hideHelp': 'Sembunyikan bantuan',
   'mcp.connectAuth.schemeLabel': 'Cara mengirim nilai',
   'mcp.connectAuth.schemeBearer': 'Bearer',
