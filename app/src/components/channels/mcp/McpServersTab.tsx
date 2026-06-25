@@ -494,9 +494,13 @@ const McpServersTab = () => {
         </div>
       )}
 
-      {/* Table */}
-      <div className="rounded-lg border border-stone-200 dark:border-neutral-800 overflow-hidden">
-        <table className="w-full text-sm">
+      {/* Table — horizontally scrollable so the Source/Author/Action columns
+          aren't clipped when the panel is narrower than the table's natural
+          width (the wrapper was `overflow-hidden`, which cut them off with no
+          way to scroll). `min-w` keeps the columns readable rather than
+          crushing them. */}
+      <div className="rounded-lg border border-stone-200 dark:border-neutral-800 overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-stone-100 dark:border-neutral-800 bg-stone-50 dark:bg-neutral-900">
               <th className="text-left px-4 py-2.5 text-xs font-medium text-stone-500 dark:text-neutral-400">
