@@ -336,11 +336,11 @@ const McpServersTab = () => {
               <span className="font-medium text-stone-900 dark:text-neutral-100 truncate">
                 {server.display_name}
               </span>
-              {server.verified && (
+              {server.official && (
                 <span
-                  title={t('mcp.tab.verifiedHint')}
+                  title={t('mcp.tab.officialHint')}
                   className="inline-flex items-center gap-0.5 rounded-full bg-sage-100 px-1.5 py-0.5 text-[10px] font-medium text-sage-700 dark:bg-sage-500/15 dark:text-sage-300">
-                  ✓ {t('mcp.tab.verifiedBadge')}
+                  ✓ {t('mcp.tab.officialBadge')}
                 </span>
               )}
               <TransportHintBadge deployed={server.is_deployed} />

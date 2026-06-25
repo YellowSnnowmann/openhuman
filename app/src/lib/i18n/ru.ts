@@ -1466,8 +1466,8 @@ const messages: TranslationMap = {
     'Работает на удалённом сервере — вход или токен настраивается при установке',
   'mcp.tab.transport.localHint':
     'Работает на вашем устройстве — может потребоваться токен при установке',
-  'mcp.tab.verifiedBadge': 'Проверено',
-  'mcp.tab.verifiedHint': 'Подключение подтверждено',
+  'mcp.tab.officialBadge': 'Официальный',
+  'mcp.tab.officialHint': 'Официальный сервер от поставщика',
   'mcp.tab.badge.installed': 'Установлено',
   'mcp.tab.badge.registry': 'Реестр',
   'mcp.tab.action.manage': 'Управление',

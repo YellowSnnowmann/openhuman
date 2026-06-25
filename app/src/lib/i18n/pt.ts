@@ -1485,8 +1485,8 @@ const messages: TranslationMap = {
     'Executa em um servidor remoto — login ou token é configurado ao instalar',
   'mcp.tab.transport.localHint':
     'Executa no seu dispositivo — pode precisar de um token ao instalar',
-  'mcp.tab.verifiedBadge': 'Verificado',
-  'mcp.tab.verifiedHint': 'Conexão confirmada',
+  'mcp.tab.officialBadge': 'Oficial',
+  'mcp.tab.officialHint': 'Servidor oficial do fornecedor',
   'mcp.tab.badge.installed': 'Instalado',
   'mcp.tab.badge.registry': 'Registro',
   'mcp.tab.action.manage': 'Gerenciar',

@@ -1793,8 +1793,8 @@ const en: TranslationMap = {
   'mcp.tab.transport.hostedHint':
     'Runs on a remote server — sign-in or token is set up when you install',
   'mcp.tab.transport.localHint': 'Runs on your device — may need a token when you install',
-  'mcp.tab.verifiedBadge': 'Verified',
-  'mcp.tab.verifiedHint': 'Confirmed to connect',
+  'mcp.tab.officialBadge': 'Official',
+  'mcp.tab.officialHint': 'Official server from the vendor',
   'mcp.tab.badge.installed': 'Installed',
   'mcp.tab.badge.registry': 'Registry',
   'mcp.tab.action.manage': 'Manage',

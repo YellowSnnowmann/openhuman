@@ -1489,8 +1489,8 @@ const messages: TranslationMap = {
     "S'exécute sur un serveur distant — la connexion ou le jeton est configuré lors de l'installation",
   'mcp.tab.transport.localHint':
     "S'exécute sur votre appareil — peut nécessiter un jeton lors de l'installation",
-  'mcp.tab.verifiedBadge': 'Vérifié',
-  'mcp.tab.verifiedHint': 'Connexion confirmée',
+  'mcp.tab.officialBadge': 'Officiel',
+  'mcp.tab.officialHint': 'Serveur officiel du fournisseur',
   'mcp.tab.badge.installed': 'Installé',
   'mcp.tab.badge.registry': 'Registre',
   'mcp.tab.action.manage': 'Gérer',

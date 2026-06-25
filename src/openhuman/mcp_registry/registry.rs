@@ -44,22 +44,18 @@ pub async fn registry_search(
         .map(|(idx, res)| (registries[idx].source(), res))
         .collect();
 
-    let (merged, mut total_pages) = merge_registry_results(labelled);
+    let (mut merged, mut total_pages) = merge_registry_results(labelled);
 
-    // Collapse well-known services (gmail, notion, slack, …) to a single
-    // canonical row so the catalog isn't a wall of look-alike community
-    // servers. Servers outside the curated set pass through untouched, so the
-    // full registry stays browsable and "load more" keeps surfacing new rows.
-    let mut curated = super::curation::curate_one_per_service(merged);
-
-    // Tag hosted servers for confirmed-working services as `verified` so the
-    // UI can badge them. This only annotates — nothing is removed.
-    super::curation::tag_verified(&mut curated);
+    // Keep the full deduped catalog browsable — no one-per-service collapse
+    // (it hides genuinely different community servers and barely trims noise).
+    // Just badge the canonical first-party server for each known service so the
+    // official one is easy to spot without throwing any alternatives away.
+    super::curation::tag_official(&mut merged);
 
     if total_pages == 0 {
         total_pages = page.max(1);
     }
-    Ok((curated, total_pages))
+    Ok((merged, total_pages))
 }
 
 /// Merge per-registry search results into one list, dropping exact
@@ -148,7 +144,7 @@ mod tests {
             use_count: 0,
             is_deployed: false,
             source: source.to_string(),
-            verified: false,
+            official: false,
             extra: Default::default(),
         }
     }

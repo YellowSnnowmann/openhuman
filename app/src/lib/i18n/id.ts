@@ -1454,8 +1454,8 @@ const messages: TranslationMap = {
   'mcp.tab.transport.hostedHint':
     'Berjalan di server jarak jauh — masuk atau token diatur saat memasang',
   'mcp.tab.transport.localHint': 'Berjalan di perangkat Anda — mungkin perlu token saat memasang',
-  'mcp.tab.verifiedBadge': 'Terverifikasi',
-  'mcp.tab.verifiedHint': 'Koneksi dipastikan',
+  'mcp.tab.officialBadge': 'Resmi',
+  'mcp.tab.officialHint': 'Server resmi dari vendor',
   'mcp.tab.badge.installed': 'Terpasang',
   'mcp.tab.badge.registry': 'Registri',
   'mcp.tab.action.manage': 'Kelola',

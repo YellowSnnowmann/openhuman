@@ -1447,8 +1447,8 @@ const messages: TranslationMap = {
   'mcp.tab.transport.hostedHint':
     'একটি দূরবর্তী সার্ভারে চলে — ইনস্টলের সময় সাইন-ইন বা টোকেন সেট করা হয়',
   'mcp.tab.transport.localHint': 'আপনার ডিভাইসে চলে — ইনস্টলের সময় টোকেন লাগতে পারে',
-  'mcp.tab.verifiedBadge': 'যাচাইকৃত',
-  'mcp.tab.verifiedHint': 'সংযোগ নিশ্চিত করা হয়েছে',
+  'mcp.tab.officialBadge': 'অফিশিয়াল',
+  'mcp.tab.officialHint': 'বিক্রেতার অফিশিয়াল সার্ভার',
   'mcp.tab.badge.installed': 'ইনস্টল করা',
   'mcp.tab.badge.registry': 'রেজিস্ট্রি',
   'mcp.tab.action.manage': 'পরিচালনা',

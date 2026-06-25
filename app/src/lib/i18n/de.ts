@@ -1488,8 +1488,8 @@ const messages: TranslationMap = {
     'Läuft auf einem entfernten Server – Anmeldung oder Token wird bei der Installation eingerichtet',
   'mcp.tab.transport.localHint':
     'Läuft auf Ihrem Gerät – benötigt bei der Installation möglicherweise ein Token',
-  'mcp.tab.verifiedBadge': 'Verifiziert',
-  'mcp.tab.verifiedHint': 'Verbindung bestätigt',
+  'mcp.tab.officialBadge': 'Offiziell',
+  'mcp.tab.officialHint': 'Offizieller Server des Anbieters',
   'mcp.tab.badge.installed': 'Installiert',
   'mcp.tab.badge.registry': 'Registrierung',
   'mcp.tab.action.manage': 'Verwalten',

@@ -17,12 +17,12 @@ export type SmitheryServer = {
    */
   source?: string;
   /**
-   * `true` for a hosted server whose service we've confirmed connects. The core
-   * keeps only curated canonical rows and verified servers; the unverified long
-   * tail is dropped server-side, so the catalog renders the vetted set directly
-   * with nothing hidden behind a toggle.
+   * `true` when this is the canonical first-party server for a well-known
+   * service (exact `qualified_name` match server-side). The UI badges it
+   * "Official"; every other server is shown without a badge — nothing is
+   * hidden. Stamped by the Rust dispatcher; never trusted from the wire.
    */
-  verified?: boolean;
+  official?: boolean;
 };
 
 export type SmitheryConnection = {

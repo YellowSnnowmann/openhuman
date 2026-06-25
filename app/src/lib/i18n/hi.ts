@@ -1446,8 +1446,8 @@ const messages: TranslationMap = {
     'दूरस्थ सर्वर पर चलता है — इंस्टॉल करते समय साइन-इन या टोकन सेट किया जाता है',
   'mcp.tab.transport.localHint':
     'आपके डिवाइस पर चलता है — इंस्टॉल करते समय टोकन की ज़रूरत हो सकती है',
-  'mcp.tab.verifiedBadge': 'सत्यापित',
-  'mcp.tab.verifiedHint': 'कनेक्ट होना पुष्ट',
+  'mcp.tab.officialBadge': 'आधिकारिक',
+  'mcp.tab.officialHint': 'वेंडर का आधिकारिक सर्वर',
   'mcp.tab.badge.installed': 'इंस्टॉल किया गया',
   'mcp.tab.badge.registry': 'रजिस्ट्री',
   'mcp.tab.action.manage': 'प्रबंधित करें',

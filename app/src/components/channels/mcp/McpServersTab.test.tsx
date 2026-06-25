@@ -254,7 +254,7 @@ describe('McpServersTab', () => {
           qualified_name: 'acme/new-srv',
           display_name: 'New Server',
           description: 'A new server',
-          verified: true,
+          official: true,
         },
       ],
       page: 1,
@@ -275,8 +275,8 @@ describe('McpServersTab', () => {
     mockStatus.mockResolvedValue([]);
     mockRegistrySearch.mockResolvedValue({
       servers: [
-        { qualified_name: 'acme/new-srv', display_name: 'New Server', verified: true },
-        { qualified_name: 'acme/new-srv', display_name: 'New Server', verified: true },
+        { qualified_name: 'acme/new-srv', display_name: 'New Server', official: true },
+        { qualified_name: 'acme/new-srv', display_name: 'New Server', official: true },
       ],
       page: 1,
       total_pages: 1,
@@ -297,8 +297,8 @@ describe('McpServersTab', () => {
         page === 1
           ? {
               servers: [
-                { qualified_name: 'acme/a', display_name: 'Server A', verified: true },
-                { qualified_name: 'acme/b', display_name: 'Server B', verified: true },
+                { qualified_name: 'acme/a', display_name: 'Server A', official: true },
+                { qualified_name: 'acme/b', display_name: 'Server B', official: true },
               ],
               page: 1,
               total_pages: 2,
@@ -306,8 +306,8 @@ describe('McpServersTab', () => {
           : {
               // page 2 overlaps page 1 on acme/b and adds acme/c
               servers: [
-                { qualified_name: 'acme/b', display_name: 'Server B', verified: true },
-                { qualified_name: 'acme/c', display_name: 'Server C', verified: true },
+                { qualified_name: 'acme/b', display_name: 'Server B', official: true },
+                { qualified_name: 'acme/c', display_name: 'Server C', official: true },
               ],
               page: 2,
               total_pages: 2,
@@ -334,13 +334,13 @@ describe('McpServersTab', () => {
           qualified_name: 'waystation/gmail',
           display_name: 'gmail',
           source: 'mcp_official',
-          verified: true,
+          official: true,
         },
         {
           qualified_name: 'mintmcp/gmail',
           display_name: 'gmail',
           source: 'smithery',
-          verified: true,
+          official: true,
         },
       ],
       page: 1,
@@ -388,17 +388,26 @@ describe('McpServersTab', () => {
     expect(screen.getByText('Local')).toBeInTheDocument();
   });
 
-  it('renders every returned row with a verified badge on confirmed ones and no Show all toggle', async () => {
+  it('renders every returned row and badges only the official one, with no Show all toggle', async () => {
     mockInstalledList.mockResolvedValue([]);
     mockStatus.mockResolvedValue([]);
-    // The core no longer drops the long tail — it collapses each well-known
-    // service to one row and tags confirmed hosted servers as `verified`. The
-    // tab renders every returned row (no client-side filtering) and marks the
-    // verified ones with a badge.
+    // The core keeps the full deduped catalog and marks the canonical
+    // first-party server with `official`. The tab renders every returned row
+    // (no client-side filtering) and badges only the official one.
     mockRegistrySearch.mockResolvedValue({
       servers: [
-        { qualified_name: 'v/sentry', display_name: 'Sentry', is_deployed: true, verified: true },
-        { qualified_name: 'c/gmail', display_name: 'Gmail', is_deployed: false, verified: false },
+        {
+          qualified_name: 'com.notion/mcp',
+          display_name: 'Notion',
+          is_deployed: true,
+          official: true,
+        },
+        {
+          qualified_name: 'ai.smithery/smithery-notion',
+          display_name: 'Community Notion',
+          is_deployed: true,
+          official: false,
+        },
       ],
       page: 1,
       total_pages: 1,
@@ -407,12 +416,12 @@ describe('McpServersTab', () => {
     await renderAndWaitForLoad();
     vi.useRealTimers();
 
-    await waitFor(() => screen.getByText('Sentry'));
-    // Curated-but-unverified rows still render (only without a badge).
-    expect(screen.getByText('Gmail')).toBeInTheDocument();
-    // The verified row carries the ✓ badge (rendered as "✓ Verified").
-    expect(screen.getByText(/Verified/)).toBeInTheDocument();
-    // No verified/all toggle exists anymore.
+    await waitFor(() => screen.getByText('Notion'));
+    // The community row still renders — nothing is hidden.
+    expect(screen.getByText('Community Notion')).toBeInTheDocument();
+    // Exactly one row carries the ✓ Official badge.
+    expect(screen.getByText(/Official/)).toBeInTheDocument();
+    // No verified/all toggle exists.
     expect(screen.queryByText('Show all')).not.toBeInTheDocument();
     expect(screen.queryByText('Verified only')).not.toBeInTheDocument();
   });
@@ -421,7 +430,7 @@ describe('McpServersTab', () => {
     mockInstalledList.mockResolvedValue([]);
     mockStatus.mockResolvedValue([]);
     mockRegistrySearch.mockResolvedValue({
-      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', verified: true }],
+      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', official: true }],
       page: 1,
       total_pages: 1,
     });
@@ -442,7 +451,7 @@ describe('McpServersTab', () => {
     mockInstalledList.mockResolvedValue([]);
     mockStatus.mockResolvedValue([]);
     mockRegistrySearch.mockResolvedValue({
-      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', verified: true }],
+      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', official: true }],
       page: 1,
       total_pages: 1,
     });
@@ -473,7 +482,7 @@ describe('McpServersTab', () => {
     mockInstalledList.mockResolvedValue([]);
     mockStatus.mockResolvedValue([]);
     mockRegistrySearch.mockResolvedValue({
-      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', verified: true }],
+      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', official: true }],
       page: 1,
       total_pages: 1,
     });
@@ -555,7 +564,7 @@ describe('McpServersTab', () => {
     mockInstalledList.mockRejectedValueOnce(new Error('Transient error'));
     mockStatus.mockResolvedValue([]);
     mockRegistrySearch.mockResolvedValue({
-      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', verified: true }],
+      servers: [{ qualified_name: 'acme/new-srv', display_name: 'New Server', official: true }],
       page: 1,
       total_pages: 1,
     });
