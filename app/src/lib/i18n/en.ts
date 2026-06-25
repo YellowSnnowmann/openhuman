@@ -523,6 +523,7 @@ const en: TranslationMap = {
   'chat.newWindowWelcome3': 'Time to Zone In 🧘🏻',
   'chat.typeMessage': 'How can I help you today?',
   'chat.send': 'Send message',
+  'chat.stopGeneration': 'Stop generating',
   'chat.parallelBranchHint': 'Type a parallel branch — ⌘/Ctrl+Enter to send',
   'chat.followupHint':
     'Queue a follow-up — sent after this reply · ⌘/Ctrl+Enter for a parallel branch',
@@ -1258,6 +1259,8 @@ const en: TranslationMap = {
   'channels.status.error': 'Error',
   'channels.status.configuring': 'Configuring',
   'channels.defaultMessaging': 'Default Messaging Channel',
+  'channels.setAsDefault': 'Set as default',
+  'channels.defaultBadge': 'Default',
 
   // Webhooks
   'webhooks.title': 'Webhooks',
@@ -3164,6 +3167,8 @@ const en: TranslationMap = {
   'notifications.category.meetings': 'Meetings',
   'notifications.category.reminders': 'Reminders',
   'notifications.category.important': 'Important',
+  'notifications.filterAll': 'All',
+  'notifications.filterEmpty': 'No alerts in this category',
 
   // About / Updates: status summary phrases
   'about.update.status.checking': 'Checking...',
@@ -3585,6 +3590,22 @@ const en: TranslationMap = {
   'conversations.taskKanban.moveRight': 'Move right',
   'conversations.taskKanban.title': 'Tasks',
   'conversations.threadTodo.title': 'Plan',
+  // Thread-level goal chip (Codex-style per-thread completion contract).
+  'conversations.threadGoal.label': 'Goal',
+  'conversations.threadGoal.setCta': 'Set goal',
+  'conversations.threadGoal.placeholder': 'What should this thread accomplish?',
+  'conversations.threadGoal.save': 'Save',
+  'conversations.threadGoal.cancel': 'Cancel',
+  'conversations.threadGoal.edit': 'Edit goal',
+  'conversations.threadGoal.clear': 'Clear goal',
+  'conversations.threadGoal.complete': 'Mark complete',
+  'conversations.threadGoal.pause': 'Pause',
+  'conversations.threadGoal.resume': 'Resume',
+  'conversations.threadGoal.tokensSuffix': 'tokens',
+  'conversations.threadGoal.status.active': 'Active',
+  'conversations.threadGoal.status.paused': 'Paused',
+  'conversations.threadGoal.status.budget_limited': 'Budget reached',
+  'conversations.threadGoal.status.complete': 'Complete',
   'conversations.taskKanban.approval.default': 'Default',
   'conversations.taskKanban.approval.notRequired': 'Not required',
   'conversations.taskKanban.approval.notRequiredBadge': 'no approval',

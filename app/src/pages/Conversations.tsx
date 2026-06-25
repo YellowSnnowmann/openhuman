@@ -100,6 +100,11 @@ import {
 } from './conversations/components/BackgroundProcessesPanel';
 import { CitationChips, type MessageCitation } from './conversations/components/CitationChips';
 import { SubagentDrawer } from './conversations/components/SubagentDrawer';
+import {
+  ThreadGoalEditorPanel,
+  ThreadGoalFooterTrigger,
+  useThreadGoal,
+} from './conversations/components/ThreadGoalChip';
 import { ThreadTodoStrip } from './conversations/components/ThreadTodoStrip';
 import { ToolTimelineBlock } from './conversations/components/ToolTimelineBlock';
 import {
@@ -238,6 +243,10 @@ const Conversations = ({
     ? Boolean(activeThreadIds[selectedThreadId])
     : false;
   const firstActiveThreadId = Object.keys(activeThreadIds)[0] ?? null;
+
+  // Thread-goal controller shared by the footer trigger (under the composer)
+  // and the editor panel (above the composer).
+  const threadGoal = useThreadGoal(selectedThreadId ?? null);
 
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -894,12 +903,6 @@ const Conversations = ({
     // may proceed concurrently.
     if (selectedThreadId && pendingSendsRef.current.has(selectedThreadId)) return;
 
-    // If the user just flipped the Super Context toggle, make sure that config
-    // write has landed before the core builds this thread's session (which
-    // reads `context.super_context_enabled`). Resolves instantly when nothing
-    // is pending.
-    await whenSuperContextWriteSettled();
-
     const normalized = text ?? inputValue;
     const trimmedInput = normalized.trim();
 
@@ -944,6 +947,12 @@ const Conversations = ({
     if (!sendingThreadId) return;
     pendingSendsRef.current.add(sendingThreadId);
     addPendingSendingThread(sendingThreadId);
+    // If the user just flipped the Super Context toggle, make sure that config
+    // write has landed before the core builds this thread's session (which
+    // reads `context.super_context_enabled`). Done AFTER the duplicate-send
+    // guard above is set so this await can't open a check→add race for rapid
+    // repeat clicks. Resolves instantly when nothing is pending.
+    await whenSuperContextWriteSettled();
     const pendingAttachments = attachments.slice();
     const modelOverride =
       agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
@@ -1213,6 +1222,13 @@ const Conversations = ({
   // while the selected thread is streaming, otherwise to a normal send.
   const handleComposerSend = (text?: string): Promise<void> =>
     selectedThreadActive ? handleSendFollowup(text) : handleSendMessage(text);
+
+  // Cancel the in-flight turn for the selected thread. Shared by the in-composer
+  // Stop button (text mode) and the footer Cancel control (mic-cloud / voice
+  // modes) so the cancel path lives in one place.
+  const handleStopGeneration = useCallback(() => {
+    if (selectedThreadId) void chatCancel(selectedThreadId);
+  }, [selectedThreadId]);
 
   const transcribeAndSendAudio = async (mimeType: string) => {
     setIsRecording(false);
@@ -2626,18 +2642,17 @@ const Conversations = ({
           />
         )}
 
-        {/* Cancel the in-flight turn. Lives in the floating footer (above the
-            queued-follow-ups strip + composer) so it stays reachable now that
-            the composer is interactive mid-stream — otherwise the taller footer
-            would paint over a cancel control left in the message flow. */}
-        {isSending && rustChat && (
+        {/* Cancel the in-flight turn for composer modes that don't render the
+            text ChatComposer (mic-cloud + voice). The text composer carries its
+            own in-box Stop button, so the footer control only appears for the
+            non-text branches — otherwise voice/mic flows would have no way to
+            stop a long-running generation. */}
+        {isSending && rustChat && (composer === 'mic-cloud' || inputMode !== 'text') && (
           <div className="mb-2 flex justify-start px-1">
             <button
               type="button"
               data-analytics-id="chat-cancel-generation"
-              onClick={() => {
-                if (selectedThreadId) void chatCancel(selectedThreadId);
-              }}
+              onClick={handleStopGeneration}
               className="text-xs text-stone-500 transition-colors hover:text-stone-700 dark:text-neutral-400 dark:hover:text-neutral-200">
               {t('common.cancel')}
             </button>
@@ -2659,16 +2674,11 @@ const Conversations = ({
           </div>
         ) : inputMode === 'text' ? (
           <>
-            {selectedThreadId && (queuedFollowupsByThread[selectedThreadId]?.length ?? 0) > 0 && (
-              <QueuedFollowups
-                items={queuedFollowupsByThread[selectedThreadId] ?? []}
-                onClear={() => void handleClearQueuedFollowups()}
-              />
-            )}
             <ChatComposer
               inputValue={inputValue}
               setInputValue={setInputValue}
               onSend={handleComposerSend}
+              onStopGeneration={rustChat ? handleStopGeneration : undefined}
               textInputRef={textInputRef}
               fileInputRef={fileInputRef}
               composerInteractionBlocked={composerInteractionBlocked}
@@ -2688,6 +2698,19 @@ const Conversations = ({
               // validateAndReadFile, which honors modelSupportsVision.
               allowedMimeTypes={[]}
               attachmentsEnabled={CHAT_ATTACHMENTS_ENABLED}
+              // Header stack above the input box (outside its blue focus ring):
+              // queued follow-ups + the thread-goal editor (opened via the
+              // footer "Set goal" trigger). Entries that render null are no-ops.
+              headerSlots={[
+                selectedThreadId && (queuedFollowupsByThread[selectedThreadId]?.length ?? 0) > 0 ? (
+                  <QueuedFollowups
+                    key="queued-followups"
+                    items={queuedFollowupsByThread[selectedThreadId] ?? []}
+                    onClear={() => void handleClearQueuedFollowups()}
+                  />
+                ) : null,
+                <ThreadGoalEditorPanel key="thread-goal" ctl={threadGoal} />,
+              ]}
             />
           </>
         ) : (
@@ -2762,7 +2785,11 @@ const Conversations = ({
         <div
           className="mt-2 flex items-center justify-between gap-2"
           data-walkthrough="chat-agent-panel">
-          <ComposerTokenStats model={resolvedModel} />
+          <div className="flex min-w-0 items-center gap-2">
+            <ComposerTokenStats model={resolvedModel} />
+            {/* Set/show the thread goal; click opens the editor above the composer. */}
+            <ThreadGoalFooterTrigger ctl={threadGoal} />
+          </div>
           {!isSidebar && (
             <div className="flex flex-shrink-0 items-center gap-2">
               <div
