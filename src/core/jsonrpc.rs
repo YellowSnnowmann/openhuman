@@ -537,6 +537,9 @@ fn error_html(message: &str) -> String {
 struct OAuthMcpCallbackQuery {
     code: Option<String>,
     state: Option<String>,
+    /// RFC 9207 authorization-server issuer identifier; validated by
+    /// `oauth::complete` against the issuer recorded when the flow began.
+    iss: Option<String>,
     error: Option<String>,
     error_description: Option<String>,
 }
@@ -600,7 +603,14 @@ async fn oauth_mcp_callback_handler(
         }
     };
 
-    match crate::openhuman::mcp_registry::oauth::complete(&config, &state, &code).await {
+    match crate::openhuman::mcp_registry::oauth::complete(
+        &config,
+        &state,
+        &code,
+        query.iss.as_deref(),
+    )
+    .await
+    {
         Ok(server_id) => {
             log::info!("[oauth:mcp] completed sign-in for server_id={server_id}");
             html(

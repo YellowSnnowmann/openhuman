@@ -48,6 +48,26 @@ struct PendingOAuth {
     client_secret: Option<String>,
     token_endpoint: String,
     redirect_uri: String,
+    /// The authorization server's `issuer` (RFC 8414), recorded at [`begin`] so
+    /// the callback can validate the `iss` parameter (RFC 9207) before trusting
+    /// the authorization code — defends against mix-up attacks.
+    issuer: String,
+}
+
+/// Validate the authorization-response `iss` parameter (RFC 9207) against the
+/// issuer recorded when the flow began. When `got` is present it MUST equal the
+/// expected issuer (simple string comparison, RFC 3986 §6.2.1). When absent we
+/// proceed: this client can't yet tell whether the AS advertised
+/// `authorization_response_iss_parameter_supported`, and `iss` is still
+/// transitioning from SHOULD to MUST in the spec.
+fn validate_issuer(expected: &str, got: Option<&str>) -> Result<(), String> {
+    match got {
+        Some(iss) if iss != expected => Err(format!(
+            "OAuth issuer mismatch (possible mix-up attack): callback iss={iss:?} \
+             does not match the authorization server={expected:?}"
+        )),
+        _ => Ok(()),
+    }
 }
 
 fn pending() -> &'static Mutex<HashMap<String, PendingOAuth>> {
@@ -263,6 +283,8 @@ pub async fn begin(config: &Config, server_id: &str) -> Result<String, String> {
              (authorize + token + dynamic registration)"
                 .to_string()
         })?;
+    // Record the issuer now (RFC 9207): the callback's `iss` must match it.
+    let issuer = asm.issuer.clone();
     let authorization_endpoint = asm
         .authorization_endpoint
         .ok_or_else(|| "authorization server has no authorization_endpoint".to_string())?;
@@ -288,6 +310,7 @@ pub async fn begin(config: &Config, server_id: &str) -> Result<String, String> {
             client_secret,
             token_endpoint,
             redirect_uri: redirect_uri.clone(),
+            issuer,
         },
     );
 
@@ -353,12 +376,21 @@ async fn register_client(
 
 /// Complete the flow from the callback route: exchange `code` for a token,
 /// store it as the server's `Authorization` header, and reconnect.
-pub async fn complete(config: &Config, state: &str, code: &str) -> Result<String, String> {
+pub async fn complete(
+    config: &Config,
+    state: &str,
+    code: &str,
+    iss: Option<&str>,
+) -> Result<String, String> {
     let p = pending()
         .lock()
         .unwrap()
         .remove(state)
         .ok_or_else(|| "unknown or expired OAuth state".to_string())?;
+
+    // RFC 9207: reject the code if the callback issuer doesn't match the AS we
+    // started the flow with — before any token exchange.
+    validate_issuer(&p.issuer, iss)?;
 
     let form: Vec<(&str, &str)> = {
         let mut f = vec![
@@ -531,6 +563,15 @@ mod tests {
         );
         let expected = B64.encode(Sha256::digest(verifier.as_bytes()));
         assert_eq!(challenge, expected);
+    }
+
+    #[test]
+    fn validate_issuer_enforces_rfc9207() {
+        // Present + matching → ok; present + mismatched → mix-up rejected.
+        assert!(validate_issuer("https://as.example", Some("https://as.example")).is_ok());
+        assert!(validate_issuer("https://as.example", Some("https://evil.example")).is_err());
+        // Absent → proceed (iss still SHOULD→MUST in the spec; can't assume support).
+        assert!(validate_issuer("https://as.example", None).is_ok());
     }
 
     #[test]
