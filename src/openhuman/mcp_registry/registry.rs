@@ -32,7 +32,7 @@ pub async fn registry_search(
     page: u32,
     page_size: u32,
 ) -> Result<(Vec<SmitheryServerSummary>, u32)> {
-    let registries = enabled_registries();
+    let registries = enabled_registries(config);
     let queries = registries
         .iter()
         .map(|r| r.search(config, query, page, page_size));
@@ -116,7 +116,7 @@ pub async fn registry_get(config: &Config, qualified_name: &str) -> Result<Smith
     }
 
     let mut last_err: Option<anyhow::Error> = None;
-    for registry in enabled_registries() {
+    for registry in enabled_registries(config) {
         match registry.get(config, qualified_name).await {
             Ok(detail) => return Ok(detail),
             Err(err) => {
