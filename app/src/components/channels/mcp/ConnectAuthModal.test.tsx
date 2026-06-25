@@ -282,4 +282,70 @@ describe('ConnectAuthModal', () => {
     // Non-fatal: the modal still renders and shows the declared key field.
     expect(await screen.findByLabelText('Authorization')).toBeInTheDocument();
   });
+
+  it('renders a declared field from config_schema with a linkified description', async () => {
+    mockRegistryGet.mockResolvedValue({
+      qualified_name: 'acme/test-server',
+      display_name: 'Test Server',
+      connections: [
+        {
+          type: 'http',
+          config_schema: {
+            properties: {
+              'X-API-Key': {
+                description: 'AnomalyArmor key. Generate at https://app.anomalyarmor.ai/api-key',
+                'x-secret': true,
+              },
+            },
+            required: ['X-API-Key'],
+          },
+        },
+      ],
+      required_env_keys: [],
+    });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    // The exact declared key is rendered as a labelled input…
+    expect(await screen.findByLabelText('X-API-Key')).toBeInTheDocument();
+    // …with its description, and the "get your key" URL becomes a clickable link.
+    expect(screen.getByText(/Generate at/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'https://app.anomalyarmor.ai/api-key' }));
+    expect(mockOpenUrl).toHaveBeenCalledWith('https://app.anomalyarmor.ai/api-key');
+  });
+
+  it('blocks Connect until a required declared field is filled', async () => {
+    mockRegistryGet.mockResolvedValue({
+      qualified_name: 'acme/test-server',
+      display_name: 'Test Server',
+      connections: [
+        {
+          type: 'http',
+          config_schema: {
+            properties: { 'X-API-Key': { 'x-secret': true } },
+            required: ['X-API-Key'],
+          },
+        },
+      ],
+      required_env_keys: [],
+    });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    await screen.findByLabelText('X-API-Key');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    });
+    // A clear, per-field error — not a silent failed connect.
+    await waitFor(() => {
+      expect(screen.getByText('"X-API-Key" is required')).toBeInTheDocument();
+    });
+    expect(mockUpdateEnv).not.toHaveBeenCalled();
+    expect(mockConnect).not.toHaveBeenCalled();
+  });
+
+  it('does not seed a token box for OAuth servers', async () => {
+    mockDetectAuth.mockResolvedValue({ kind: 'oauth', grant_types: ['authorization_code'] });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    // OAuth servers get a sign-in button and no auto-seeded Authorization row —
+    // pasting a token there is exactly what fails (e.g. a GitHub PAT vs OAuth).
+    await screen.findByRole('button', { name: 'Sign in with browser' });
+    expect(screen.queryByDisplayValue('Authorization')).not.toBeInTheDocument();
+  });
 });

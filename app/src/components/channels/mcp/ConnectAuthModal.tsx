@@ -1,31 +1,32 @@
 /**
- * ConnectAuthModal — opened when the user clicks "Connect" on an installed MCP
- * server. Lets the user supply auth before connecting:
+ * ConnectAuthModal — opened when the user clicks "Connect"/"Sign in" on an
+ * installed MCP server. It renders the auth the *server itself declares*, so
+ * each server asks for exactly what it needs instead of a one-size-fits-all box:
  *
- *   • Known fields — keys the registry declares as required (`required_env_keys`,
- *     e.g. an `Authorization` header for an HTTP-remote server) plus any keys
- *     already stored on the install. Rendered as secret inputs.
- *   • Custom headers — free-form name/value rows for servers whose registry
- *     metadata declares no auth (mislabelled remotes like inference.sh) where
- *     the user nonetheless has a token to paste (e.g. `Authorization: Bearer …`).
+ *   • OAuth — when a live probe (`detect_auth`) sees a browser sign-in
+ *     challenge, we show a single "Sign in" button and no token field.
+ *   • Declared fields — the registry's `connections[].config_schema` lists each
+ *     required input by name (`Authorization`, `X-API-Key`, `GITHUB_TOKEN`, …)
+ *     with a human description that often carries a "get your key at <url>"
+ *     link. We render one labelled (secret) input per field and linkify the URL.
+ *   • Custom headers — a free-form fallback for mislabelled remotes that declare
+ *     no auth but still want a header (kept behind the declared fields).
  *
- * On submit, non-empty values are persisted via `update_env` (which stores them
- * encrypted and reconnects); for HTTP-remote installs each entry becomes a
- * request header on connect (see core `build_http_auth`). When the user supplies
- * nothing, we just connect — open servers need no auth.
- *
- * This is the upfront (non-reactive) auth step: it always appears on Connect so
- * the user can set credentials before the first attempt, rather than only after
- * a 401.
+ * Only fields the server marks `required` or `isSecret` are shown; pure config
+ * (log level, port…) is left to the server's defaults. On submit, non-empty
+ * values persist via `update_env` (stored encrypted, then reconnect); for
+ * HTTP-remote installs each entry becomes a request header (core
+ * `build_http_auth`). With nothing supplied we just connect — open servers need
+ * no auth.
  */
 import debug from 'debug';
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { mcpClientsApi } from '../../../services/api/mcpClientsApi';
 import { openUrl } from '../../../utils/openUrl';
 import ConfigHelpModal from './ConfigHelpModal';
-import type { InstalledServer, McpTool } from './types';
+import type { InstalledServer, McpTool, SmitheryServerDetail } from './types';
 
 const log = debug('mcp-clients:connect-auth');
 
@@ -34,6 +35,18 @@ interface ConnectAuthModalProps {
   onClose: () => void;
   /** Called with the connected server's tools once connect succeeds. */
   onConnected: (tools: McpTool[]) => void;
+}
+
+/** An auth input the server declares it needs. */
+interface AuthField {
+  /** Header or env-var name, e.g. `Authorization`, `X-API-Key`, `GITHUB_TOKEN`. */
+  name: string;
+  /** Human hint from the registry (may contain a "get your key" URL). */
+  description?: string;
+  /** Masked input + never echoed back. */
+  secret: boolean;
+  /** Must be supplied (unless already stored on the install). */
+  required: boolean;
 }
 
 interface CustomHeader {
@@ -54,29 +67,77 @@ const applyScheme = (scheme: 'bearer' | 'raw', value: string): string => {
   return v;
 };
 
+/** Whether a field name is an `Authorization` header (offers a Bearer scheme). */
+const isAuthorizationField = (name: string): boolean => name.toLowerCase() === 'authorization';
+
+/** Merge a field into a by-name map: keep the first description/secret seen,
+ * OR the `required` flag (any source marking it required wins). */
+const upsertField = (map: Map<string, AuthField>, f: AuthField): void => {
+  const prev = map.get(f.name);
+  if (!prev) {
+    map.set(f.name, f);
+    return;
+  }
+  map.set(f.name, {
+    name: f.name,
+    description: prev.description ?? f.description,
+    secret: prev.secret || f.secret,
+    required: prev.required || f.required,
+  });
+};
+
+/** Extract declared auth fields from a registry detail's connection schemas
+ * (and its flattened `required_env_keys`, for back-compat). */
+const fieldsFromDetail = (detail: SmitheryServerDetail): AuthField[] => {
+  const map = new Map<string, AuthField>();
+  for (const conn of detail.connections ?? []) {
+    const schema = conn.config_schema as
+      | {
+          properties?: Record<string, { description?: string; 'x-secret'?: boolean }>;
+          required?: string[];
+        }
+      | undefined;
+    const props = schema?.properties;
+    const required = Array.isArray(schema?.required) ? schema!.required! : [];
+    if (props && typeof props === 'object') {
+      for (const [name, prop] of Object.entries(props)) {
+        upsertField(map, {
+          name,
+          description: prop?.description,
+          secret: prop?.['x-secret'] === true,
+          required: required.includes(name),
+        });
+      }
+    }
+  }
+  for (const name of detail.required_env_keys ?? []) {
+    upsertField(map, { name, secret: true, required: true });
+  }
+  return Array.from(map.values());
+};
+
+const URL_RE = /(https?:\/\/[^\s)]+)/g;
+
 const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProps) => {
   const { t } = useT();
-  // Declared/known keys: union of the registry's required keys and any keys
-  // already on the install. Seeded from the install immediately; refined by a
-  // best-effort registry_get (which also carries newly-declared headers).
-  // `__`-prefixed keys are internal bookkeeping (OAuth refresh bundle) — never
-  // render them as input fields.
-  const [knownKeys, setKnownKeys] = useState<string[]>(
-    server.env_keys.filter(k => !k.startsWith('__'))
+  // Declared auth fields. Seeded from the install's stored keys (names only),
+  // then enriched by a best-effort registry_get that carries each field's
+  // description / secret / required metadata. `__`-prefixed keys are internal
+  // bookkeeping (OAuth refresh bundle) — never render them.
+  const [fields, setFields] = useState<AuthField[]>(() =>
+    server.env_keys
+      .filter(k => !k.startsWith('__'))
+      .map(name => ({ name, secret: true, required: false }))
   );
   const [values, setValues] = useState<Record<string, string>>({});
   const [reveal, setReveal] = useState<Record<string, boolean>>({});
-  // Per-declared-field scheme (the registry doesn't say Bearer vs raw — only a
-  // free-text description — so the user picks). Defaults to Bearer for an
-  // `Authorization` header (the overwhelming case), raw for anything else.
-  const [knownSchemes, setKnownSchemes] = useState<Record<string, 'bearer' | 'raw'>>({});
-  // Memoized on `knownSchemes` so callbacks that depend on it (e.g.
-  // `handleConnect`) re-derive the right scheme after the user flips the
-  // dropdown — a stale closure here would send the wrong prefix on submit.
+  // Per-Authorization-field scheme (the registry gives a free-text description,
+  // not Bearer-vs-raw — so the user picks). Defaults to Bearer.
+  const [authSchemes, setAuthSchemes] = useState<Record<string, 'bearer' | 'raw'>>({});
   const schemeFor = useCallback(
-    (key: string): 'bearer' | 'raw' =>
-      knownSchemes[key] ?? (key.toLowerCase() === 'authorization' ? 'bearer' : 'raw'),
-    [knownSchemes]
+    (name: string): 'bearer' | 'raw' =>
+      authSchemes[name] ?? (isAuthorizationField(name) ? 'bearer' : 'raw'),
+    [authSchemes]
   );
   const [customHeaders, setCustomHeaders] = useState<CustomHeader[]>([]);
   const [nextId, setNextId] = useState(1);
@@ -86,11 +147,14 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
   // the token/header fields. `detecting` until the probe returns.
   const [authKind, setAuthKind] = useState<'detecting' | 'none' | 'token' | 'oauth'>('detecting');
   const [oauthWaiting, setOauthWaiting] = useState(false);
-  // Opens the stacked configuration-help chat modal.
   const [showConfigHelp, setShowConfigHelp] = useState(false);
 
+  // Only surface fields the server actually wants from the user: required
+  // inputs and secrets. Pure config (log level, port, …) keeps server defaults.
+  const visibleFields = useMemo(() => fields.filter(f => f.required || f.secret), [fields]);
+
   // Probe how this server authenticates so we render the right control. The
-  // registry can't tell us (it mislabels), so we ask the server.
+  // registry can't always tell us, so we ask the server.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -150,18 +214,22 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
     })();
   }, [server.server_id, onConnected, onClose, t]);
 
-  // Best-effort: pull the registry's declared required keys so a server that
-  // *labels* its auth (e.g. `Authorization`) shows that field even if it was
-  // installed with no env. Network failures are non-fatal — we fall back to the
-  // install's own env_keys and the custom-header rows.
+  // Best-effort: pull the registry's declared fields (names + descriptions +
+  // secret/required), so a server that labels its auth shows tailored inputs.
+  // Network failures are non-fatal — we keep the install's own keys.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const detail = await mcpClientsApi.registryGet(server.qualified_name);
         if (cancelled) return;
-        const declared = detail.required_env_keys ?? [];
-        setKnownKeys(prev => Array.from(new Set([...prev, ...declared])));
+        const declared = fieldsFromDetail(detail);
+        setFields(prev => {
+          const map = new Map<string, AuthField>();
+          for (const f of prev) upsertField(map, f);
+          for (const f of declared) upsertField(map, f);
+          return Array.from(map.values());
+        });
       } catch (err) {
         log('registry_get failed (non-fatal): %s', err instanceof Error ? err.message : err);
       }
@@ -171,13 +239,20 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
     };
   }, [server.qualified_name]);
 
-  // Seed a blank custom-header row when the server declares nothing, so the
-  // user has an obvious place to paste a token (the mislabelled-remote case).
+  // Seed a blank custom-header row only when the server declares nothing AND
+  // isn't an OAuth sign-in — i.e. the mislabelled-remote case where the user
+  // nonetheless has a token to paste. OAuth servers get the sign-in button, not
+  // a token box (this is what stops "paste a token and hope" failures).
   useEffect(() => {
-    if (knownKeys.length === 0 && customHeaders.length === 0) {
+    if (
+      visibleFields.length === 0 &&
+      customHeaders.length === 0 &&
+      authKind !== 'oauth' &&
+      authKind !== 'detecting'
+    ) {
       setCustomHeaders([{ id: 0, name: 'Authorization', value: '', scheme: 'bearer' }]);
     }
-  }, [knownKeys.length, customHeaders.length]);
+  }, [visibleFields.length, customHeaders.length, authKind]);
 
   const addCustomHeader = useCallback(() => {
     setCustomHeaders(prev => [...prev, { id: nextId, name: '', value: '', scheme: 'bearer' }]);
@@ -189,6 +264,17 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
   }, []);
 
   const handleConnect = useCallback(() => {
+    // A required field is only "missing" when it's blank now AND wasn't already
+    // stored on the install (re-opening Connect shouldn't force re-entry).
+    const stored = new Set(server.env_keys);
+    const missing = visibleFields.find(
+      f => f.required && !stored.has(f.name) && !values[f.name]?.trim()
+    );
+    if (missing) {
+      setError(t('mcp.install.missingRequired').replace('{key}', missing.name));
+      return;
+    }
+
     setBusy(true);
     setError(null);
     void (async () => {
@@ -196,9 +282,9 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
         // Build the env/header map: declared values + named custom headers,
         // skipping blanks so we never store empty keys.
         const env: Record<string, string> = {};
-        for (const key of knownKeys) {
-          const v = values[key]?.trim();
-          if (v) env[key] = applyScheme(schemeFor(key), v);
+        for (const f of visibleFields) {
+          const v = values[f.name]?.trim();
+          if (v) env[f.name] = applyScheme(schemeFor(f.name), v);
         }
         for (const h of customHeaders) {
           const name = h.name.trim();
@@ -229,7 +315,37 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
         setBusy(false);
       }
     })();
-  }, [knownKeys, values, customHeaders, schemeFor, server.server_id, onConnected, onClose, t]);
+  }, [
+    visibleFields,
+    values,
+    customHeaders,
+    schemeFor,
+    server.server_id,
+    server.env_keys,
+    onConnected,
+    onClose,
+    t,
+  ]);
+
+  // Render a field description, linkifying any http(s) URL so the user can jump
+  // straight to the "get your key" page.
+  const renderDescription = useCallback(
+    (text: string): ReactNode =>
+      text.split(URL_RE).map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <button
+            key={i}
+            type="button"
+            onClick={() => void openUrl(part)}
+            className="text-primary-600 dark:text-primary-400 hover:underline break-all">
+            {part}
+          </button>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      ),
+    []
+  );
 
   return (
     <div
@@ -281,40 +397,57 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
           </div>
         )}
 
-        {/* Declared / known fields */}
-        {knownKeys.length > 0 && (
+        {/* Declared fields — one labelled input per key the server asks for. */}
+        {visibleFields.length > 0 && (
           <div className="space-y-2">
             <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400 dark:text-neutral-500">
               {t('mcp.connectAuth.requiredLabel')}
             </p>
-            {knownKeys.map(key => (
-              <div key={key} className="space-y-1">
-                <label
-                  htmlFor={`auth-${key}`}
-                  className="block text-[11px] font-medium text-stone-600 dark:text-neutral-400 font-mono">
-                  {key}
-                </label>
+            {visibleFields.map(field => (
+              <div key={field.name} className="space-y-1">
+                <div className="flex items-center gap-0.5">
+                  <label
+                    htmlFor={`auth-${field.name}`}
+                    className="block text-[11px] font-medium text-stone-600 dark:text-neutral-400 font-mono">
+                    {field.name}
+                  </label>
+                  {field.required && (
+                    <span
+                      aria-hidden="true"
+                      title={t('mcp.connectAuth.requiredLabel')}
+                      className="text-[11px] text-coral-500">
+                      *
+                    </span>
+                  )}
+                </div>
+                {field.description && (
+                  <p className="text-[11px] text-stone-400 dark:text-neutral-500 leading-snug">
+                    {renderDescription(field.description)}
+                  </p>
+                )}
                 <div className="flex gap-2">
-                  <select
-                    value={schemeFor(key)}
-                    onChange={e =>
-                      setKnownSchemes(prev => ({
-                        ...prev,
-                        [key]: e.target.value as 'bearer' | 'raw',
-                      }))
-                    }
-                    disabled={busy}
-                    title={t('mcp.connectAuth.schemeLabel')}
-                    className="shrink-0 rounded-lg border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-1.5 text-[11px] text-stone-700 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-primary-500/40 disabled:opacity-50">
-                    <option value="bearer">{t('mcp.connectAuth.schemeBearer')}</option>
-                    <option value="raw">{t('mcp.connectAuth.schemeRaw')}</option>
-                  </select>
+                  {isAuthorizationField(field.name) && (
+                    <select
+                      value={schemeFor(field.name)}
+                      onChange={e =>
+                        setAuthSchemes(prev => ({
+                          ...prev,
+                          [field.name]: e.target.value as 'bearer' | 'raw',
+                        }))
+                      }
+                      disabled={busy}
+                      title={t('mcp.connectAuth.schemeLabel')}
+                      className="shrink-0 rounded-lg border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-1.5 text-[11px] text-stone-700 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-primary-500/40 disabled:opacity-50">
+                      <option value="bearer">{t('mcp.connectAuth.schemeBearer')}</option>
+                      <option value="raw">{t('mcp.connectAuth.schemeRaw')}</option>
+                    </select>
+                  )}
                   <input
-                    id={`auth-${key}`}
-                    type={reveal[key] ? 'text' : 'password'}
-                    value={values[key] ?? ''}
-                    onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
-                    placeholder={t('mcp.install.enterValue').replace('{key}', key)}
+                    id={`auth-${field.name}`}
+                    type={field.secret && !reveal[field.name] ? 'password' : 'text'}
+                    value={values[field.name] ?? ''}
+                    onChange={e => setValues(prev => ({ ...prev, [field.name]: e.target.value }))}
+                    placeholder={t('mcp.install.enterValue').replace('{key}', field.name)}
                     disabled={busy}
                     // Suppress Chromium password-manager autofill so a token saved
                     // for one MCP doesn't pre-fill another's field.
@@ -324,20 +457,24 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
                     data-form-type="other"
                     className="flex-1 rounded-lg border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1.5 text-xs text-stone-800 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 disabled:opacity-50"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setReveal(prev => ({ ...prev, [key]: !prev[key] }))}
-                    disabled={busy}
-                    className="shrink-0 rounded-lg border border-stone-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-stone-500 dark:text-neutral-400 hover:border-stone-300 dark:hover:border-neutral-600 disabled:opacity-50">
-                    {reveal[key] ? t('mcp.install.hide') : t('mcp.install.show')}
-                  </button>
+                  {field.secret && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setReveal(prev => ({ ...prev, [field.name]: !prev[field.name] }))
+                      }
+                      disabled={busy}
+                      className="shrink-0 rounded-lg border border-stone-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-stone-500 dark:text-neutral-400 hover:border-stone-300 dark:hover:border-neutral-600 disabled:opacity-50">
+                      {reveal[field.name] ? t('mcp.install.hide') : t('mcp.install.show')}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Custom headers */}
+        {/* Custom headers — free-form fallback for servers that declare no auth. */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400 dark:text-neutral-500">
