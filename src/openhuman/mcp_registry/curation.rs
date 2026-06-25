@@ -33,6 +33,9 @@ const OFFICIAL_SERVERS: &[&str] = &[
     "com.vercel/vercel-mcp",
     "com.webflow/mcp",
     "com.wix/mcp",
+    "com.amplitude/mcp-server",
+    "com.figma.mcp/mcp",
+    "com.monday/monday.com",
 ];
 
 /// Mark the canonical first-party server for each known service with the
