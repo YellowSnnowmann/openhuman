@@ -48,6 +48,10 @@ interface AuthField {
   secret: boolean;
   /** Must be supplied (unless already stored on the install). */
   required: boolean;
+  /** Deep link to where the user obtains this credential (stamped server-side
+   * as `x-get-key-url`: a URL in the field description, else the server's
+   * websiteUrl/repository). Rendered as a "Get your key →" button. */
+  getKeyUrl?: string;
 }
 
 interface CustomHeader {
@@ -84,6 +88,7 @@ const upsertField = (map: Map<string, AuthField>, f: AuthField): void => {
     description: prev.description ?? f.description,
     secret: prev.secret || f.secret,
     required: prev.required || f.required,
+    getKeyUrl: prev.getKeyUrl ?? f.getKeyUrl,
   });
 };
 
@@ -94,7 +99,10 @@ const fieldsFromDetail = (detail: SmitheryServerDetail): AuthField[] => {
   for (const conn of detail.connections ?? []) {
     const schema = conn.config_schema as
       | {
-          properties?: Record<string, { description?: string; 'x-secret'?: boolean }>;
+          properties?: Record<
+            string,
+            { description?: string; 'x-secret'?: boolean; 'x-get-key-url'?: string }
+          >;
           required?: string[];
         }
       | undefined;
@@ -107,6 +115,7 @@ const fieldsFromDetail = (detail: SmitheryServerDetail): AuthField[] => {
           description: prop?.description,
           secret: prop?.['x-secret'] === true,
           required: required.includes(name),
+          getKeyUrl: prop?.['x-get-key-url'],
         });
       }
     }
@@ -240,17 +249,15 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
     };
   }, [server.qualified_name]);
 
-  // Seed a blank custom-header row only when the server declares nothing AND
-  // isn't an OAuth sign-in — i.e. the mislabelled-remote case where the user
-  // nonetheless has a token to paste. OAuth servers get the sign-in button, not
-  // a token box (this is what stops "paste a token and hope" failures).
+  // Seed a blank custom-header row ONLY for a hosted server that the probe says
+  // wants a static token (`authKind === 'token'`) but declares no field — the
+  // mislabelled-remote case where the user has a token to paste. Everything else
+  // gets no token box: OAuth servers use the sign-in button, and `none` (open
+  // endpoints and local/STDIO servers, which never use HTTP auth) just connect.
+  // This is the resolver-hygiene fix that stops local/open servers showing a
+  // pointless "paste a token" field.
   useEffect(() => {
-    if (
-      visibleFields.length === 0 &&
-      customHeaders.length === 0 &&
-      authKind !== 'oauth' &&
-      authKind !== 'detecting'
-    ) {
+    if (visibleFields.length === 0 && customHeaders.length === 0 && authKind === 'token') {
       setCustomHeaders([{ id: 0, name: 'Authorization', value: '', scheme: 'bearer' }]);
     }
   }, [visibleFields.length, customHeaders.length, authKind]);
@@ -421,6 +428,14 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
                   <p className="text-[11px] text-stone-400 dark:text-neutral-500 leading-snug">
                     {renderDescription(field.description)}
                   </p>
+                )}
+                {field.getKeyUrl && (
+                  <button
+                    type="button"
+                    onClick={() => void openUrl(field.getKeyUrl!)}
+                    className="inline-flex w-fit items-center text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:underline">
+                    {t('mcp.connectAuth.getKey')}
+                  </button>
                 )}
                 <div className="flex gap-2">
                   {isAuthorizationField(field.name) && (
