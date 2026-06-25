@@ -907,16 +907,22 @@ fn make_openhuman_backend(
             .filter(|m| !m.trim().is_empty())
             .unwrap_or_else(|| "reasoning-v1".to_string())
     };
-    // Critical: pass the *config's* workspace directory through so the
-    // provider's `AuthService` reads `auth-profiles.json` from the
-    // same dir login wrote to. Without this, `ProviderRuntimeOptions::default()`
-    // leaves `openhuman_dir = None`, the provider falls back to
-    // `~/.openhuman`, and reads an unrelated (or empty)
-    // profile store — surfacing as "No backend session: store a JWT
-    // via auth (app-session)" even though login just succeeded in the
-    // user's actual workspace (e.g. test workspaces under OPENHUMAN_WORKSPACE).
+    // Resolve the provider's `AuthService` dir from the ACTIVE user
+    // (`{root}/users/{active_user_id}`) — where `credentials::ops::store_session`
+    // persists the `app-session` JWT — falling back to the config's own dir.
+    // Using `config.config_path.parent()` alone breaks whenever that resolves to
+    // a different dir than the active-user dir: e.g. a Discord backend-bot relay
+    // turn (`agentic-v1` model) routed through `web::start_chat`, or any launch
+    // with `OPENHUMAN_WORKSPACE` set — the provider then reads an empty profile
+    // store and fails with "No backend session: store a JWT via auth
+    // (app-session)" even though the app is logged in. Falls back to the old
+    // config-dir resolution when no user is active (pre-login / headless).
+    let openhuman_dir = crate::openhuman::config::default_root_openhuman_dir()
+        .ok()
+        .and_then(|root| crate::openhuman::config::active_user_openhuman_dir(&root))
+        .or_else(|| config.config_path.parent().map(std::path::PathBuf::from));
     let options = ProviderRuntimeOptions {
-        openhuman_dir: config.config_path.parent().map(std::path::PathBuf::from),
+        openhuman_dir,
         secrets_encrypt: config.secrets.encrypt,
         ..ProviderRuntimeOptions::default()
     };

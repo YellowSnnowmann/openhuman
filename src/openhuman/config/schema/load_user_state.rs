@@ -104,6 +104,20 @@ pub fn user_openhuman_dir(default_openhuman_dir: &Path, user_id: &str) -> PathBu
     default_openhuman_dir.join("users").join(user_id)
 }
 
+/// The active user's scoped dir (`{root}/users/{active_user_id}`), or `None`
+/// when no user is active.
+///
+/// This is where `credentials::ops::store_session` persists the `app-session`
+/// JWT after login, so any inference provider must resolve its auth dir from
+/// here (falling back to the config dir) — reading only `config.config_path`
+/// breaks when that resolves to a different dir than the active-user dir (e.g.
+/// the Discord backend-bot relay turn, or `OPENHUMAN_WORKSPACE`), surfacing as
+/// "No backend session: store a JWT via auth (app-session)" while logged in.
+pub fn active_user_openhuman_dir(default_openhuman_dir: &Path) -> Option<PathBuf> {
+    let uid = read_active_user_id(default_openhuman_dir)?;
+    Some(user_openhuman_dir(default_openhuman_dir, &uid))
+}
+
 /// Stable id used to scope the openhuman directory before any user has
 /// logged in.  All memory, state, config, sessions and workspace files
 /// created on first init land under `{root}/users/{PRE_LOGIN_USER_ID}`
@@ -131,4 +145,27 @@ fn sync_directory(path: &Path) -> Result<()> {
 #[cfg(not(unix))]
 fn sync_directory(_path: &Path) -> Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_user_openhuman_dir_returns_user_scoped_dir_when_set() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        write_active_user_id(root, "user-123").expect("write active user");
+
+        assert_eq!(
+            active_user_openhuman_dir(root),
+            Some(root.join("users").join("user-123"))
+        );
+    }
+
+    #[test]
+    fn active_user_openhuman_dir_returns_none_when_no_active_user() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        assert_eq!(active_user_openhuman_dir(tmp.path()), None);
+    }
 }
