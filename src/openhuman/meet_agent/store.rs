@@ -168,6 +168,132 @@ async fn read_recent_from(path: &Path, limit: usize) -> Result<Vec<MeetCallRecor
     Ok(all)
 }
 
+// ---------------------------------------------------------------------------
+// Per-call detail (transcript + summary)
+// ---------------------------------------------------------------------------
+//
+// The recent-calls list (`calls.jsonl`) is deliberately lean so the list
+// endpoint stays a cheap whole-file read. The transcript and generated summary
+// are heavier and only needed when the user expands one row, so they live in a
+// sibling per-call JSON file loaded on demand by `meet_agent_get_call_detail`.
+
+/// One transcript line for a recorded call. `role` is the lowercased speaker
+/// role ("participant" / "assistant"); `content` is the line as the backend
+/// delivered it (may carry a `[MM:SS] [Name]` prefix).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MeetCallTranscriptLine {
+    pub role: String,
+    pub content: String,
+}
+
+/// One action item mined from the call. Mirrors the `agent_meetings` summary
+/// type but is kept dependency-free here so this store never depends back on
+/// `agent_meetings` (which already depends on it — that would be a cycle).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MeetCallActionItem {
+    pub description: String,
+    /// `"executable"` or `"advisory"`.
+    pub kind: String,
+    #[serde(default)]
+    pub tool_name: Option<String>,
+    #[serde(default)]
+    pub assignee: Option<String>,
+}
+
+/// Structured post-call summary persisted alongside the transcript.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MeetCallSummary {
+    pub headline: String,
+    #[serde(default)]
+    pub key_points: Vec<String>,
+    #[serde(default)]
+    pub action_items: Vec<MeetCallActionItem>,
+}
+
+/// Full detail for a single recorded call: the transcript and the best-effort
+/// generated summary. Persisted as one JSON file per call (keyed by
+/// `request_id`) so the recent-calls list stays lean and the transcript is
+/// only read when a row is expanded.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MeetCallDetail {
+    pub request_id: String,
+    /// `None` when summarisation failed or timed out — the UI falls back to the
+    /// transcript alone. `#[serde(default)]` keeps older files parseable.
+    #[serde(default)]
+    pub summary: Option<MeetCallSummary>,
+    #[serde(default)]
+    pub transcript: Vec<MeetCallTranscriptLine>,
+}
+
+/// Directory holding per-call detail JSON files — a sibling of `calls.jsonl`.
+async fn meet_call_details_dir() -> Result<PathBuf, String> {
+    let workspace = Config::load_or_init()
+        .await
+        .map(|c| c.workspace_dir)
+        .map_err(|e| format!("load config: {e}"))?;
+    Ok(workspace.join("meet_agent").join("call_details"))
+}
+
+/// Map a `request_id` to a filesystem-safe file stem: keep ASCII alphanumerics,
+/// `-` and `_`; replace everything else with `_`. request_ids are UUIDs,
+/// `backend-<ts>`, or app-minted correlation ids, so this never collides in
+/// practice and can never escape the details directory (no `/`, `..`, etc.).
+fn sanitize_stem(request_id: &str) -> String {
+    let s: String = request_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if s.is_empty() {
+        "unknown".to_string()
+    } else {
+        s
+    }
+}
+
+/// Persist the detail for one call. Creates the details directory on demand.
+/// Best-effort at the call site: callers log and swallow failures since the
+/// call is already over and the list row still renders without detail.
+pub async fn write_detail(detail: &MeetCallDetail) -> Result<(), String> {
+    let dir = meet_call_details_dir().await?;
+    write_detail_to(&dir, detail).await
+}
+
+async fn write_detail_to(dir: &Path, detail: &MeetCallDetail) -> Result<(), String> {
+    tokio::fs::create_dir_all(dir)
+        .await
+        .map_err(|e| format!("mkdir {}: {e}", dir.display()))?;
+    let path = dir.join(format!("{}.json", sanitize_stem(&detail.request_id)));
+    let json = serde_json::to_string(detail).map_err(|e| format!("serialize detail: {e}"))?;
+    tokio::fs::write(&path, json.as_bytes())
+        .await
+        .map_err(|e| format!("write {}: {e}", path.display()))?;
+    Ok(())
+}
+
+/// Read the detail for one call. Missing file → `Ok(None)` (older calls
+/// recorded before this feature, or a call whose detail write failed).
+pub async fn read_detail(request_id: &str) -> Result<Option<MeetCallDetail>, String> {
+    let dir = meet_call_details_dir().await?;
+    read_detail_from(&dir, request_id).await
+}
+
+async fn read_detail_from(dir: &Path, request_id: &str) -> Result<Option<MeetCallDetail>, String> {
+    let path = dir.join(format!("{}.json", sanitize_stem(request_id)));
+    match tokio::fs::read_to_string(&path).await {
+        Ok(s) => serde_json::from_str::<MeetCallDetail>(&s)
+            .map(Some)
+            .map_err(|e| format!("parse {}: {e}", path.display())),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(format!("read {}: {err}", path.display())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +383,70 @@ mod tests {
         append_record_to(&path, &sample(1)).await.unwrap();
         let recent = read_recent_from(&path, usize::MAX).await.unwrap();
         assert_eq!(recent.len(), 1);
+    }
+
+    fn sample_detail(request_id: &str) -> MeetCallDetail {
+        MeetCallDetail {
+            request_id: request_id.to_string(),
+            summary: Some(MeetCallSummary {
+                headline: "Agreed to ship Friday.".into(),
+                key_points: vec!["Ship Friday".into(), "QA owns sign-off".into()],
+                action_items: vec![MeetCallActionItem {
+                    description: "Send release notes".into(),
+                    kind: "executable".into(),
+                    tool_name: Some("gmail".into()),
+                    assignee: Some("Sam".into()),
+                }],
+            }),
+            transcript: vec![
+                MeetCallTranscriptLine {
+                    role: "participant".into(),
+                    content: "[00:51] [Shanu] your time".into(),
+                },
+                MeetCallTranscriptLine {
+                    role: "assistant".into(),
+                    content: "[00:55] [Tiny] On it.".into(),
+                },
+            ],
+        }
+    }
+
+    #[tokio::test]
+    async fn write_then_read_detail_round_trip() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("call_details");
+        let detail = sample_detail("corr-42");
+        write_detail_to(&dir, &detail).await.unwrap();
+        let got = read_detail_from(&dir, "corr-42").await.unwrap();
+        assert_eq!(got.as_ref(), Some(&detail));
+    }
+
+    #[tokio::test]
+    async fn read_detail_missing_returns_none() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("call_details");
+        // Directory never created → still resolves to None, not an error.
+        let got = read_detail_from(&dir, "never-recorded").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn detail_id_with_unsafe_chars_round_trips_via_sanitized_stem() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("call_details");
+        // A request_id with path separators must not escape the directory and
+        // must read back under the same sanitized stem it was written with.
+        let detail = sample_detail("../weird/id:99");
+        write_detail_to(&dir, &detail).await.unwrap();
+        let got = read_detail_from(&dir, "../weird/id:99").await.unwrap();
+        assert_eq!(got, Some(detail));
+    }
+
+    #[test]
+    fn sanitize_stem_strips_path_chars_and_never_empty() {
+        assert_eq!(sanitize_stem("abc-DEF_123"), "abc-DEF_123");
+        assert_eq!(sanitize_stem("../a/b.json"), "___a_b_json");
+        assert_eq!(sanitize_stem(""), "unknown");
+        assert_eq!(sanitize_stem("///"), "___");
     }
 }

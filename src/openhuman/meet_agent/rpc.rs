@@ -21,8 +21,9 @@ use super::ops::VadEvent;
 use super::session::{registry, CaptionOutcome};
 use super::store::{self, MeetCallRecord};
 use super::types::{
-    ListCallsRequest, ListCallsResponse, PollSpeechRequest, PushCaptionRequest,
-    PushListenPcmRequest, StartSessionRequest, StopSessionRequest,
+    GetCallDetailRequest, GetCallDetailResponse, ListCallsRequest, ListCallsResponse,
+    PollSpeechRequest, PushCaptionRequest, PushListenPcmRequest, StartSessionRequest,
+    StopSessionRequest,
 };
 
 /// Default `limit` for `handle_list_calls` when the caller omits one.
@@ -274,6 +275,21 @@ pub async fn handle_list_calls(params: Map<String, Value>) -> Result<Value, Stri
     };
     let value = serde_json::to_value(&response)
         .map_err(|e| format!("{LOG_PREFIX} serialize list_calls response: {e}"))?;
+    RpcOutcome::new(value, vec![]).into_cli_compatible_json()
+}
+
+pub async fn handle_get_call_detail(params: Map<String, Value>) -> Result<Value, String> {
+    let req: GetCallDetailRequest = serde_json::from_value(Value::Object(params))
+        .map_err(|e| format!("{LOG_PREFIX} invalid get_call_detail params: {e}"))?;
+    let detail = store::read_detail(&req.request_id).await?;
+    log::info!(
+        "{LOG_PREFIX} get_call_detail request_id={} found={}",
+        req.request_id,
+        detail.is_some()
+    );
+    let response = GetCallDetailResponse { ok: true, detail };
+    let value = serde_json::to_value(&response)
+        .map_err(|e| format!("{LOG_PREFIX} serialize get_call_detail response: {e}"))?;
     RpcOutcome::new(value, vec![]).into_cli_compatible_json()
 }
 

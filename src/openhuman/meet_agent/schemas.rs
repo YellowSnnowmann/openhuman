@@ -45,6 +45,11 @@ const DEFS: &[Def] = &[
         schema: schema_list_calls,
         handler: handle_list_calls,
     },
+    Def {
+        function: "get_call_detail",
+        schema: schema_get_call_detail,
+        handler: handle_get_call_detail,
+    },
 ];
 
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
@@ -344,6 +349,38 @@ fn schema_list_calls() -> ControllerSchema {
     }
 }
 
+fn schema_get_call_detail() -> ControllerSchema {
+    ControllerSchema {
+        namespace: "meet_agent",
+        function: "get_call_detail",
+        description:
+            "Return the persisted transcript + summary for one completed Meet call, keyed by \
+                      request_id. Used by the recent-calls panel to lazy-load detail when a row is \
+                      expanded. `detail` is null when no detail was recorded for the call.",
+        inputs: vec![FieldSchema {
+            name: "request_id",
+            ty: TypeSchema::String,
+            comment: "request_id of the call (matches a MeetCallRecord row from list_calls).",
+            required: true,
+        }],
+        outputs: vec![
+            FieldSchema {
+                name: "ok",
+                ty: TypeSchema::Bool,
+                comment: "True when the read succeeded (even if no detail exists yet).",
+                required: true,
+            },
+            FieldSchema {
+                name: "detail",
+                ty: TypeSchema::String,
+                comment:
+                    "MeetCallDetail object (transcript + summary), or null when none recorded.",
+                required: false,
+            },
+        ],
+    }
+}
+
 fn schema_unknown() -> ControllerSchema {
     ControllerSchema {
         namespace: "meet_agent",
@@ -381,6 +418,10 @@ fn handle_stop_session(p: Map<String, Value>) -> ControllerFuture {
 }
 fn handle_list_calls(p: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move { super::rpc::handle_list_calls(p).await })
+}
+
+fn handle_get_call_detail(p: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move { super::rpc::handle_get_call_detail(p).await })
 }
 
 #[cfg(test)]
