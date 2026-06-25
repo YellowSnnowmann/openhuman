@@ -234,26 +234,30 @@ async fn meet_call_details_dir() -> Result<PathBuf, String> {
     Ok(workspace.join("meet_agent").join("call_details"))
 }
 
-/// Map a `request_id` to a filesystem-safe file stem: keep ASCII alphanumerics,
-/// `-` and `_`; replace everything else with `_`. request_ids are UUIDs,
-/// `backend-<ts>`, or app-minted correlation ids, so this never collides in
-/// practice and can never escape the details directory (no `/`, `..`, etc.).
+/// Map a `request_id` to a filesystem-safe, **injective** file stem.
+///
+/// ASCII alphanumerics and `-`/`_` pass through unchanged so the common cases —
+/// UUID correlation ids and `backend-<ts>` — stay human-readable; every other
+/// byte, `%` included, is percent-encoded as `%XX`. Because `%` is itself
+/// escaped the mapping is reversible, and therefore collision-free: distinct
+/// ids like `a/b`, `a:b`, and `a_b` map to distinct stems (`a%2Fb`, `a%3Ab`,
+/// `a_b`) instead of all collapsing onto one file and overwriting each other's
+/// detail. It also can never escape the details directory — `/`, `\`, and the
+/// `.` in `..` are all encoded.
 fn sanitize_stem(request_id: &str) -> String {
-    let s: String = request_id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if s.is_empty() {
-        "unknown".to_string()
-    } else {
-        s
+    if request_id.is_empty() {
+        return "unknown".to_string();
     }
+    let mut out = String::with_capacity(request_id.len());
+    for &b in request_id.as_bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{b:02X}"));
+        }
+    }
+    out
 }
 
 /// Persist the detail for one call. Creates the details directory on demand.
@@ -443,10 +447,37 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_stem_strips_path_chars_and_never_empty() {
+    fn sanitize_stem_encodes_path_chars_and_never_empty() {
+        // Safe chars (alnum, -, _) pass through so UUIDs stay readable.
         assert_eq!(sanitize_stem("abc-DEF_123"), "abc-DEF_123");
-        assert_eq!(sanitize_stem("../a/b.json"), "___a_b_json");
+        // Path separators / dots are percent-encoded, never bare.
+        assert_eq!(sanitize_stem("../a/b.json"), "%2E%2E%2Fa%2Fb%2Ejson");
         assert_eq!(sanitize_stem(""), "unknown");
-        assert_eq!(sanitize_stem("///"), "___");
+        assert_eq!(sanitize_stem("///"), "%2F%2F%2F");
+    }
+
+    #[test]
+    fn sanitize_stem_is_injective_for_ids_that_differ_only_in_punctuation() {
+        // The old lossy scheme collapsed all of these onto `a_b`, so the second
+        // write clobbered the first. Percent-encoding keeps them distinct.
+        let stems = ["a/b", "a:b", "a_b", "a.b"].map(sanitize_stem);
+        let unique: std::collections::HashSet<_> = stems.iter().collect();
+        assert_eq!(unique.len(), stems.len(), "stems collided: {stems:?}");
+    }
+
+    #[tokio::test]
+    async fn details_with_punctuation_differing_ids_do_not_overwrite() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("call_details");
+        // Two distinct calls whose ids differ only by a separator the old
+        // sanitizer flattened — each must keep its own detail file.
+        let mut a = sample_detail("call/1");
+        a.transcript[0].content = "from call/1".into();
+        let mut b = sample_detail("call_1");
+        b.transcript[0].content = "from call_1".into();
+        write_detail_to(&dir, &a).await.unwrap();
+        write_detail_to(&dir, &b).await.unwrap();
+        assert_eq!(read_detail_from(&dir, "call/1").await.unwrap(), Some(a));
+        assert_eq!(read_detail_from(&dir, "call_1").await.unwrap(), Some(b));
     }
 }

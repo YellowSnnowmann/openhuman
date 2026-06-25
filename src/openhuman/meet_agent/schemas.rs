@@ -372,7 +372,7 @@ fn schema_get_call_detail() -> ControllerSchema {
             },
             FieldSchema {
                 name: "detail",
-                ty: TypeSchema::String,
+                ty: TypeSchema::Json,
                 comment:
                     "MeetCallDetail object (transcript + summary), or null when none recorded.",
                 required: false,
@@ -448,6 +448,7 @@ mod tests {
                 "poll_speech",
                 "stop_session",
                 "list_calls",
+                "get_call_detail",
             ]
         );
     }

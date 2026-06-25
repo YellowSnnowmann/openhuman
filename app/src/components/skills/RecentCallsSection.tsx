@@ -148,9 +148,15 @@ function RecentCallRow({ call }: { call: MeetCallRecord }) {
         </div>
         <div className="mt-0.5 flex items-center gap-3 pl-4 text-[10px] text-stone-500 dark:text-neutral-400">
           <span>
-            {call.turn_count} turn{call.turn_count === 1 ? '' : 's'}
+            {t(
+              call.turn_count === 1
+                ? 'skills.meetingBots.recentCallTurnSingular'
+                : 'skills.meetingBots.recentCallTurnPlural'
+            ).replace('{count}', String(call.turn_count))}
           </span>
-          <span>{duration}s on call</span>
+          <span>
+            {t('skills.meetingBots.recentCallDuration').replace('{seconds}', String(duration))}
+          </span>
           {owner && (
             <span className="truncate">
               {t('skills.meetingBots.recentCallAddedBy').replace('{name}', owner)}

@@ -401,6 +401,29 @@ mod tests {
         handle_stop_session(stop).await.unwrap();
     }
 
+    #[tokio::test]
+    async fn get_call_detail_missing_returns_ok_with_null() {
+        // A call with no recorded detail (older call, or a best-effort write
+        // that failed) must resolve to `ok: true, detail: null` — the contract
+        // the recent-calls panel relies on to render its "nothing captured"
+        // state rather than surfacing an error.
+        let mut params = Map::new();
+        params.insert(
+            "request_id".into(),
+            json!("rpc-detail-never-recorded-3f9c1a"),
+        );
+        let out = handle_get_call_detail(params).await.unwrap();
+        assert_eq!(out.get("ok"), Some(&json!(true)));
+        assert_eq!(out.get("detail"), Some(&json!(null)));
+    }
+
+    #[tokio::test]
+    async fn get_call_detail_rejects_missing_request_id() {
+        // Empty params → deserialization error, surfaced as Err rather than a
+        // panic, so the RPC layer can return a clean error to the caller.
+        assert!(handle_get_call_detail(Map::new()).await.is_err());
+    }
+
     #[test]
     fn decode_pcm16le_b64_handles_empty() {
         assert!(decode_pcm16le_b64("").unwrap().is_empty());
