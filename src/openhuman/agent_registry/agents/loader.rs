@@ -35,7 +35,8 @@
 //! collision.
 
 use crate::openhuman::agent::harness::definition::{
-    AgentDefinition, AgentTier, DefinitionSource, PromptBuilder, PromptSource, SubagentEntry,
+    validate_tier_transition, AgentDefinition, AgentTier, DefinitionSource, PromptBuilder,
+    PromptSource, SubagentEntry,
 };
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -305,22 +306,18 @@ pub fn validate_tier_hierarchy(defs: &[AgentDefinition]) -> Result<()> {
             // Same-tier delegation is forbidden for chat and reasoning.
             // (Chat→Chat would defeat the whole point of the fast tier;
             // Reasoning→Reasoning produces a depth-blowing recursion of
-            // slow models.)
-            match (def.agent_tier, child_tier) {
-                (AgentTier::Chat, AgentTier::Chat) => anyhow::bail!(
-                    "agent `{parent}` (chat) lists `{child}` (chat) in subagents — the chat tier \
-                     is a leaf in its own dimension. Hand off to a `reasoning` or `worker` agent \
-                     instead.",
+            // slow models.) The pair-rule lives in `validate_tier_transition`
+            // (the single source of truth shared with the runtime spawn gate
+            // in `run_subagent`); here we wrap its reason with the offending
+            // agent ids + tiers for a boot-time-friendly diagnostic.
+            if let Err(reason) = validate_tier_transition(def.agent_tier, child_tier) {
+                anyhow::bail!(
+                    "agent `{parent}` ({ptier}) lists `{child}` ({ctier}) in subagents — {reason}",
                     parent = def.id,
+                    ptier = def.agent_tier.as_str(),
                     child = child_id,
-                ),
-                (AgentTier::Reasoning, AgentTier::Reasoning) => anyhow::bail!(
-                    "agent `{parent}` (reasoning) lists `{child}` (reasoning) in subagents — \
-                     reasoning agents compose downward into workers, not into each other.",
-                    parent = def.id,
-                    child = child_id,
-                ),
-                _ => {}
+                    ctier = child_tier.as_str(),
+                );
             }
         }
     }
@@ -959,8 +956,9 @@ mod tests {
         let def = find("context_scout");
         assert_eq!(def.agent_tier, AgentTier::Worker);
         assert_eq!(def.sandbox_mode, SandboxMode::ReadOnly);
-        // ~1000-token bundle cap — load-bearing for the parent's context budget.
-        assert_eq!(def.max_result_chars, Some(4000));
+        // Bundle cap — load-bearing for the parent's context budget. Leaves
+        // room for the `recommended_skills` block alongside summary + plan.
+        assert_eq!(def.max_result_chars, Some(5000));
         // Keeps goals/profile + long-term memory so it can ground the
         // orchestrator in who the user is and what they want.
         assert!(!def.omit_profile, "context_scout needs PROFILE.md (goals)");
@@ -968,7 +966,21 @@ mod tests {
         // Strictly read-only gathering surface — no writes / shell / delegation.
         match &def.tools {
             ToolScope::Named(tools) => {
-                for required in ["memory_recall", "web_search_tool", "web_fetch"] {
+                for required in [
+                    "memory_recall",
+                    // Transcripts + thread metadata + message reader (read-only).
+                    "transcript_search",
+                    "thread_list",
+                    "thread_read",
+                    "thread_message_list",
+                    // Skill discovery (read-only).
+                    "list_workflows",
+                    "skill_registry_browse",
+                    "skill_registry_search",
+                    // Web.
+                    "web_search_tool",
+                    "web_fetch",
+                ] {
                     assert!(
                         tools.iter().any(|t| t == required),
                         "context_scout needs read-only gathering tool `{required}`"
@@ -983,6 +995,12 @@ mod tests {
                     // memory_tree bundles a write mode (ingest_document) under a
                     // ReadOnly wrapper — must not be reachable by the auto-run scout.
                     "memory_tree",
+                    // Write-capable thread + skill tools must stay out of the
+                    // auto-run, prompt-injectable scout.
+                    "thread_create",
+                    "thread_delete",
+                    "skill_registry_install",
+                    "skill_registry_uninstall",
                 ] {
                     assert!(
                         !tools.iter().any(|t| t == forbidden),
@@ -996,6 +1014,25 @@ mod tests {
         assert!(
             def.subagents.is_empty(),
             "context_scout is a leaf and must not list subagents"
+        );
+    }
+
+    #[test]
+    fn chatty_sub_agents_have_bounded_output() {
+        // critic + archivist results flow up to the orchestrator verbatim
+        // (delegate_critic / delegate_archivist). Without a cap their output
+        // is unbounded and bloats the orchestrator's context (#4099). Both
+        // must carry the normal sub-agent cap so a long diff review or a
+        // verbose memory-write confirmation can't leak unbounded text.
+        assert_eq!(
+            find("critic").max_result_chars,
+            Some(8000),
+            "critic output must be bounded so reviews don't leak unbounded text up"
+        );
+        assert_eq!(
+            find("archivist").max_result_chars,
+            Some(8000),
+            "archivist output must be bounded so memory summaries stay concise"
         );
     }
 

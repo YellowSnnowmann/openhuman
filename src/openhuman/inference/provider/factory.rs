@@ -77,11 +77,8 @@ pub(crate) const NO_MODEL_CONFIGURED_ANCHOR: &str = "resolved to an empty model 
 fn is_abstract_tier_model(model: &str) -> bool {
     use crate::openhuman::config::{
         MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
-        MODEL_REASONING_V1, MODEL_VISION_V1,
+        MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1, MODEL_VISION_V1,
     };
-    // No dedicated constant for the summarization tier yet; keep the literal
-    // in sync with the tier name used by the summarizer sub-agent.
-    const MODEL_SUMMARIZATION_V1: &str = "summarization-v1";
     let trimmed = model.trim();
     trimmed == MODEL_REASONING_V1
         || trimmed == MODEL_REASONING_QUICK_V1
@@ -112,7 +109,14 @@ pub fn resolve_model_for_hint(hint_or_tier: &str, config: &Config) -> String {
         ("agentic", crate::openhuman::config::MODEL_AGENTIC_V1),
         ("coding", crate::openhuman::config::MODEL_CODING_V1),
         ("vision", crate::openhuman::config::MODEL_VISION_V1),
-        ("summarization", "summarization-v1"),
+        (
+            "summarization",
+            crate::openhuman::config::MODEL_SUMMARIZATION_V1,
+        ),
+        // Background subconscious workload rides the lightweight chat tier on the
+        // managed backend; its `subconscious` *role* (handled below) still selects
+        // the provider via `subconscious_provider`.
+        ("subconscious", crate::openhuman::config::MODEL_CHAT_V1),
     ];
     let tier_to_role: &[(&str, &str)] = &[
         (crate::openhuman::config::MODEL_REASONING_V1, "reasoning"),
@@ -121,7 +125,10 @@ pub fn resolve_model_for_hint(hint_or_tier: &str, config: &Config) -> String {
         (crate::openhuman::config::MODEL_AGENTIC_V1, "agentic"),
         (crate::openhuman::config::MODEL_CODING_V1, "coding"),
         (crate::openhuman::config::MODEL_VISION_V1, "vision"),
-        ("summarization-v1", "summarization"),
+        (
+            crate::openhuman::config::MODEL_SUMMARIZATION_V1,
+            "summarization",
+        ),
     ];
 
     let (tier, role) = if let Some(hint_key) = hint_or_tier.strip_prefix("hint:") {
@@ -130,11 +137,17 @@ pub fn resolve_model_for_hint(hint_or_tier: &str, config: &Config) -> String {
             .find(|(k, _)| *k == hint_key)
             .map(|(_, v)| *v)
             .unwrap_or(hint_or_tier);
-        let role = tier_to_role
-            .iter()
-            .find(|(k, _)| *k == tier)
-            .map(|(_, v)| *v)
-            .unwrap_or(hint_key);
+        // Background workloads map to a tier *model* but must keep their own
+        // role so `provider_for_role` reads their dedicated `*_provider` field
+        // rather than the chat-tier provider their model happens to share.
+        let role = match hint_key {
+            "subconscious" => "subconscious",
+            _ => tier_to_role
+                .iter()
+                .find(|(k, _)| *k == tier)
+                .map(|(_, v)| *v)
+                .unwrap_or(hint_key),
+        };
         (tier, role)
     } else {
         let role = tier_to_role
@@ -815,23 +828,116 @@ pub(crate) fn create_local_chat_provider_from_string(
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
+/// Canonical managed-backend tier for a specialised workload role.
+///
+/// The managed backend otherwise derives its model from `config.default_model`
+/// (which defaults to the `chat-v1` tier), so a tier-specific workload whose
+/// per-workload provider is unset would silently inherit the global default —
+/// e.g. the `code_executor` sub-agent (`hint = "coding"`) would run on `chat-v1`
+/// instead of the dedicated `coding-v1` tier, defeating the whole point of the
+/// hint. The `hint:<tier>` translation in [`make_openhuman_backend`] only fires
+/// when the *model string itself* is `hint:coding`; here the model originates
+/// from `default_model`, so the workload role is the only signal left and must
+/// be mapped explicitly.
+///
+/// Returns `Some(tier)` for the specialised roles that map 1:1 to a managed
+/// tier (`reasoning`, `agentic`, `coding`, `vision`, `subconscious`). Returns
+/// `None` for:
+///
+/// - the generic `chat` role (and any other background/unknown role), which
+///   keeps inheriting `default_model`: the front-line chat turn and legacy
+///   `default_model = "reasoning-v1"` installs deliberately fall through to the
+///   `chat` role (see the session builder) and rely on `default_model` driving
+///   the model — pinning `chat` here would regress them.
+/// - `summarization` / `memory`, which are pinned in a dedicated branch of
+///   [`make_openhuman_backend`] via [`summarization_tier_model`] (fixed at
+///   `summarization-v1`) rather than here, only so the `memory` alias and the
+///   role string share one resolution site. They do **not** fall through to
+///   `default_model`.
+///
+/// `subconscious` IS pinned (to the lightweight `chat-v1` tier) even though it
+/// is a background workload: the cloud subconscious tick builds via the session
+/// builder with `default_model = "hint:subconscious"` (a role-routing marker, not
+/// a real tier), so "inherit `default_model`" would forward that marker to the
+/// backend. Pinning here resolves the managed model declaratively to `chat-v1` —
+/// the cheap monitoring tier the workload wants — independent of `default_model`,
+/// while [`provider_for_role`] still lets `subconscious_provider` choose the
+/// provider (managed / BYOK / local).
+///
+/// For `vision` the default-inheritance mismatch is not just suboptimal but
+/// fatal: an unset `vision_provider` would resolve to `chat-v1`,
+/// `model_supports_vision` would report `false`, and the turn engine would strip
+/// every attached image — leaving the managed vision sub-agent blind.
+fn managed_tier_for_role(role: &str) -> Option<&'static str> {
+    use crate::openhuman::config::{
+        MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_V1, MODEL_VISION_V1,
+    };
+    match role {
+        "reasoning" => Some(MODEL_REASONING_V1),
+        "agentic" => Some(MODEL_AGENTIC_V1),
+        "coding" => Some(MODEL_CODING_V1),
+        "vision" => Some(MODEL_VISION_V1),
+        // Background subconscious tick/triage: pinned to the lightweight chat
+        // tier (see the doc above for why it is pinned despite being background).
+        "subconscious" => Some(MODEL_CHAT_V1),
+        _ => None,
+    }
+}
+
+/// The **managed-backend** summarization tier model — fixed at
+/// [`MODEL_SUMMARIZATION_V1`] (`summarization-v1`).
+///
+/// Read **only** on the managed OpenHuman path (inside [`make_openhuman_backend`]),
+/// so it is consumed iff the `summarization`/`memory` role actually resolves to
+/// the managed backend — BYOK and local routes carry their own model in the
+/// provider string and never reach here.
+///
+/// The managed summarization tier is intentionally **not** user-overridable: the
+/// hosted backend serves exactly one tier (`summarization-v1`) for this workload,
+/// so there is nothing else valid to point it at. Users who want a different
+/// model run summarization on a BYOK/local `memory_provider`, where the model
+/// rides in the provider string. (`memory_tree.cloud_llm_model` is no longer
+/// consumed — see its config doc.)
+pub(crate) fn summarization_tier_model() -> &'static str {
+    crate::openhuman::config::MODEL_SUMMARIZATION_V1
+}
+
 /// Build the OpenHuman backend provider (session-JWT auth).
 ///
-/// `role` is the workload name (e.g. `"chat"`, `"vision"`). The managed backend
-/// otherwise derives its model from `config.default_model` (which defaults to the
-/// non-vision `chat-v1` tier), so a tier-specific workload whose per-workload
-/// provider is unset would silently inherit the global default. For the `vision`
-/// workload that mismatch is fatal: an unset `vision_provider` would resolve to
-/// `chat-v1`, `model_supports_vision` would report `false`, and the turn engine
-/// would strip every attached image — leaving the managed vision sub-agent blind.
-/// Pin `vision` to the dedicated multimodal `vision-v1` tier so the managed
-/// default path keeps working without requiring the user to set `vision_provider`.
+/// `role` is the workload name (e.g. `"chat"`, `"coding"`, `"vision"`). A
+/// specialised workload role is pinned to its canonical managed tier via
+/// [`managed_tier_for_role`] so the `hint = "..."` a sub-agent declares actually
+/// reaches the matching backend tier instead of collapsing to `default_model`.
+/// The `summarization`/`memory` roles resolve their tier from
+/// [`summarization_tier_model`] (fixed at `summarization-v1`) so they never
+/// collapse to `default_model`. The generic `chat` role (and background roles)
+/// keep inheriting `config.default_model`.
 fn make_openhuman_backend(
     role: &str,
     config: &Config,
 ) -> anyhow::Result<(Box<dyn Provider>, String)> {
-    let model = if role == "vision" {
-        crate::openhuman::config::MODEL_VISION_V1.to_string()
+    let model = if let Some(tier) = managed_tier_for_role(role) {
+        log::debug!(
+            "[providers][chat-factory] role={} pinned to managed tier model={}",
+            role,
+            tier
+        );
+        tier.to_string()
+    } else if matches!(role, "summarization" | "memory") {
+        // Managed summarization/memory tier — fixed at `summarization-v1` rather
+        // than inherited from `config.default_model`, so every managed
+        // summarization caller — the memory tree, the chat-turn payload
+        // summarizer, meeting summaries, and any `hint = "summarization"`
+        // sub-agent — reaches the dedicated tier instead of silently collapsing
+        // to `chat-v1`. BYOK/local routes never reach here — they build from the
+        // provider string.
+        let tier = summarization_tier_model().to_string();
+        log::debug!(
+            "[providers][chat-factory] role={} resolved managed summarization tier model={}",
+            role,
+            tier
+        );
+        tier
     } else {
         config
             .default_model
@@ -1724,7 +1830,7 @@ fn make_openai_compatible_provider_with_config(
 }
 
 /// Return a safe-to-log representation of a URL endpoint: `scheme://host` only.
-fn redact_endpoint(url: &str) -> String {
+pub(super) fn redact_endpoint(url: &str) -> String {
     let trimmed = url.trim();
     if let Some(rest) = trimmed.split_once("://") {
         let scheme = rest.0;

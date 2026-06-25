@@ -8,8 +8,10 @@ import { threadApi } from '../../services/api/threadApi';
 import { store } from '../../store';
 import {
   clearAllChatRuntime,
+  enqueueFollowup,
   registerParallelRequest,
   resetSessionTokenUsage,
+  setPendingPlanReviewForThread,
 } from '../../store/chatRuntimeSlice';
 import { setStatusForUser } from '../../store/socketSlice';
 import { clearAllThreads, loadThreads, setSelectedThread } from '../../store/threadSlice';
@@ -388,6 +390,102 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
 
       // Snapshot refetch fired exactly once on the first chat_done — issue #924.
       await waitFor(() => expect(mockRefetchSnapshot).toHaveBeenCalledTimes(1));
+    });
+
+    it('stores a parked plan review from the plan_review_request event', () => {
+      const listeners = renderProvider();
+      act(() => {
+        listeners.onPlanReviewRequest?.({
+          thread_id: 't-plan',
+          request_id: 'pr-1',
+          message: 'Ship the release',
+          args: { steps: ['build', 'verify'] },
+        });
+      });
+      const review = store.getState().chatRuntime.pendingPlanReviewByThread['t-plan'];
+      expect(review).toEqual({
+        requestId: 'pr-1',
+        summary: 'Ship the release',
+        steps: ['build', 'verify'],
+      });
+    });
+
+    it('clears a parked plan review when the turn ends or errors', () => {
+      const listeners = renderProvider();
+      const park = () =>
+        store.dispatch(
+          setPendingPlanReviewForThread({
+            threadId: 't-plan',
+            review: { requestId: 'pr-1', summary: 'Plan', steps: ['a'] },
+          })
+        );
+
+      // chat_done clears the (possibly expired) parked review.
+      park();
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-plan',
+          request_id: 'r-plan',
+          full_response: 'done',
+          rounds_used: 1,
+          total_input_tokens: 1,
+          total_output_tokens: 1,
+          segment_total: 1,
+        });
+      });
+      expect(store.getState().chatRuntime.pendingPlanReviewByThread['t-plan']).toBeUndefined();
+
+      // chat_error also clears it (cancelled/errored parked turn).
+      park();
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-plan',
+          request_id: 'r-plan',
+          message: 'boom',
+          error_type: 'inference',
+          round: 1,
+        });
+      });
+      expect(store.getState().chatRuntime.pendingPlanReviewByThread['t-plan']).toBeUndefined();
+    });
+
+    it('flushes queued follow-ups into the transcript when a turn ends', async () => {
+      const listeners = renderProvider();
+      store.dispatch(
+        enqueueFollowup({
+          threadId: 't-fup',
+          message: {
+            id: 'f1',
+            content: 'queued follow-up text',
+            type: 'text',
+            extraMetadata: {},
+            sender: 'user',
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+          label: 'queued follow-up text',
+        })
+      );
+
+      await act(async () => {
+        listeners.onDone?.({
+          thread_id: 't-fup',
+          request_id: 'r-fup',
+          full_response: 'assistant reply',
+          rounds_used: 1,
+          total_input_tokens: 1,
+          total_output_tokens: 1,
+        });
+      });
+
+      // The queued prompt is persisted as a real user message (survives reload,
+      // appended AFTER the assistant reply) and the pills are cleared.
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-fup',
+          expect.objectContaining({ content: 'queued follow-up text', sender: 'user' })
+        )
+      );
+      expect(store.getState().chatRuntime.queuedFollowupsByThread['t-fup']).toBeUndefined();
     });
 
     it('processes tool_call for different rounds as distinct events', () => {

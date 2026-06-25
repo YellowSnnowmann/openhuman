@@ -6,12 +6,10 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import { useCoreState } from '../../../providers/CoreStateProvider';
 import { teamApi } from '../../../services/api/teamApi';
 import { sanitizeError } from '../../../utils/sanitize';
-import PanelPage from '../../layout/PanelPage';
 import { CenteredLoadingState, ErrorBanner, InlineLoadingStatus, Spinner } from '../../ui';
 import Button from '../../ui/Button';
-import SettingsBackButton from '../components/SettingsBackButton';
 import { SettingsBadge, SettingsEmptyState, SettingsSection } from '../controls';
-import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+import SettingsPanel from '../layout/SettingsPanel';
 
 const log = debug('core-rpc:error');
 
@@ -19,7 +17,6 @@ const TeamInvitesPanel = () => {
   const { t } = useT();
   const { teamId } = useParams<{ teamId: string }>();
   const location = useLocation();
-  const { navigateBack } = useSettingsNavigation();
   const { snapshot, teams, teamInvitesById, refreshTeamInvites } = useCoreState();
   const user = snapshot.currentUser;
 
@@ -119,12 +116,8 @@ const TeamInvitesPanel = () => {
   };
 
   return (
-    <PanelPage
-      className="z-10"
-      contentClassName=""
-      description={t('pages.settings.account.teamDesc')}
-      leading={<SettingsBackButton onBack={navigateBack} />}>
-      <div className="p-4 pt-2 space-y-5">
+    <SettingsPanel title={t('team.invites')} description={t('pages.settings.account.teamDesc')}>
+      <>
         {error && <ErrorBanner message={error} />}
 
         {/* Generate button */}
@@ -204,7 +197,7 @@ const TeamInvitesPanel = () => {
                         {/* Copy */}
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="tertiary"
                           size="xs"
                           onClick={() => void handleCopy(invite.code, invite._id)}
                           disabled={status !== 'active'}
@@ -241,7 +234,7 @@ const TeamInvitesPanel = () => {
                         {isAdmin && status === 'active' && (
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="tertiary"
                             size="xs"
                             onClick={() => handleRevoke(invite._id, invite.code)}
                             disabled={revokingId === invite._id}
@@ -327,9 +320,10 @@ const TeamInvitesPanel = () => {
                   </Button>
                   <Button
                     type="button"
-                    variant="danger"
+                    variant="primary"
+                    tone="danger"
                     size="md"
-                    className="flex-1 bg-coral-500 hover:bg-coral-600 text-white border-0 dark:bg-coral-500 dark:hover:bg-coral-600"
+                    className="flex-1"
                     onClick={() => void confirmRevokeInvite()}
                     disabled={revokingId === inviteToRevoke.id}>
                     {revokingId === inviteToRevoke.id
@@ -341,8 +335,8 @@ const TeamInvitesPanel = () => {
             </div>
           </div>
         )}
-      </div>
-    </PanelPage>
+      </>
+    </SettingsPanel>
   );
 };
 

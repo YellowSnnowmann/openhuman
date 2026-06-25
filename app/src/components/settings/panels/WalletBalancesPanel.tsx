@@ -13,11 +13,10 @@ import {
   fetchWalletStatus,
   type WalletChain,
 } from '../../../services/walletApi';
-import PanelPage from '../../layout/PanelPage';
 import Button from '../../ui/Button';
-import SettingsBackButton from '../components/SettingsBackButton';
 import { SettingsEmptyState, SettingsSection } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+import SettingsPanel from '../layout/SettingsPanel';
 import ReceiveModal from './wallet/ReceiveModal';
 import SendCryptoModal from './wallet/SendCryptoModal';
 
@@ -130,11 +129,14 @@ const BalanceRow = ({ balance, onSend, onReceive }: BalanceRowProps) => {
             <span className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
               {truncateAddress(balance.address)}
             </span>
-            <button
+            <Button
               type="button"
+              iconOnly
+              variant="tertiary"
+              size="sm"
               onClick={() => void handleCopyAddress()}
               aria-label={t('walletBalances.copyAddress')}
-              className="shrink-0 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors">
+              className="shrink-0 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300">
               {copied ? (
                 <svg
                   className="w-3.5 h-3.5 text-sage-500"
@@ -158,7 +160,7 @@ const BalanceRow = ({ balance, onSend, onReceive }: BalanceRowProps) => {
                   />
                 </svg>
               )}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -250,7 +252,7 @@ const ChainPlaceholderRow = ({
 
 const WalletBalancesPanel = () => {
   const { t } = useT();
-  const { navigateBack, navigateToSettings } = useSettingsNavigation();
+  const { navigateToSettings } = useSettingsNavigation();
 
   const [balances, setBalances] = useState<BalanceInfo[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -389,12 +391,13 @@ const WalletBalancesPanel = () => {
                 <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
                   {t('walletBalances.setupHint')}
                 </p>
-                <button
+                <Button
                   type="button"
+                  variant="tertiary"
                   onClick={() => navigateToSettings('recovery-phrase')}
-                  className="mt-2 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors">
+                  className="mt-2 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300">
                   {t('walletBalances.setupCta')}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -453,15 +456,12 @@ const WalletBalancesPanel = () => {
   };
 
   return (
-    <PanelPage
-      className="z-10"
-      contentClassName=""
+    <SettingsPanel
       description={t('pages.settings.account.walletBalancesDesc')}
-      leading={<SettingsBackButton onBack={navigateBack} />}
       action={
         <Button
           type="button"
-          variant="ghost"
+          variant="tertiary"
           size="sm"
           onClick={() => void loadBalances()}
           disabled={loading}
@@ -482,9 +482,7 @@ const WalletBalancesPanel = () => {
           {t('walletBalances.refresh')}
         </Button>
       }>
-      <div className="mx-4 mb-4">
-        <SettingsSection>{renderContent()}</SettingsSection>
-      </div>
+      <SettingsSection>{renderContent()}</SettingsSection>
 
       {sendTarget && (
         <SendCryptoModal
@@ -496,7 +494,7 @@ const WalletBalancesPanel = () => {
       {receiveTarget && (
         <ReceiveModal balance={receiveTarget} onClose={() => setReceiveTarget(null)} />
       )}
-    </PanelPage>
+    </SettingsPanel>
   );
 };
 

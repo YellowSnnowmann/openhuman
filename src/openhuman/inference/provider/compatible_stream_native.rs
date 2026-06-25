@@ -53,7 +53,7 @@ impl OpenAiCompatibleProvider {
             let status_str = status.as_u16().to_string();
             let body = response.text().await.unwrap_or_default();
             let sanitized = super::super::sanitize_api_error(&body);
-            let message = format!(
+            let mut message = format!(
                 "{} streaming API error ({}): {}",
                 self.name, status, sanitized
             );
@@ -130,6 +130,36 @@ impl OpenAiCompatibleProvider {
                 super::super::log_byo_provider_auth_failure(
                     "streaming_chat",
                     self.name.as_str(),
+                    Some(native_request.model.as_str()),
+                    status,
+                );
+            } else if super::super::is_provider_insufficient_credits_402(status, &body) {
+                // Insufficient-credits 402: the user's own BYO provider account
+                // is out of balance — a flat billing fact, not a reservation-
+                // window error, so there is NO local max_tokens lever to apply.
+                // Demote to info instead of paging on every retry; this is the
+                // complete classification for a genuinely-unpreventable
+                // BYO-balance condition
+                // (TAURI-RUST-4QF — DeepSeek "Insufficient Balance").
+                super::super::log_provider_insufficient_credits_402(
+                    "streaming_chat",
+                    self.name.as_str(),
+                    Some(native_request.model.as_str()),
+                    status,
+                );
+            } else if super::super::is_ollama_cloud_internal_500(self.name.as_str(), status, &body)
+            {
+                // ollama.com hosted-inference 500 on the streaming path — same
+                // provider-internal, no-client-lever condition as the native
+                // cascade. Demote to info and swap the opaque ref body for
+                // actionable guidance (TAURI-RUST-5MV).
+                super::super::log_ollama_cloud_internal_500(
+                    "streaming_chat",
+                    self.name.as_str(),
+                    Some(native_request.model.as_str()),
+                    status,
+                );
+                message = super::super::ollama_cloud_internal_500_user_message(
                     Some(native_request.model.as_str()),
                     status,
                 );

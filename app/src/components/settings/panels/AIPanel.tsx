@@ -24,12 +24,14 @@ import {
   listProviderModels,
   loadAISettings,
   loadLocalProviderSnapshot,
+  loadProviderAuthErrors,
   type LocalProviderSnapshot,
   type ModelInfo,
   type ModelRegistryEntry,
   modelRegistryVision,
   OPENAI_CODEX_OAUTH_MISSING_AUTH_URL,
   OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL,
+  type ProviderAuthError,
   saveAISettings,
   setCloudProviderKey,
   testProviderModel,
@@ -2210,7 +2212,7 @@ const CustomRoutingDialog = ({
           </div>
           <Button
             type="button"
-            variant="ghost"
+            variant="tertiary"
             size="xs"
             onClick={onClose}
             aria-label={t('common.close')}>
@@ -2317,12 +2319,13 @@ const CustomRoutingDialog = ({
                     {cloudModelsError}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
+                    <Button
                       type="button"
-                      onClick={() => setModelsKey(k => k + 1)}
-                      className="text-xs text-primary-600 dark:text-primary-400 hover:underline">
+                      variant="tertiary"
+                      size="xs"
+                      onClick={() => setModelsKey(k => k + 1)}>
                       {t('common.retry')}
-                    </button>
+                    </Button>
                     <span className="text-xs text-neutral-400 dark:text-neutral-500">
                       {t('settings.ai.enterModelIdManually')}
                     </span>
@@ -2924,6 +2927,34 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
   // chip can find it again. Cleared when the dialog closes.
   const [pendingLocalLabel, setPendingLocalLabel] = useState<string | null>(null);
   const openRouterOauthAbortRef = useRef<AbortController | null>(null);
+  // BYO provider keys that the provider rejected at runtime (401/403). The
+  // raw error is demoted from Sentry as unactionable user-state, so this
+  // inline notice is how the user learns a key broke — most often in a silent
+  // background loop (memory summarization, TAURI-RUST-4RC) that never surfaces
+  // an error on its own. Re-fetched whenever settings reload (a key
+  // save/remove clears the matching entry core-side).
+  const [providerAuthErrors, setProviderAuthErrors] = useState<ProviderAuthError[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadProviderAuthErrors()
+      .then(errs => {
+        if (!cancelled) {
+          setProviderAuthErrors(errs);
+        }
+      })
+      .catch(() => {
+        // Best-effort surface — a fetch failure must not break the panel.
+        // Drop any prior notice too: a key save/remove already cleared the
+        // entry core-side, so keeping a stale banner would misreport a
+        // rejection the user has resolved.
+        if (!cancelled) {
+          setProviderAuthErrors([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [saved]);
 
   const connectProvider = useCallback(
     async ({
@@ -3157,6 +3188,18 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
             </p>
           </div>
 
+          {/* ─── Rejected-key notices ─────────────────────────────────────────
+              A BYO key the provider rejected at runtime (401/403). Surfaced
+              here, next to the key editor, because the failing path is often a
+              silent background loop and the raw error is demoted from Sentry. */}
+          {providerAuthErrors.length > 0 && (
+            <div className="space-y-2">
+              {providerAuthErrors.map(err => (
+                <ProviderSetupErrorNotice key={err.provider} error={err.message} />
+              ))}
+            </div>
+          )}
+
           {/* ─── Provider chip-toggle list ────────────────────────────────── */}
           <section className="space-y-3">
             {loading && (
@@ -3251,17 +3294,19 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                     className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${tone}`}>
                     <span>{label}</span>
                     {enabled && (
-                      <button
+                      <Button
                         type="button"
+                        iconOnly
+                        variant="tertiary"
+                        size="xs"
                         aria-label={t('settings.ai.editEndpoint')}
                         title={t('settings.ai.editEndpoint')}
                         onClick={() => {
                           setKeyDialogFor(localKind);
                           setPendingLocalLabel(label);
-                        }}
-                        className="rounded p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+                        }}>
                         <LuPencil className="h-3 w-3" />
-                      </button>
+                      </Button>
                     )}
                     <SettingsSwitch
                       id={`local-runtime-toggle-${localKind}`}
@@ -3830,11 +3875,14 @@ const CloudProviderEditor = ({
             <label className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
               <span>{t('settings.ai.apiKeyFieldLabel')}</span>
               {hasExistingKey && (
-                <button
-                  onClick={() => void onClearKey(slug)}
-                  className="text-[10px] font-medium normal-case text-coral-600 dark:text-coral-300 hover:text-coral-700">
+                <Button
+                  variant="tertiary"
+                  tone="danger"
+                  size="xs"
+                  className="text-[10px] font-medium normal-case"
+                  onClick={() => void onClearKey(slug)}>
                   {t('settings.ai.clearStoredKey')}
-                </button>
+                </Button>
               )}
             </label>
             <SettingsTextField

@@ -4,6 +4,7 @@
 //! `inference/provider/` so all inference concerns (local runtime, cloud
 //! providers, HTTP endpoint) share a single domain root.
 
+pub mod auth_error_registry;
 pub mod billing_error;
 pub mod claude_agent_sdk;
 pub mod claude_code;
@@ -29,6 +30,7 @@ pub mod traits;
 pub use traits::{
     ChatMessage, ChatRequest, ChatResponse, ConversationMessage, PromptCacheCapabilities, Provider,
     ProviderCapabilityError, ProviderDelta, ToolCall, ToolResultMessage, UsageInfo,
+    AGENT_TURN_MAX_OUTPUT_TOKENS,
 };
 
 pub use billing_error::is_budget_exhausted_message;

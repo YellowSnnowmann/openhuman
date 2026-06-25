@@ -1,11 +1,19 @@
 import { useEffect } from 'react';
 
+import Button from '../../../components/ui/Button';
 import { useT } from '../../../lib/i18n/I18nContext';
 import type {
   SubagentActivity,
   ToolTimelineEntry,
   ToolTimelineEntryStatus,
 } from '../../../store/chatRuntimeSlice';
+import { useBackgroundActivity } from '../hooks/useBackgroundActivity';
+import {
+  CronJobRow,
+  MemorySection,
+  SectionHeader,
+  SubconsciousRow,
+} from './BackgroundActivityRows';
 
 /**
  * A background process = a *detached* sub-agent spawned with
@@ -119,6 +127,8 @@ export function BackgroundProcessesPanel({
   onOpenProcess,
 }: BackgroundProcessesPanelProps) {
   const { t } = useT();
+  // Cron jobs + subconscious + memory syncing — fetched only while open.
+  const activity = useBackgroundActivity(open);
 
   useEffect(() => {
     if (!open) return;
@@ -154,11 +164,12 @@ export function BackgroundProcessesPanel({
               {runningLabel} · {totalLabel}
             </span>
           </div>
-          <button
-            type="button"
+          <Button
+            iconOnly
+            variant="tertiary"
+            size="sm"
             aria-label={t('conversations.backgroundTasks.close')}
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300">
+            onClick={onClose}>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -167,16 +178,18 @@ export function BackgroundProcessesPanel({
                 d="M6 18L18 6M6 6l12 12"
               />
             </svg>
-          </button>
+          </Button>
         </header>
 
-        {processes.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-stone-400 dark:text-neutral-500">
-            {t('conversations.backgroundTasks.empty')}
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-2">
-            {processes.map(p => {
+        <div className="flex-1 overflow-y-auto p-2">
+          {/* Section 1 — detached sub-agents spawned in this chat. */}
+          <SectionHeader title={t('conversations.backgroundTasks.sectionThisChat')} />
+          {processes.length === 0 ? (
+            <div className="px-2.5 py-2 text-[12px] text-stone-400 dark:text-neutral-500">
+              {t('conversations.backgroundTasks.empty')}
+            </div>
+          ) : (
+            processes.map(p => {
               const s = statusStyle(p.status);
               const toolCallLabel = (
                 p.toolCount === 1
@@ -215,9 +228,31 @@ export function BackgroundProcessesPanel({
                   </span>
                 </button>
               );
-            })}
-          </div>
-        )}
+            })
+          )}
+
+          {/* Section 2 — scheduled (cron) jobs, global, view-only. */}
+          <SectionHeader title={t('conversations.backgroundTasks.sectionScheduled')} />
+          {activity.cronJobs.length === 0 ? (
+            <div className="px-2.5 py-2 text-[12px] text-stone-400 dark:text-neutral-500">
+              {t('conversations.backgroundTasks.cronEmpty')}
+            </div>
+          ) : (
+            activity.cronJobs.map(job => <CronJobRow key={job.id} job={job} />)
+          )}
+
+          {/* Section 3 — subconscious / background-thinking loop. */}
+          {activity.subconscious ? (
+            <>
+              <SectionHeader title={t('conversations.backgroundTasks.sectionSubconscious')} />
+              <SubconsciousRow summary={activity.subconscious} />
+            </>
+          ) : null}
+
+          {/* Section 4 — memory syncing / ingestion. */}
+          <SectionHeader title={t('conversations.backgroundTasks.sectionMemory')} />
+          <MemorySection memory={activity.memory} />
+        </div>
       </aside>
     </div>
   );

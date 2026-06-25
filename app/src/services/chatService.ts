@@ -28,6 +28,15 @@ export interface ChatToolCallEvent {
    * this id for end-to-end reconciliation.
    */
   tool_call_id?: string;
+  /**
+   * Server-computed human label for this call (e.g. "Reading messages"),
+   * set by the Rust `Tool::display_label`. Present for dynamic
+   * Composio/MCP/integration tools the client can't label itself; absent
+   * for built-ins the client formatter already handles.
+   */
+  tool_display_label?: string;
+  /** Server-computed contextual detail (e.g. "steven@gmail.com"). */
+  tool_display_detail?: string;
 }
 
 export interface ChatToolResultEvent {
@@ -137,6 +146,22 @@ export interface ChatApprovalRequestEvent {
    * exact command/target from this so the user sees precisely what will run.
    */
   args?: Record<string, unknown>;
+}
+
+/**
+ * Interactive plan-review request: the orchestrator parked the live turn on a
+ * thread-scoped plan the user must review before execution (Codex/Claude plan
+ * mode). Resolved via the `openhuman.plan_review_decide` RPC. Bridged from the
+ * Rust `DomainEvent::PlanReviewRequested` by the web channel.
+ */
+export interface ChatPlanReviewRequestEvent {
+  thread_id: string;
+  client_id?: string;
+  request_id: string;
+  /** One-line summary of the plan. */
+  message: string;
+  /** `{ steps: string[] }` — the ordered plan items shown in the review card. */
+  args?: { steps?: string[] };
 }
 
 /**
@@ -307,6 +332,10 @@ export interface ChatSubagentToolCallEvent {
    * with no/`null` arguments.
    */
   args?: unknown;
+  /** Server-computed human label for this child call (from `Tool::display_label`). */
+  tool_display_label?: string;
+  /** Server-computed contextual detail (path / recipient / query). */
+  tool_display_detail?: string;
   subagent?: SubagentProgressDetail;
 }
 
@@ -428,6 +457,7 @@ export interface ChatEventListeners {
   onTaskBoardUpdated?: (event: ChatTaskBoardUpdatedEvent) => void;
   onProactiveMessage?: (event: ProactiveMessageEvent) => void;
   onApprovalRequest?: (event: ChatApprovalRequestEvent) => void;
+  onPlanReviewRequest?: (event: ChatPlanReviewRequestEvent) => void;
   onArtifactReady?: (event: ArtifactReadyEvent) => void;
   onArtifactFailed?: (event: ArtifactFailedEvent) => void;
   onDone?: (event: ChatDoneEvent) => void;
@@ -463,6 +493,7 @@ export function subscribeChatEvents(listeners: ChatEventListeners): () => void {
     taskBoardUpdated: 'task_board_updated',
     proactiveMessage: 'proactive_message',
     approvalRequest: 'approval_request',
+    planReviewRequest: 'plan_review_request',
     artifactReady: 'artifact_ready',
     artifactFailed: 'artifact_failed',
     done: 'chat_done',
@@ -784,6 +815,16 @@ export function subscribeChatEvents(listeners: ChatEventListeners): () => void {
     handlers.push([EVENTS.approvalRequest, cb]);
   }
 
+  if (listeners.onPlanReviewRequest) {
+    const cb = (payload: unknown) => {
+      const e = payload as ChatPlanReviewRequestEvent;
+      chatLog('%s thread_id=%s request_id=%s', EVENTS.planReviewRequest, e.thread_id, e.request_id);
+      listeners.onPlanReviewRequest?.(e);
+    };
+    socket.on(EVENTS.planReviewRequest, cb);
+    handlers.push([EVENTS.planReviewRequest, cb]);
+  }
+
   // Artifact lifecycle events (#2779). The Rust subscriber in
   // `channels/providers/web::ArtifactSurfaceSubscriber` packs the
   // artifact payload into the generic `args` field of the wire
@@ -1057,6 +1098,26 @@ export async function chatCancel(threadId: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Clear the run-queue (steer/followup/collect lanes) for a thread via core RPC.
+ * Used when the user dismisses queued follow-ups so the backend drops them
+ * instead of dispatching them after the current turn. Returns the number of
+ * dropped messages on success, or `null` when the RPC fails — the caller must
+ * distinguish these: on failure the backend queue is still intact and WILL
+ * dispatch the follow-ups, so the UI must keep the pills rather than hide them.
+ */
+export async function chatClearQueue(threadId: string): Promise<number | null> {
+  try {
+    const res = await callCoreRpc<{ dropped?: number }>({
+      method: 'openhuman.channel_web_queue_clear',
+      params: { thread_id: threadId },
+    });
+    return res?.dropped ?? 0;
+  } catch {
+    return null;
   }
 }
 

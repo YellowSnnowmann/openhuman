@@ -15,7 +15,9 @@
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
+import ChipTabs from '../../components/layout/ChipTabs';
 import PanelScaffold from '../../components/layout/PanelScaffold';
+import Button from '../../components/ui/Button';
 import {
   type AvailabilityResponse,
   type DirectoryIdentityListingsResponse,
@@ -29,7 +31,8 @@ import {
   type RegistryWalletBalance,
 } from '../../lib/agentworld/invokeApiClient';
 import { apiClient } from '../AgentWorldShell';
-import AmountCommitDialog from '../components/AmountCommitDialog';
+import { decimalsForAsset, formatAssetAmount } from '../assets';
+import CommitFlow from '../components/CommitFlow';
 import X402ConfirmDialog from '../components/X402ConfirmDialog';
 import { explorerTxUrl as buyExplorerTxUrl, useX402Buy } from '../hooks/useX402Buy';
 
@@ -266,9 +269,17 @@ function ErrorBanner({ message }: { message: string }) {
   );
 }
 
-// Formats price amount + asset for display
+// Formats a marketplace price for display. Listing/floor/sale `price.amount`
+// strings are in the asset's smallest BASE units (same convention as the x402
+// buy challenge `amount` and bounty `reward.amount`) — a 30 USDC price arrives as
+// "30000000". We humanize here via the shared {@link formatAssetAmount} so the
+// DISPLAYED price ("30 USDC") matches the human-decimal value the user types in
+// AmountCommitDialog when bidding/offering (which then scales ×10^decimals to base
+// units). Rendering the raw base-unit string verbatim previously invited a
+// catastrophic over-spend (user reads "30000000 USDC", types it, signs 30000000 ×
+// 10^6 base units).
 function formatPrice(amount: string, asset: string): string {
-  return `${amount} ${asset}`;
+  return formatAssetAmount(amount, asset);
 }
 
 // ── Register tab ──────────────────────────────────────────────────────────────
@@ -420,12 +431,9 @@ function RegisterTab({ onRegistered }: { onRegistered?: () => void }) {
               setInput(sanitize(e.target.value));
             }}
           />
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          <Button type="submit" variant="primary" size="md" disabled={!input.trim()}>
             Check
-          </button>
+          </Button>
         </form>
 
         {availState.status === 'loading' && (
@@ -446,17 +454,17 @@ function RegisterTab({ onRegistered }: { onRegistered?: () => void }) {
                 <span className="text-xs font-medium text-green-500">
                   @{availableHandle} is available
                 </span>
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="sm"
                   disabled={busy}
                   onClick={() => {
                     reg.begin(availableHandle);
-                  }}
-                  className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
+                  }}>
                   {reg.state.phase === 'challenge_loading'
                     ? 'Loading…'
                     : `Register @${availableHandle}`}
-                </button>
+                </Button>
               </div>
             ) : (
               <div>
@@ -716,12 +724,15 @@ function TradingTab() {
     setBuying(null);
   }
 
-  // x402 commitment flow (bid / offer) — no immediate spend.
+  // x402 commitment flow (bid / offer). Now two-phase (amount → review → submit)
+  // for confirm-before-spend parity with Buy — the CommitFlow component owns the
+  // amount/review state; here we only track which listing is in flight + the
+  // success/error banner state.
   const [commit, setCommit] = useState<{ kind: 'bid' | 'offer'; listing: IdentityListing } | null>(
     null
   );
   const [commitState, setCommitState] = useState<{
-    phase: 'idle' | 'busy' | 'success' | 'error';
+    phase: 'idle' | 'success' | 'error';
     message?: string;
   }>({ phase: 'idle' });
 
@@ -730,23 +741,28 @@ function TradingTab() {
     setCommitState({ phase: 'idle' });
   }
 
-  function submitCommit(amount: string) {
-    if (!commit) return;
+  // Perform the actual commitment RPC. `amount` is in BASE units (CommitFlow has
+  // already converted the human decimal input). Returns a promise so CommitFlow
+  // can show its busy/review state and route the outcome back to the banners.
+  function performCommit(amount: string): Promise<void> {
+    if (!commit) return Promise.resolve();
     const { kind, listing } = commit;
     const price = { amount, asset: listing.price.asset, network: listing.price.network ?? '' };
-    setCommitState({ phase: 'busy' });
     const call =
       kind === 'bid'
         ? apiClient.marketplace.bid(listing.listingId, price)
         : apiClient.marketplace.offer(listing.name, price);
-    void call
-      .then(() => {
-        setCommit(null);
-        setCommitState({ phase: 'success' });
-      })
-      .catch((err: unknown) => {
-        setCommitState({ phase: 'error', message: String(err) });
-      });
+    return call.then(() => undefined);
+  }
+
+  function handleCommitSuccess() {
+    setCommit(null);
+    setCommitState({ phase: 'success' });
+  }
+
+  function handleCommitError(message: string) {
+    setCommit(null);
+    setCommitState({ phase: 'error', message });
   }
 
   return (
@@ -806,30 +822,33 @@ function TradingTab() {
                 )}
                 <div className="mt-2 flex gap-1">
                   {listing.listingType !== 'auction' && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
+                      size="xs"
+                      className="flex-1"
                       disabled={buying !== null}
-                      onClick={() => startBuy(listing)}
-                      className="flex-1 rounded-md bg-primary-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50">
+                      onClick={() => startBuy(listing)}>
                       Buy
-                    </button>
+                    </Button>
                   )}
                   {listing.listingType === 'auction' && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
+                      size="xs"
+                      className="flex-1"
                       disabled={commit !== null}
-                      onClick={() => setCommit({ kind: 'bid', listing })}
-                      className="flex-1 rounded-md bg-primary-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50">
+                      onClick={() => setCommit({ kind: 'bid', listing })}>
                       Bid
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    className="flex-1"
                     disabled={commit !== null}
-                    onClick={() => setCommit({ kind: 'offer', listing })}
-                    className="flex-1 rounded-md border border-stone-300 px-2 py-1 text-xs font-medium text-stone-700 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200">
+                    onClick={() => setCommit({ kind: 'offer', listing })}>
                     Offer
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -855,20 +874,18 @@ function TradingTab() {
           </div>
         )}
 
-        {/* Bid / offer amount dialog. */}
+        {/* Bid / offer commitment flow (amount → review → submit). */}
         {commit && (
-          <AmountCommitDialog
-            title={
-              commit.kind === 'bid'
-                ? `Bid on ${commit.listing.name}`
-                : `Offer for ${commit.listing.name}`
-            }
-            subtitle="A signed commitment — funds move only if it is accepted."
+          <CommitFlow
+            kind={commit.kind}
+            name={commit.listing.name}
             asset={commit.listing.price.asset}
-            submitLabel={commit.kind === 'bid' ? 'Place bid' : 'Submit offer'}
-            busy={commitState.phase === 'busy'}
-            onCancel={closeCommit}
-            onSubmit={submitCommit}
+            decimals={decimalsForAsset(commit.listing.price.asset)}
+            network={commit.listing.price.network}
+            submit={performCommit}
+            onSuccess={handleCommitSuccess}
+            onError={handleCommitError}
+            onClose={closeCommit}
           />
         )}
 
@@ -1011,25 +1028,17 @@ export default function IdentitiesSection() {
 
   return (
     <PanelScaffold description="Claim handles, manage your registry, and trade identities">
-      <div className="flex gap-1">
-        {(Object.keys(TAB_KEYS) as Tab[]).map(tabKey => (
-          <button
-            key={tabKey}
-            type="button"
-            onClick={() => {
-              dispatch({ type: 'set', tab: tabKey });
-            }}
-            data-active={tab === tabKey}
-            className={[
-              'rounded-full px-3 py-1 text-xs font-medium transition-colors',
-              tab === tabKey
-                ? 'bg-stone-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                : 'border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800',
-            ].join(' ')}>
-            {TAB_KEYS[tabKey]}
-          </button>
-        ))}
-      </div>
+      <ChipTabs<Tab>
+        as="tab"
+        ariaLabel="Identity sections"
+        className="flex gap-1"
+        items={(Object.keys(TAB_KEYS) as Tab[]).map(tabKey => ({
+          id: tabKey,
+          label: TAB_KEYS[tabKey],
+        }))}
+        value={tab}
+        onChange={tabKey => dispatch({ type: 'set', tab: tabKey })}
+      />
 
       <div key={key}>
         {tab === 'register' && <RegisterTab onRegistered={bumpRegistryKey} />}

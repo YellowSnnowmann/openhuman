@@ -420,6 +420,20 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if crate::openhuman::inference::provider::is_openai_oauth_session_expired_message(message) {
         return Some(ExpectedErrorKind::ProviderUserState);
     }
+    // TAURI-RUST-5MV — ollama.com hosted-inference 500 (`Internal Server Error
+    // (ref: <uuid>)`) for `*:cloud` models. The provider HTTP layer
+    // (`native_chat` / `streaming_chat` / `api_error`) already demotes its own
+    // per-attempt event and re-raises the actionable
+    // "Ollama cloud is temporarily unavailable …" string; this catches the
+    // re-report at the agent / RPC boundary (`provider_chat` →
+    // `report_error_or_expected`, the `domain=agent` half of the flood). Routed
+    // to `TransientUpstreamHttp` — it is an external upstream 5xx the
+    // reliable-provider layer retries + falls back over, with no client lever.
+    // Delegates to the single-source provider matcher so the phrasing can't
+    // drift. Distinct anchor from the matchers above, so it shadows nothing.
+    if crate::openhuman::inference::provider::is_ollama_cloud_internal_500_message(message) {
+        return Some(ExpectedErrorKind::TransientUpstreamHttp);
+    }
     if is_backend_user_error_message(&lower) {
         return Some(ExpectedErrorKind::BackendUserError);
     }
@@ -447,6 +461,21 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     // embeddings-capable provider" message. Demote to info. Scoped to 404/405
     // only so a real 500 from a valid embeddings endpoint stays in Sentry.
     if is_embedding_endpoint_absent(&lower) {
+        return Some(ExpectedErrorKind::ProviderConfigRejection);
+    }
+    // TAURI-RUST-9SK — the user entered a non-embedding (chat) model id as the
+    // embeddings model (e.g. an OpenRouter `…:free` chat model), so the
+    // embeddings endpoint 400s `Model <id> does not exist` on every memory
+    // re-embed (2205 events / 1 user). OpenRouter's bare `"does not exist"` +
+    // integer `"code":400` body matches none of the chat-side phrases in
+    // `is_provider_config_rejection_message` (which key on the OpenAI-native
+    // `"does not exist or you do not have access"` / `model_not_found`), so
+    // without this it reaches Sentry. Deterministic user-config state; the
+    // settings UI surfaces an actionable "pick an embeddings-capable model"
+    // remediation. Scoped to the 400 model-rejection body so a real 400
+    // (oversized input, server fault) stays visible — same polarity contract as
+    // `is_embedding_endpoint_absent`.
+    if is_embedding_model_rejected(&lower) {
         return Some(ExpectedErrorKind::ProviderConfigRejection);
     }
     // Provider config-rejection (unknown model / abstract tier leaked to a
@@ -731,6 +760,34 @@ fn is_embedding_backend_auth_failure(lower: &str) -> bool {
 /// two never drift.
 pub(crate) fn is_embedding_endpoint_absent(lower: &str) -> bool {
     lower.contains("embedding api error") && (lower.contains("(404") || lower.contains("(405"))
+}
+
+/// Detect a custom/cloud embeddings endpoint that IS an embeddings API but
+/// **rejected the configured model id** — the user pasted a non-embedding
+/// (chat/reasoning) model into the embeddings model field. Canonical wire shape
+/// from `src/openhuman/embeddings/openai.rs` (TAURI-RUST-9SK, ~2205 events):
+///
+/// ```text
+/// Embedding API error (400 Bad Request): {"error":{"message":"Model nvidia/nemotron-3-super-120b-a12b does not exist","code":400}}
+/// ```
+///
+/// Deterministic user-config state, re-emitted on every memory re-embed; the
+/// embeddings settings UI surfaces an actionable "pick an embeddings-capable
+/// model" remediation (appended to the message at the emit site). The
+/// OpenRouter body — bare `"does not exist"` with an integer `"code":400` —
+/// matches none of the chat-side phrases in
+/// `inference::provider::is_provider_config_rejection_message` (those key on the
+/// OpenAI-native `"does not exist or you do not have access"` /
+/// `model_not_found`), so this dedicated matcher is what demotes it.
+///
+/// Polarity (important): scoped to **400** + a model-rejection body. A bare
+/// 400 (oversized input — prevented at source by the chunk cap #3598) or a 500
+/// from a valid embeddings endpoint is a real fault and must keep reaching
+/// Sentry, so this never fires on them.
+fn is_embedding_model_rejected(lower: &str) -> bool {
+    lower.contains("embedding api error")
+        && lower.contains("(400")
+        && (lower.contains("does not exist") || lower.contains("does not support embeddings"))
 }
 
 /// Detect the memory-store chunk DB's circuit-breaker-open message that
@@ -2547,6 +2604,90 @@ pub fn is_insufficient_credits_event(event: &sentry::protocol::Event<'_>) -> boo
     })
 }
 
+/// Message-level matcher for a provider **monthly-quota / usage-limit
+/// exhausted** failure. Status-agnostic by design — unlike
+/// [`is_insufficient_credits_message`] it does NOT anchor on a 402 status,
+/// because the Kiro IDE proxy wraps its 402 inside a 500 envelope
+/// (TAURI-RUST-C9A). Delegates to the single-source quota-phrase set in
+/// [`crate::openhuman::inference::provider::body_indicates_quota_exhausted`], so
+/// the emit-site guard and this `before_send` net can't drift. Shared with the
+/// event-level filter [`is_quota_exhausted_event`].
+pub fn is_quota_exhausted_message(text: &str) -> bool {
+    crate::openhuman::inference::provider::body_indicates_quota_exhausted(text)
+}
+
+/// Defense-in-depth `before_send` filter for provider **monthly-quota
+/// exhausted** events (TAURI-RUST-C9A): the user's third-party plan has spent
+/// its allotment for the period — a billing/plan state OpenHuman has no lever
+/// over.
+///
+/// The primary emit-site demotion lives in the `Provider::chat()` native_chat
+/// cascade and the shared `api_error` helper (`is_provider_quota_exhausted`),
+/// but the compatible provider reports the same failure from several other
+/// paths that don't run those guards. This filter is the single outermost net
+/// that catches all of them, keyed on the formatted message rather than tags so
+/// it matches regardless of which path emitted it (and regardless of whether
+/// the upstream wrapped the 402 in a 500 envelope).
+pub fn is_quota_exhausted_event(event: &sentry::protocol::Event<'_>) -> bool {
+    if event
+        .message
+        .as_deref()
+        .is_some_and(is_quota_exhausted_message)
+    {
+        return true;
+    }
+    event.exception.values.iter().any(|exception| {
+        exception
+            .value
+            .as_deref()
+            .is_some_and(is_quota_exhausted_message)
+    })
+}
+
+/// Whether a raw error / message string is an Ollama **Cloud** hosted-inference
+/// `500` (`Internal Server Error (ref: <uuid>)`). Matches either the raw emit
+/// shape (`ollama API error (500 …): {"error":"Internal Server Error (ref: …)"}`)
+/// or the actionable re-raise the emit sites swap in
+/// (`is_ollama_cloud_internal_500_message`). The raw arm requires BOTH the
+/// `ollama` provider name and the `internal server error (ref:` envelope, so a
+/// generic 500 from another provider, or a local Ollama daemon crash (which
+/// carries no `ref:` UUID), still reaches Sentry.
+pub fn is_ollama_cloud_internal_500_message_any(text: &str) -> bool {
+    if crate::openhuman::inference::provider::is_ollama_cloud_internal_500_message(text) {
+        return true;
+    }
+    let lower = text.to_ascii_lowercase();
+    lower.contains("ollama") && lower.contains("internal server error (ref:")
+}
+
+/// Defense-in-depth `before_send` filter for **Ollama Cloud hosted-inference
+/// 500s** (TAURI-RUST-5MV): ollama.com's `*:cloud` models intermittently
+/// return an opaque `Internal Server Error (ref: <uuid>)` with no client lever
+/// (non-deterministic, byte-identical request succeeds when healthy), retried +
+/// fallen-back by the reliable-provider layer.
+///
+/// The primary demotion lives at the `native_chat` / `streaming_chat` /
+/// `api_error` emit sites, and the agent re-report is demoted via
+/// `expected_error_kind` → `TransientUpstreamHttp`. This is the single outermost
+/// net for any other compatible-provider path (`chat_with_system`,
+/// `chat_with_history`, the non-native cascades) that reports the same body,
+/// keyed on the message rather than tags so it matches regardless of emitter.
+pub fn is_ollama_cloud_internal_500_event(event: &sentry::protocol::Event<'_>) -> bool {
+    if event
+        .message
+        .as_deref()
+        .is_some_and(is_ollama_cloud_internal_500_message_any)
+    {
+        return true;
+    }
+    event.exception.values.iter().any(|exception| {
+        exception
+            .value
+            .as_deref()
+            .is_some_and(is_ollama_cloud_internal_500_message_any)
+    })
+}
+
 /// 404 on PATCH/DELETE to a channel-message path is an expected backend state
 /// (user deleted the message provider-side, backend GC'd the relay row). The
 /// primary suppression lives in `authed_json` via `parse_message_path` +
@@ -2883,6 +3024,44 @@ mod tests {
                 "should classify embedding backend auth failure as SessionExpired: {raw}"
             );
         }
+    }
+
+    #[test]
+    fn classifies_embedding_model_does_not_exist_400_as_config_rejection() {
+        // TAURI-RUST-9SK (~2205 events / 1 user) — a chat model id pasted as the
+        // embeddings model. Verbatim OpenRouter wire body (bare "does not exist"
+        // + integer "code":400), plus the enriched form after the emit site
+        // appends the actionable remediation. Both must demote so the per-embed
+        // flood stays out of Sentry.
+        for raw in [
+            r#"Embedding API error (400 Bad Request): {"error":{"message":"Model nvidia/nemotron-3-super-120b-a12b does not exist","code":400}}"#,
+            "Embedding API error (400 Bad Request): {\"error\":{\"message\":\"Model nvidia/nemotron-3-super-120b-a12b does not exist\",\"code\":400}} — this model isn't an embeddings model; pick an embeddings-capable model in Settings → Memory",
+            r#"Embedding API error (400 Bad Request): {"error":{"message":"this model does not support embeddings"}}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::ProviderConfigRejection),
+                "should classify embedding model-rejection 400 as config rejection: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_embedding_400s() {
+        // Polarity: a 400 that is NOT a model-rejection (e.g. oversized input)
+        // and any non-400 must keep reaching Sentry.
+        assert_eq!(
+            expected_error_kind(
+                r#"Embedding API error (400 Bad Request): {"error":{"message":"input exceeds the maximum number of tokens"}}"#
+            ),
+            None
+        );
+        assert_eq!(
+            expected_error_kind(
+                r#"Embedding API error (500 Internal Server Error): {"error":"model does not exist"}"#
+            ),
+            None
+        );
     }
 
     #[test]
@@ -5843,6 +6022,32 @@ mod tests {
     }
 
     #[test]
+    fn quota_exhausted_filter_matches_500_wrapped_kiro_event() {
+        // TAURI-RUST-C9A: verbatim message as formatted by the provider emit
+        // site — a 500 envelope around an inner 402 / MONTHLY_REQUEST_COUNT.
+        // The status-agnostic quota filter must catch it on the message path
+        // and the exception path.
+        let body = "kiro API error (500 Internal Server Error): {\"error\":{\"message\":\
+            \"HTTP 402 from Kiro IDE: {\\\"reason\\\":\\\"MONTHLY_REQUEST_COUNT\\\"}\",\
+            \"type\":\"server_error\"}}";
+        assert!(is_quota_exhausted_event(&event_with_message(body)));
+        assert!(is_quota_exhausted_event(&event_with_exception_value(body)));
+        assert!(is_quota_exhausted_message(body));
+    }
+
+    #[test]
+    fn quota_exhausted_filter_ignores_generic_500_and_rate_limit() {
+        // A generic 500 outage and a 429 rate-limit are not plan-quota
+        // exhaustion — they must keep reaching Sentry / their own handling.
+        assert!(!is_quota_exhausted_event(&event_with_message(
+            "kiro API error (500 Internal Server Error): upstream connection reset"
+        )));
+        assert!(!is_quota_exhausted_event(&event_with_message(
+            "provider API error (429 Too Many Requests): rate_limit_exceeded"
+        )));
+    }
+
+    #[test]
     fn insufficient_credits_filter_matches_message_path() {
         // Verbatim TAURI-RUST-C62 message as formatted by the provider emit
         // sites: "<provider> API error (402 Payment Required): <body>".
@@ -5939,6 +6144,51 @@ mod tests {
         assert!(is_insufficient_credits_event(&event_with_message(body)));
         assert!(is_insufficient_credits_event(&event_with_exception_value(
             body
+        )));
+    }
+
+    #[test]
+    fn ollama_cloud_internal_500_reraise_routes_through_expected_path() {
+        // TAURI-RUST-5MV — the actionable message the emit sites raise must
+        // demote to `TransientUpstreamHttp` when re-reported at the agent / RPC
+        // boundary (`provider_chat` → `report_error_or_expected`), so the
+        // `domain=agent` half of the flood is suppressed too.
+        let reraise = crate::openhuman::inference::provider::ollama_cloud_internal_500_user_message(
+            Some("minimax-m3:cloud"),
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        );
+        assert_eq!(
+            expected_error_kind(&reraise),
+            Some(ExpectedErrorKind::TransientUpstreamHttp)
+        );
+    }
+
+    #[test]
+    fn ollama_cloud_internal_500_before_send_matches_raw_and_reraised_shapes() {
+        // The outermost net catches BOTH the raw emit body (any compatible
+        // path that bypassed the cascade) and the actionable re-raise.
+        let raw = "ollama API error (500 Internal Server Error): \
+            {\"error\":\"Internal Server Error (ref: df512dcb-d915-493b-8f2d-e8d3dfa640c1)\"}";
+        assert!(is_ollama_cloud_internal_500_event(&event_with_message(raw)));
+        assert!(is_ollama_cloud_internal_500_event(
+            &event_with_exception_value(raw)
+        ));
+
+        let reraise = crate::openhuman::inference::provider::ollama_cloud_internal_500_user_message(
+            None,
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        );
+        assert!(is_ollama_cloud_internal_500_event(&event_with_message(
+            &reraise
+        )));
+
+        // A local Ollama 500 without the `ref:` envelope, and a non-ollama 500,
+        // both stay reportable.
+        assert!(!is_ollama_cloud_internal_500_event(&event_with_message(
+            "ollama API error (500 Internal Server Error): {\"error\":\"out of memory\"}"
+        )));
+        assert!(!is_ollama_cloud_internal_500_event(&event_with_message(
+            "openai API error (500): Internal Server Error (ref: abc)"
         )));
     }
 

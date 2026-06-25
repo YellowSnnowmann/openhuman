@@ -187,6 +187,9 @@ pub fn all_tools_with_runtime(
         // build-mode pass. The plan→build mode switch itself is a
         // follow-up; the tool emits a stable marker today.
         Box::new(TodoTool::new()),
+        // Interactive plan-review gate: parks the live turn on a thread-scoped
+        // plan the user must approve before execution (Codex/Claude plan mode).
+        Box::new(crate::openhuman::plan_review::RequestPlanReviewTool::new()),
         // Move/update a specific task card by id on a target board (defaults to
         // the proactive `task-sources` board) — lets the agent advance the task
         // it's working (in_progress / done+evidence / blocked+reason) from any
@@ -363,6 +366,9 @@ pub fn all_tools_with_runtime(
         Box::new(ThreadUpdateTitleTool),
         Box::new(ThreadUpdateLabelsTool),
         Box::new(ThreadMessageListTool),
+        // Read-only cross-thread transcript search (trigram index). Lets the
+        // context scout and other agents recall what was said in earlier chats.
+        Box::new(ThreadTranscriptSearchTool),
         Box::new(ThreadMessageAppendTool),
         Box::new(ThreadMessageUpdateTool),
         Box::new(ThreadTitleGenerateTool),
@@ -528,8 +534,10 @@ pub fn all_tools_with_runtime(
          memory_hybrid_search, memory_store_raw_search, memory_store_raw_chunks, memory_store_kinds"
     );
 
-    // Subconscious scratchpad tools — persistent working memory across ticks.
-    tools.extend(crate::openhuman::subconscious::scratchpad::tools::all_scratchpad_tools());
+    // Memory diff — structured "what changed in the agent's world since a
+    // checkpoint/last sync". Drives the subconscious tick's first stage and is
+    // available to any agent that lists it. Unit struct, no runtime deps.
+    tools.push(Box::new(crate::openhuman::memory_diff::MemoryDiffTool));
 
     // Subconscious user-facing handoff — notify_user proactive delivery.
     tools.extend(crate::openhuman::subconscious::user_thread::all_user_thread_tools());
@@ -570,6 +578,24 @@ pub fn all_tools_with_runtime(
         ));
         tools.push(Box::new(
             crate::openhuman::memory_goals::GoalsDeleteTool::new(goals_dir),
+        ));
+    }
+
+    // Thread-level goal tools (Codex-style per-thread completion contract).
+    // Visible only to agents that allowlist them (orchestrator). The target
+    // thread is resolved from the ambient `thread_id`, so no thread arg is
+    // taken. `goal_get`/`goal_set`/`goal_complete` — pause/resume/budget are
+    // system-driven and have no model tool.
+    {
+        let goal_dir = root_config.workspace_dir.clone();
+        tools.push(Box::new(crate::openhuman::thread_goals::GoalGetTool::new(
+            goal_dir.clone(),
+        )));
+        tools.push(Box::new(crate::openhuman::thread_goals::GoalSetTool::new(
+            goal_dir.clone(),
+        )));
+        tools.push(Box::new(
+            crate::openhuman::thread_goals::GoalCompleteTool::new(goal_dir),
         ));
     }
 
