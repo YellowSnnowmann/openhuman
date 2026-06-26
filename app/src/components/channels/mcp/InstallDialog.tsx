@@ -11,7 +11,7 @@
  * the install itself, and best-effort `mcpClientsApi.connect` post-install.
  */
 import debug from 'debug';
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { mcpClientsApi } from '../../../services/api/mcpClientsApi';
@@ -54,8 +54,12 @@ const AuthPlanNotice = ({ plan, serverName }: { plan: AuthPlan | null; serverNam
   const { t } = useT();
   if (!plan) return null;
 
+  // Only warn about a listing-vs-reality mismatch when the user still has to do
+  // something different (sign in / paste a key). For a probed-OPEN server the
+  // green "no sign-in required" box below already resolves it — a separate
+  // warning next to it just reads as a contradiction.
   const mismatch =
-    plan.mismatch && plan.confidence === 'probed' ? (
+    plan.mismatch && plan.confidence === 'probed' && plan.method !== 'open' ? (
       <div className="rounded-lg border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
         ⚠ {t('mcp.install.auth.mismatch').replace('{observed}', plan.mismatch.observed)}
       </div>
@@ -170,7 +174,19 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
     };
   }, [qualifiedName]);
 
-  const hasEnvKeys = (detail?.required_env_keys ?? []).length > 0;
+  // The live probe is authoritative. A server the probe found to be OPEN (or
+  // OAuth) does NOT need the env vars the registry *declared* — the listing
+  // over-declared (e.g. Google Trends MCP lists `Authorization` but the endpoint
+  // is open). Override the declared keys to empty so the form never demands a
+  // credential the server won't use; otherwise the screen contradicts itself
+  // ("no auth required" next to "Authorization required").
+  const effectiveEnvKeys = useMemo(() => {
+    const authoritativeNoEnv =
+      authPlan?.confidence === 'probed' &&
+      (authPlan.method === 'open' || authPlan.method === 'oauth');
+    return authoritativeNoEnv ? [] : (detail?.required_env_keys ?? []);
+  }, [authPlan, detail]);
+  const hasEnvKeys = effectiveEnvKeys.length > 0;
 
   const toggleShowEnv = useCallback((key: string) => {
     setShowEnv(prev => ({ ...prev, [key]: !prev[key] }));
@@ -183,7 +199,7 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
   const handleInstall = useCallback(async () => {
     if (!detail) return;
 
-    for (const key of detail.required_env_keys ?? []) {
+    for (const key of effectiveEnvKeys) {
       if (!envValues[key]?.trim()) {
         setInstallError(t('mcp.install.missingRequired').replace('{key}', key));
         return;
@@ -235,7 +251,7 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
     } finally {
       setInstalling(false);
     }
-  }, [detail, envValues, configJson, qualifiedName, onSuccess, t]);
+  }, [detail, effectiveEnvKeys, envValues, configJson, qualifiedName, onSuccess, t]);
 
   const handleDirectInstall = useCallback(async () => {
     if (hasEnvKeys) {
@@ -392,7 +408,7 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
               {t('mcp.install.requiredEnv')}
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {detail.required_env_keys!.map(key => (
+              {effectiveEnvKeys.map(key => (
                 <code
                   key={key}
                   className="rounded bg-amber-100 dark:bg-amber-500/20 px-1.5 py-0.5 text-xs font-mono text-amber-800 dark:text-amber-200">

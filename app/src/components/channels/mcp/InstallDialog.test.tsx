@@ -104,6 +104,40 @@ describe('InstallDialog', () => {
     );
   });
 
+  it('probe says open → suppresses the declared env keys (no contradiction)', async () => {
+    // The listing declared an Authorization env var, but the probe found the
+    // server is actually open. The screen must NOT show both "no auth required"
+    // and "Authorization required" — the probe overrides the declared keys.
+    mockRegistryGet.mockResolvedValue({
+      qualified_name: 'trendsmcp/google-trends',
+      display_name: 'Google Trends MCP',
+      description: 'Trends',
+      connections: [{ type: 'http', published: true }],
+      required_env_keys: ['Authorization'],
+    });
+    mockProbeAuth.mockResolvedValue({
+      method: 'open',
+      confidence: 'probed',
+      fields: [],
+      mismatch: { declared: 'api_key', observed: 'open' },
+    });
+    render(
+      <InstallDialog
+        qualifiedName="trendsmcp/google-trends"
+        onSuccess={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    await waitFor(() => expect(screen.getByText(/No sign-in required/)).toBeInTheDocument());
+    // The declared Authorization config is gone, and so is the contradictory
+    // "Requires configuration" badge and the redundant ⚠ mismatch banner.
+    expect(screen.queryByText('Requires configuration')).not.toBeInTheDocument();
+    expect(screen.queryByText('Authorization')).not.toBeInTheDocument();
+    expect(screen.queryByText(/the listing described this differently/)).not.toBeInTheDocument();
+    // Single-step install, not "Configure & install".
+    expect(screen.getByRole('button', { name: 'Install' })).toBeInTheDocument();
+  });
+
   it('shows env key preview badges on detail step', async () => {
     mockRegistryGet.mockResolvedValue(DETAIL);
     render(
