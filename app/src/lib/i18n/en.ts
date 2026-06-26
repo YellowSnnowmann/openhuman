@@ -1945,6 +1945,8 @@ const en: TranslationMap = {
   'mcp.connectAuth.headerValue': 'Value',
   'mcp.connectAuth.removeHeader': 'Remove header',
   'mcp.connectAuth.howToGetToken': 'Help & configure',
+  'mcp.connectAuth.tokenProvider': 'Get your token from:',
+  'mcp.connectAuth.findToken': 'Where do I get the token?',
   'mcp.connectAuth.hideHelp': 'Hide help',
   'mcp.connectAuth.schemeLabel': 'How to send the value',
   'mcp.connectAuth.schemeBearer': 'Bearer',

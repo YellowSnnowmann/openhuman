@@ -1600,6 +1600,8 @@ const messages: TranslationMap = {
   'mcp.connectAuth.headerValue': 'মান',
   'mcp.connectAuth.removeHeader': 'হেডার সরান',
   'mcp.connectAuth.howToGetToken': 'সহায়তা ও কনফিগার করুন',
+  'mcp.connectAuth.tokenProvider': 'টোকেন নিন:',
+  'mcp.connectAuth.findToken': 'টোকেন কোথায় পাব?',
   'mcp.connectAuth.hideHelp': 'সহায়তা লুকান',
   'mcp.connectAuth.schemeLabel': 'মানটি কীভাবে পাঠানো হবে',
   'mcp.connectAuth.schemeBearer': 'Bearer',

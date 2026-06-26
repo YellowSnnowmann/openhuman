@@ -1524,6 +1524,8 @@ const messages: TranslationMap = {
   'mcp.connectAuth.headerValue': '值',
   'mcp.connectAuth.removeHeader': '移除请求头',
   'mcp.connectAuth.howToGetToken': '帮助与配置',
+  'mcp.connectAuth.tokenProvider': '获取令牌的位置：',
+  'mcp.connectAuth.findToken': '在哪里获取令牌？',
   'mcp.connectAuth.hideHelp': '隐藏帮助',
   'mcp.connectAuth.schemeLabel': '如何发送该值',
   'mcp.connectAuth.schemeBearer': 'Bearer',

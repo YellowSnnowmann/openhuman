@@ -312,6 +312,108 @@ describe('ConnectAuthModal', () => {
     expect(mockOpenUrl).toHaveBeenCalledWith('https://app.anomalyarmor.ai/api-key');
   });
 
+  it('linkifies a bare-domain "get your key" hint (no scheme) and opens it as https', async () => {
+    // Registry copy often omits the scheme (e.g. the Apify-hosted GitHub server's
+    // "Free tier at console.apify.com"). The bare domain must still be a clickable
+    // link, or the user has no idea where the token comes from.
+    mockRegistryGet.mockResolvedValue({
+      qualified_name: 'acme/test-server',
+      display_name: 'Test Server',
+      connections: [
+        {
+          type: 'http',
+          config_schema: {
+            properties: {
+              'X-API-Key': {
+                description: 'Apify API token. Free tier at console.apify.com',
+                'x-secret': true,
+              },
+            },
+            required: ['X-API-Key'],
+          },
+        },
+      ],
+      required_env_keys: [],
+    });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    await screen.findByLabelText('X-API-Key');
+    // The ↗ affordance is aria-hidden, so the link's accessible name is the
+    // bare domain; clicking opens it with an https scheme prepended.
+    const link = screen.getByRole('button', { name: 'console.apify.com' });
+    fireEvent.click(link);
+    expect(mockOpenUrl).toHaveBeenCalledWith('https://console.apify.com');
+  });
+
+  it('surfaces the HTTP-remote provider host up front and links to the provider site', async () => {
+    // A server that declares no auth schema but has a hosted endpoint: name the
+    // provider before the user clicks Connect and eats a 401 just to learn it.
+    mockRegistryGet.mockResolvedValue({
+      qualified_name: 'acme/test-server',
+      display_name: 'Test Server',
+      connections: [{ type: 'http', deployment_url: 'https://mcp.lona.agency/mcp' }],
+      required_env_keys: [],
+    });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    await screen.findByRole('dialog');
+    const host = await screen.findByRole('button', { name: 'mcp.lona.agency' });
+    fireEvent.click(host);
+    // Links to the provider's site (leading `mcp.` dropped), not the raw endpoint.
+    expect(mockOpenUrl).toHaveBeenCalledWith('https://lona.agency');
+  });
+
+  it('does not linkify file-like tokens in a description', async () => {
+    mockRegistryGet.mockResolvedValue({
+      qualified_name: 'acme/test-server',
+      display_name: 'Test Server',
+      connections: [
+        {
+          type: 'http',
+          config_schema: {
+            properties: {
+              'X-API-Key': {
+                description: 'Put the key in config.json, then visit example.com',
+                'x-secret': true,
+              },
+            },
+            required: ['X-API-Key'],
+          },
+        },
+      ],
+      required_env_keys: [],
+    });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    await screen.findByLabelText('X-API-Key');
+    // The real domain is a link; the filename is left as plain prose.
+    expect(screen.getByRole('button', { name: 'example.com' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'config.json' })).not.toBeInTheDocument();
+  });
+
+  it('does not strip a two-label provider host down to a public suffix', async () => {
+    mockRegistryGet.mockResolvedValue({
+      qualified_name: 'acme/test-server',
+      display_name: 'Test Server',
+      connections: [{ type: 'http', deployment_url: 'https://server.io/mcp' }],
+      required_env_keys: [],
+    });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    await screen.findByRole('dialog');
+    const host = await screen.findByRole('button', { name: 'server.io' });
+    fireEvent.click(host);
+    // `server.io` must stay intact — never reduced to the bare TLD `https://io`.
+    expect(mockOpenUrl).toHaveBeenCalledWith('https://server.io');
+  });
+
+  it('offers a "Where do I get the token?" pointer that opens the config assistant', async () => {
+    mockDetectAuth.mockResolvedValue({ kind: 'none', grant_types: [] });
+    render(<ConnectAuthModal server={BASE_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: /Where do I get the token/ }));
+    await waitFor(() => {
+      // The connect modal plus the stacked config-help modal.
+      expect(screen.getAllByRole('dialog').length).toBeGreaterThan(1);
+    });
+  });
+
   it('blocks Connect until a required declared field is filled', async () => {
     mockRegistryGet.mockResolvedValue({
       qualified_name: 'acme/test-server',

@@ -188,6 +188,34 @@ pub fn update_server_env_keys(config: &Config, server_id: &str, env_keys: &[Stri
     })
 }
 
+/// Update only the `config_json` blob for an installed server. Used by the
+/// idempotent re-install path so a second install carrying new config refreshes
+/// the existing row instead of dropping it — a plain `insert_server` would
+/// conflict on the primary key. `None` clears the stored config.
+pub fn update_server_config(
+    config: &Config,
+    server_id: &str,
+    value: Option<&serde_json::Value>,
+) -> Result<()> {
+    with_connection(config, |conn| {
+        update_server_config_conn(conn, server_id, value)
+    })
+}
+
+pub fn update_server_config_conn(
+    conn: &Connection,
+    server_id: &str,
+    value: Option<&serde_json::Value>,
+) -> Result<()> {
+    let config_json = value.map(serde_json::to_string).transpose()?;
+    conn.execute(
+        "UPDATE mcp_servers SET config_json = ?2 WHERE server_id = ?1",
+        params![server_id, config_json],
+    )
+    .context("Failed to update mcp_server config")?;
+    Ok(())
+}
+
 pub fn list_servers(config: &Config) -> Result<Vec<InstalledServer>> {
     with_connection(config, |conn| list_servers_conn(conn))
 }
@@ -504,6 +532,21 @@ mod tests {
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].server_id, "srv-1");
         assert_eq!(servers[0].command_kind, CommandKind::Node);
+    }
+
+    #[test]
+    fn update_server_config_round_trips_and_clears() {
+        let (_f, conn) = open_test_conn();
+        insert_server_conn(&conn, &sample_server("srv-cfg")).unwrap();
+        // sample_server starts with no config.
+        assert_eq!(get_server_conn(&conn, "srv-cfg").unwrap().config, None);
+        // Setting a config blob persists and reads back identically.
+        let cfg = serde_json::json!({ "mode": "fast", "n": 3 });
+        update_server_config_conn(&conn, "srv-cfg", Some(&cfg)).unwrap();
+        assert_eq!(get_server_conn(&conn, "srv-cfg").unwrap().config, Some(cfg));
+        // None clears it back to NULL.
+        update_server_config_conn(&conn, "srv-cfg", None).unwrap();
+        assert_eq!(get_server_conn(&conn, "srv-cfg").unwrap().config, None);
     }
 
     #[test]

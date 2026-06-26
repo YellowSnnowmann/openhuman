@@ -117,7 +117,65 @@ const fieldsFromDetail = (detail: SmitheryServerDetail): AuthField[] => {
   return Array.from(map.values());
 };
 
-const URL_RE = /(https?:\/\/[^\s)]+)/g;
+// Linkify the "get your key at <site>" hint registries put in field
+// descriptions. Matches full http(s)/`www.` URLs AND bare domains like
+// `console.apify.com` — registry copy frequently omits the scheme, and a bare
+// domain rendered as grey text reads as prose, leaving the user with no idea it
+// is where the token comes from. The bare-domain arm requires a 2–24 letter TLD
+// so version strings (`v1.2`) and abbreviations (`e.g.`) are not linkified.
+const URL_BODY =
+  '(?:https?:\\/\\/|www\\.)[^\\s)]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,24}(?:\\/[^\\s)]*)?';
+const URL_SPLIT_RE = new RegExp(`(${URL_BODY})`, 'gi');
+const URL_MATCH_RE = new RegExp(`^(?:${URL_BODY})$`, 'i');
+
+// Common file extensions that masquerade as a bare domain (`config.json`,
+// `Node.js`, `report.pdf`). A schemeless, path-less token ending in one of these
+// is prose, not a link — don't turn "set this in config.json" into a dead link.
+const FILE_EXT_RE =
+  /\.(?:json|jsonc|ya?ml|toml|lock|md|mdx|txt|csv|tsv|pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|svg|webp|ico|mp[34]|mov|zip|tar|gz|tgz|rs|js|jsx|mjs|cjs|ts|tsx|py|rb|go|java|php|c|cpp|h|hpp|sh|bash|env|ini|cfg|conf|log|html?|css|scss|sass|xml|sql)$/i;
+
+/** Give a matched link a scheme so the OS opens it (bare domains → https). */
+const withScheme = (s: string): string => (/^https?:\/\//i.test(s) ? s : `https://${s}`);
+
+/** Whether a token matched by URL_SPLIT_RE is really a link worth rendering.
+ *  Tokens with a scheme or a path are always links; a bare `name.ext` token
+ *  whose extension is a known file type (`config.json`, `Node.js`) is not. */
+const isLinkLike = (s: string): boolean => {
+  if (!URL_MATCH_RE.test(s)) return false;
+  if (/^https?:\/\//i.test(s) || s.includes('/')) return true;
+  return !FILE_EXT_RE.test(s);
+};
+
+/** Host of the server's HTTP-remote endpoint, if the detail declares one — the
+ *  provider the token comes from (and the host a 401 would name). */
+const hostFromDetail = (detail: SmitheryServerDetail): string | null => {
+  const url = detail.connections?.find(
+    c => c.type === 'http' && typeof c.deployment_url === 'string' && c.deployment_url.length > 0
+  )?.deployment_url;
+  if (!url) return null;
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
+};
+
+/** Best-effort signup/site URL for a provider host: drop a leading
+ *  `mcp.`/`api.`/`server.`/`www.` label so `mcp.lona.agency` → the provider's
+ *  site `https://lona.agency` rather than the bare MCP endpoint. Only strips
+ *  when ≥2 labels remain, so a two-label host like `server.io` is never reduced
+ *  to a bare public suffix (`https://io`). */
+const providerUrlFromHost = (host: string): string => {
+  const stripped = host.replace(/^(?:mcp|api|server|www)\./i, '');
+  const safe = stripped.split('.').length >= 2 ? stripped : host;
+  return `https://${safe}`;
+};
+
+/** Blank Authorization row offered as a starting point for servers that declare
+ *  no auth schema. Rendered as a default rather than seeded into state from an
+ *  effect (which `react-hooks/set-state-in-effect` forbids); the first edit
+ *  materializes it into `customHeaders`. */
+const FALLBACK_HEADER: CustomHeader = { id: 0, name: 'Authorization', value: '', scheme: 'bearer' };
 
 const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProps) => {
   const { t } = useT();
@@ -149,6 +207,11 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
   const [authKind, setAuthKind] = useState<'detecting' | 'none' | 'token' | 'oauth'>('detecting');
   const [oauthWaiting, setOauthWaiting] = useState(false);
   const [showConfigHelp, setShowConfigHelp] = useState(false);
+  // Host of the server's HTTP-remote endpoint (from the registry detail's
+  // deployment_url). Surfaced as a "get your token from this provider" hint so
+  // the user learns where the credential comes from BEFORE a 401 round-trip —
+  // the same host the failed-connect error reveals, shown up front.
+  const [endpointHost, setEndpointHost] = useState<string | null>(null);
 
   // Only surface fields the server actually wants from the user: required
   // inputs and secrets. Pure config (log level, port, …) keeps server defaults.
@@ -224,6 +287,7 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
       try {
         const detail = await mcpClientsApi.registryGet(server.qualified_name);
         if (cancelled) return;
+        setEndpointHost(hostFromDetail(detail));
         const declared = fieldsFromDetail(detail);
         setFields(prev => {
           const map = new Map<string, AuthField>();
@@ -240,20 +304,17 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
     };
   }, [server.qualified_name]);
 
-  // Seed a blank custom-header row only when the server declares nothing AND
+  // Offer a blank custom-header row only when the server declares nothing AND
   // isn't an OAuth sign-in — i.e. the mislabelled-remote case where the user
   // nonetheless has a token to paste. OAuth servers get the sign-in button, not
-  // a token box (this is what stops "paste a token and hope" failures).
-  useEffect(() => {
-    if (
-      visibleFields.length === 0 &&
-      customHeaders.length === 0 &&
-      authKind !== 'oauth' &&
-      authKind !== 'detecting'
-    ) {
-      setCustomHeaders([{ id: 0, name: 'Authorization', value: '', scheme: 'bearer' }]);
-    }
-  }, [visibleFields.length, customHeaders.length, authKind]);
+  // a token box (this is what stops "paste a token and hope" failures). Derived
+  // rather than seeded from an effect (forbidden by react-hooks/set-state-in-
+  // effect) and gated on `detecting` so the row never flashes before discovery.
+  const offerFallbackHeader =
+    visibleFields.length === 0 && authKind !== 'oauth' && authKind !== 'detecting';
+  // What to render: real headers once the user has any, else the fallback row.
+  const displayHeaders =
+    customHeaders.length === 0 && offerFallbackHeader ? [FALLBACK_HEADER] : customHeaders;
 
   const addCustomHeader = useCallback(() => {
     setCustomHeaders(prev => [...prev, { id: nextId, name: '', value: '', scheme: 'bearer' }]);
@@ -263,6 +324,17 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
   const removeCustomHeader = useCallback((id: number) => {
     setCustomHeaders(prev => prev.filter(h => h.id !== id));
   }, []);
+
+  // Patch a header by id, materializing the fallback row into state on first
+  // edit so the user's input persists without ever seeding state in an effect.
+  const patchHeader = useCallback(
+    (id: number, patch: Partial<CustomHeader>) =>
+      setCustomHeaders(prev => {
+        const base = prev.length === 0 && offerFallbackHeader ? [FALLBACK_HEADER] : prev;
+        return base.map(x => (x.id === id ? { ...x, ...patch } : x));
+      }),
+    [offerFallbackHeader]
+  );
 
   const handleConnect = useCallback(() => {
     // A required field is only "missing" when it's blank now AND wasn't already
@@ -328,18 +400,21 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
     t,
   ]);
 
-  // Render a field description, linkifying any http(s) URL so the user can jump
-  // straight to the "get your key" page.
+  // Render a field description, linkifying any URL or bare domain so the user
+  // can jump straight to the "get your key" page. Links are underlined and
+  // carry an ↗ affordance so they read as actionable, not as plain prose.
   const renderDescription = useCallback(
     (text: string): ReactNode =>
-      text.split(URL_RE).map((part, i) =>
-        /^https?:\/\//.test(part) ? (
+      text.split(URL_SPLIT_RE).map((part, i) =>
+        isLinkLike(part) ? (
           <button
             key={i}
             type="button"
-            onClick={() => void openUrl(part)}
-            className="text-primary-600 dark:text-primary-400 hover:underline break-all">
+            onClick={() => void openUrl(withScheme(part))}
+            title={withScheme(part)}
+            className="font-medium text-primary-600 dark:text-primary-400 underline underline-offset-2 hover:text-primary-700 dark:hover:text-primary-300 break-all">
             {part}
+            <span aria-hidden="true"> ↗</span>
           </button>
         ) : (
           <span key={i}>{part}</span>
@@ -385,6 +460,35 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
               {oauthWaiting ? t('mcp.connectAuth.oauthWaiting') : t('mcp.connectAuth.signIn')}
             </Button>
             <p className="text-[11px] text-content-faint">{t('mcp.connectAuth.oauthOrToken')}</p>
+          </div>
+        )}
+
+        {/* Where-to-get-credentials hint. Shown for non-OAuth servers: it names
+            the provider host up front (from the registry's deployment_url) so
+            the user isn't sent on a 401 round-trip just to discover where the
+            token comes from, and offers the per-server config assistant. */}
+        {authKind !== 'oauth' && (
+          <div className="space-y-1 rounded-lg border border-line bg-surface-muted px-3 py-2">
+            {endpointHost && (
+              <p className="text-[11px] text-content-secondary">
+                {t('mcp.connectAuth.tokenProvider')}{' '}
+                <button
+                  type="button"
+                  onClick={() => void openUrl(providerUrlFromHost(endpointHost))}
+                  title={providerUrlFromHost(endpointHost)}
+                  className="font-medium text-primary-600 dark:text-primary-400 underline underline-offset-2 hover:text-primary-700 dark:hover:text-primary-300 break-all">
+                  {endpointHost}
+                  <span aria-hidden="true"> ↗</span>
+                </button>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowConfigHelp(true)}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:underline">
+              {t('mcp.connectAuth.findToken')}
+              <span aria-hidden="true">↗</span>
+            </button>
           </div>
         )}
 
@@ -480,22 +584,18 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
               {t('mcp.connectAuth.addHeader')}
             </button>
           </div>
-          {customHeaders.length === 0 && (
+          {displayHeaders.length === 0 && (
             <p className="text-[11px] text-content-faint">
               {t('mcp.connectAuth.customHeadersEmpty')}
             </p>
           )}
-          {customHeaders.map(h => (
+          {displayHeaders.map(h => (
             <div key={h.id} className="space-y-1.5 rounded-lg border border-line p-2">
               {/* Row 1: header name + scheme + remove */}
               <div className="flex gap-2">
                 <input
                   value={h.name}
-                  onChange={e =>
-                    setCustomHeaders(prev =>
-                      prev.map(x => (x.id === h.id ? { ...x, name: e.target.value } : x))
-                    )
-                  }
+                  onChange={e => patchHeader(h.id, { name: e.target.value })}
                   placeholder={t('mcp.connectAuth.headerName')}
                   disabled={busy}
                   autoComplete="off"
@@ -506,13 +606,7 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
                 />
                 <select
                   value={h.scheme}
-                  onChange={e =>
-                    setCustomHeaders(prev =>
-                      prev.map(x =>
-                        x.id === h.id ? { ...x, scheme: e.target.value as 'bearer' | 'raw' } : x
-                      )
-                    )
-                  }
+                  onChange={e => patchHeader(h.id, { scheme: e.target.value as 'bearer' | 'raw' })}
                   disabled={busy}
                   title={t('mcp.connectAuth.schemeLabel')}
                   className="shrink-0 rounded-lg border border-line bg-surface px-1.5 py-1.5 text-[11px] text-content-secondary focus:outline-none focus:ring-2 focus:ring-primary-500/40 disabled:opacity-50">
@@ -533,11 +627,7 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
               <input
                 type="password"
                 value={h.value}
-                onChange={e =>
-                  setCustomHeaders(prev =>
-                    prev.map(x => (x.id === h.id ? { ...x, value: e.target.value } : x))
-                  )
-                }
+                onChange={e => patchHeader(h.id, { value: e.target.value })}
                 placeholder={t('mcp.connectAuth.headerValue')}
                 disabled={busy}
                 // Suppress Chromium password-manager autofill (token leakage

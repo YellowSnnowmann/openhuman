@@ -357,18 +357,26 @@ fn parse_ref_map(raw: HashMap<String, String>) -> Result<HashMap<String, SecretR
 /// Best-effort scan of a Smithery `config_schema` for required env keys.
 /// Mirrors the legacy helper in `ops.rs` so the setup agent does not
 /// depend on its private wiring.
-fn collect_required_env_keys(detail: &super::types::SmitheryServerDetail) -> Vec<String> {
+pub(crate) fn collect_required_env_keys(
+    detail: &super::types::SmitheryServerDetail,
+) -> Vec<String> {
+    // Derive required inputs from the connection the install will actually use,
+    // not from every connection. Hosted HTTP-remote is now preferred over a
+    // local stdio package (see `pick_connection`), so a server that offers both
+    // must not demand the stdio package's env vars for an install that connects
+    // over HTTP and never consumes them. `config_schema.properties` carries the
+    // stdio env vars or the HTTP remote's headers depending on the picked
+    // transport, so reading the picked connection covers both.
+    let Some(conn) = pick_connection(&detail.connections) else {
+        return Vec::new();
+    };
     let mut keys = Vec::new();
-    for conn in &detail.connections {
-        if conn.r#type != "stdio" {
-            continue;
-        }
-        let Some(schema) = conn.config_schema.as_ref() else {
-            continue;
-        };
-        let Some(props) = schema.get("properties").and_then(Value::as_object) else {
-            continue;
-        };
+    if let Some(props) = conn
+        .config_schema
+        .as_ref()
+        .and_then(|schema| schema.get("properties"))
+        .and_then(Value::as_object)
+    {
         for k in props.keys() {
             if !keys.contains(k) {
                 keys.push(k.clone());
@@ -611,5 +619,70 @@ mod tests {
         let err = build_install_transport("io.x/remote", &picked)
             .expect_err("missing deployment_url must error");
         assert!(err.contains("deployment_url"), "got: {err}");
+    }
+
+    fn conn_schema(kind: &str, url: Option<&str>, props: &[&str]) -> SmitheryConnection {
+        let properties: serde_json::Map<String, Value> = props
+            .iter()
+            .map(|k| (k.to_string(), serde_json::json!({ "type": "string" })))
+            .collect();
+        SmitheryConnection {
+            r#type: kind.to_string(),
+            deployment_url: url.map(String::from),
+            config_schema: Some(serde_json::json!({ "properties": properties })),
+            example_config: None,
+            published: true,
+            extra: std::collections::HashMap::new(),
+        }
+    }
+
+    fn detail_with(conns: Vec<SmitheryConnection>) -> super::super::types::SmitheryServerDetail {
+        super::super::types::SmitheryServerDetail {
+            qualified_name: "@t/s".to_string(),
+            display_name: "T".to_string(),
+            description: None,
+            icon_url: None,
+            connections: conns,
+            source: "smithery".to_string(),
+            extra: Default::default(),
+        }
+    }
+
+    /// Mixed-transport server: install prefers the hosted http connection, so the
+    /// required keys must be the http connection's headers — NOT the stdio
+    /// package's env vars the install will never consume.
+    #[test]
+    fn required_env_keys_uses_picked_http_connection_headers() {
+        let detail = detail_with(vec![
+            conn_schema("stdio", None, &["STDIO_KEY"]),
+            conn_schema("http", Some("https://x.io/mcp"), &["Authorization"]),
+        ]);
+        let keys = collect_required_env_keys(&detail);
+        assert_eq!(keys, vec!["Authorization".to_string()]);
+        assert!(!keys.contains(&"STDIO_KEY".to_string()));
+    }
+
+    /// Stdio-only server still surfaces its declared env vars.
+    #[test]
+    fn required_env_keys_stdio_only_returns_its_keys() {
+        let detail = detail_with(vec![conn_schema("stdio", None, &["API_KEY", "ENDPOINT"])]);
+        let keys = collect_required_env_keys(&detail);
+        assert!(keys.contains(&"API_KEY".to_string()));
+        assert!(keys.contains(&"ENDPOINT".to_string()));
+    }
+
+    /// A picked http connection with no declared schema needs no user input.
+    #[test]
+    fn required_env_keys_http_without_schema_is_empty() {
+        let detail = detail_with(vec![conn("http", true, Some("https://x.io/mcp"))]);
+        assert!(collect_required_env_keys(&detail).is_empty());
+    }
+
+    /// No dialable connection (only an unknown transport) → no keys, mirroring
+    /// the install path which would reject the server entirely.
+    #[test]
+    fn required_env_keys_empty_when_no_dialable_connection() {
+        let detail = detail_with(vec![conn("ws", true, Some("wss://x.io"))]);
+        assert!(collect_required_env_keys(&detail).is_empty());
     }
 }
