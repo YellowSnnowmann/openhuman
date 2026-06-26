@@ -23,6 +23,22 @@ use super::types::{SmitheryServerDetail, SmitheryServerSummary};
 
 const SOURCE_SEPARATOR: &str = "::";
 
+/// A "perfect server" the catalog will show: its registry metadata is complete
+/// enough to connect with **no probing and no guessing** — it declares both a
+/// vendor `websiteUrl` (trust/quality) *and* a named API-key/token credential
+/// (`auth_kind == "api_key"`), so the install flow knows exactly what to ask
+/// for. Servers whose auth is only knowable by probing (OAuth) or absent (open)
+/// or ambiguous are intentionally excluded from the strict catalog.
+fn is_perfect_server(server: &SmitheryServerSummary) -> bool {
+    let has_site = server
+        .website_url
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    let declares_key = server.auth_kind.as_deref() == Some("api_key");
+    has_site && declares_key
+}
+
 /// Search every enabled registry in parallel; merge results. `total_pages`
 /// is the max page count reported across registries (best-effort upper
 /// bound).
@@ -51,6 +67,20 @@ pub async fn registry_search(
     // Just badge the canonical first-party server for each known service so the
     // official one is easy to spot without throwing any alternatives away.
     super::curation::tag_official(&mut merged);
+
+    // Strict catalog: show only "perfect" servers — those whose metadata fully
+    // specifies how to connect (vendor site + a declared named credential), so
+    // the user never sees a misleading or guessed auth story. Probe-only (OAuth)
+    // and under-declared servers are filtered out here.
+    let before = merged.len();
+    merged.retain(is_perfect_server);
+    if merged.len() != before {
+        tracing::debug!(
+            "[mcp-registry] perfect-server filter kept {}/{} (page {page})",
+            merged.len(),
+            before
+        );
+    }
 
     if total_pages == 0 {
         total_pages = page.max(1);
@@ -145,8 +175,37 @@ mod tests {
             is_deployed: false,
             source: source.to_string(),
             official: false,
+            // Default to a "perfect" server so existing merge/dedup tests aren't
+            // filtered out; the filter tests below override these explicitly.
+            website_url: Some("https://vendor.example".to_string()),
+            auth_kind: Some("api_key".to_string()),
             extra: Default::default(),
         }
+    }
+
+    #[test]
+    fn is_perfect_server_requires_both_website_and_declared_key() {
+        let mut s = summary("acme/x", "mcp_official"); // perfect by default
+        assert!(is_perfect_server(&s));
+
+        // Missing website → not perfect.
+        s.website_url = None;
+        assert!(!is_perfect_server(&s));
+
+        // Has website but no declared credential (open / oauth-only) → not perfect.
+        let mut s2 = summary("acme/y", "mcp_official");
+        s2.auth_kind = None;
+        assert!(!is_perfect_server(&s2));
+
+        // A blank website string doesn't count.
+        let mut s3 = summary("acme/z", "mcp_official");
+        s3.website_url = Some("   ".to_string());
+        assert!(!is_perfect_server(&s3));
+
+        // Some other auth_kind (not a declared key) → not perfect.
+        let mut s4 = summary("acme/w", "mcp_official");
+        s4.auth_kind = Some("oauth".to_string());
+        assert!(!is_perfect_server(&s4));
     }
 
     #[test]

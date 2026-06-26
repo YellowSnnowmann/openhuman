@@ -11,7 +11,7 @@
  * the install itself, and best-effort `mcpClientsApi.connect` post-install.
  */
 import debug from 'debug';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { mcpClientsApi } from '../../../services/api/mcpClientsApi';

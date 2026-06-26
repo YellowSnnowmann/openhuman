@@ -1508,6 +1508,9 @@ const messages: TranslationMap = {
   'mcp.tab.transport.localHint': 'Działa na Twoim urządzeniu — może wymagać tokena przy instalacji',
   'mcp.tab.officialBadge': 'Oficjalny',
   'mcp.tab.officialHint': 'Oficjalny serwer dostawcy',
+  'mcp.tab.auth.apiKey': 'Klucz API',
+  'mcp.tab.auth.apiKeyHint':
+    'Wymaga klucza API, który wkleisz przy łączeniu — zadeklarowany przez serwer',
   'mcp.tab.badge.installed': 'Zainstalowane',
   'mcp.tab.badge.registry': 'Rejestr',
   'mcp.tab.action.manage': 'Zarządzaj',

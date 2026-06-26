@@ -1488,6 +1488,9 @@ const messages: TranslationMap = {
   'mcp.tab.transport.localHint': 'আপনার ডিভাইসে চলে — ইনস্টলের সময় টোকেন লাগতে পারে',
   'mcp.tab.officialBadge': 'অফিশিয়াল',
   'mcp.tab.officialHint': 'বিক্রেতার অফিশিয়াল সার্ভার',
+  'mcp.tab.auth.apiKey': 'API কী',
+  'mcp.tab.auth.apiKeyHint':
+    'সংযোগের সময় পেস্ট করার জন্য একটি API কী প্রয়োজন — সার্ভার দ্বারা ঘোষিত',
   'mcp.tab.badge.installed': 'ইনস্টল করা',
   'mcp.tab.badge.registry': 'রেজিস্ট্রি',
   'mcp.tab.action.manage': 'পরিচালনা',

@@ -276,6 +276,31 @@ describe('McpServersTab', () => {
     expect(screen.getByText('Install')).toBeInTheDocument();
   });
 
+  it('shows an API key badge on rows that declare a key', async () => {
+    mockInstalledList.mockResolvedValue([]);
+    mockStatus.mockResolvedValue([]);
+    mockRegistrySearch.mockResolvedValue({
+      servers: [
+        {
+          qualified_name: 'ai.adadvisor/mcp-server',
+          display_name: 'AdAdvisor',
+          source: 'mcp_official',
+          website_url: 'https://www.adadvisor.ai',
+          auth_kind: 'api_key',
+        },
+      ],
+      page: 1,
+      total_pages: 1,
+    });
+
+    await renderAndWaitForLoad();
+    vi.useRealTimers();
+
+    await waitFor(() => expect(screen.getByText('AdAdvisor')).toBeInTheDocument());
+    // The declared-key badge (🔑 prefix → match loosely).
+    expect(screen.getByText(/API key/)).toBeInTheDocument();
+  });
+
   it('renders only one row per qualified_name when the registry returns duplicates', async () => {
     mockInstalledList.mockResolvedValue([]);
     mockStatus.mockResolvedValue([]);

@@ -155,7 +155,9 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
   const [error, setError] = useState<string | null>(null);
   // Detected auth style: drives whether we show "Sign in" (browser OAuth) vs.
   // the token/header fields. `detecting` until the probe returns.
-  const [authKind, setAuthKind] = useState<'detecting' | 'none' | 'token' | 'oauth'>('detecting');
+  const [authKind, setAuthKind] = useState<'detecting' | 'none' | 'token' | 'oauth' | 'unknown'>(
+    'detecting'
+  );
   const [oauthWaiting, setOauthWaiting] = useState(false);
   const [showConfigHelp, setShowConfigHelp] = useState(false);
 
@@ -172,8 +174,10 @@ const ConnectAuthModal = ({ server, onClose, onConnected }: ConnectAuthModalProp
         const d = await mcpClientsApi.detectAuth(server.server_id);
         if (!cancelled) setAuthKind(d.kind);
       } catch (err) {
+        // Do NOT fall back to 'token' — guessing a bearer box for a server that
+        // might be OAuth (or open) is the misleading soft-failure we removed.
         log('detect_auth failed (non-fatal): %s', err instanceof Error ? err.message : err);
-        if (!cancelled) setAuthKind('token');
+        if (!cancelled) setAuthKind('unknown');
       }
     })();
     return () => {

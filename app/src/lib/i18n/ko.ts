@@ -1481,6 +1481,8 @@ const messages: TranslationMap = {
   'mcp.tab.transport.localHint': '기기에서 실행 — 설치 시 토큰이 필요할 수 있습니다',
   'mcp.tab.officialBadge': '공식',
   'mcp.tab.officialHint': '공급업체의 공식 서버',
+  'mcp.tab.auth.apiKey': 'API 키',
+  'mcp.tab.auth.apiKeyHint': '연결할 때 붙여넣을 API 키가 필요합니다 — 서버가 선언함',
   'mcp.tab.badge.installed': '설치됨',
   'mcp.tab.badge.registry': '레지스트리',
   'mcp.tab.action.manage': '관리',

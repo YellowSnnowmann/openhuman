@@ -131,13 +131,13 @@ export const mcpClientsApi = {
   detectAuth: async (
     server_id: string
   ): Promise<{
-    kind: 'none' | 'token' | 'oauth';
+    kind: 'none' | 'token' | 'oauth' | 'unknown';
     authorization_endpoint?: string;
     grant_types: string[];
   }> => {
     log('detect_auth server_id=%s', server_id);
     const result = await callCoreRpc<{
-      kind: 'none' | 'token' | 'oauth';
+      kind: 'none' | 'token' | 'oauth' | 'unknown';
       authorization_endpoint?: string;
       grant_types: string[];
     }>({ method: 'openhuman.mcp_clients_detect_auth', params: { server_id } });

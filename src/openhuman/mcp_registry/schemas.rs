@@ -357,9 +357,9 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 FieldSchema {
                     name: "kind",
                     ty: TypeSchema::Enum {
-                        variants: vec!["none", "token", "oauth"],
+                        variants: vec!["none", "token", "oauth", "unknown"],
                     },
-                    comment: "`none` (open), `token` (static bearer/API key), or `oauth` (browser sign-in).",
+                    comment: "`none` (open), `token` (static bearer/API key), `oauth` (browser sign-in), or `unknown` (couldn't classify — don't guess a token box).",
                     required: true,
                 },
                 FieldSchema {

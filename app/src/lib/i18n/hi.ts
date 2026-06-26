@@ -1487,6 +1487,9 @@ const messages: TranslationMap = {
     'आपके डिवाइस पर चलता है — इंस्टॉल करते समय टोकन की ज़रूरत हो सकती है',
   'mcp.tab.officialBadge': 'आधिकारिक',
   'mcp.tab.officialHint': 'वेंडर का आधिकारिक सर्वर',
+  'mcp.tab.auth.apiKey': 'API कुंजी',
+  'mcp.tab.auth.apiKeyHint':
+    'कनेक्ट करते समय पेस्ट करने के लिए एक API कुंजी आवश्यक — सर्वर द्वारा घोषित',
   'mcp.tab.badge.installed': 'इंस्टॉल किया गया',
   'mcp.tab.badge.registry': 'रजिस्ट्री',
   'mcp.tab.action.manage': 'प्रबंधित करें',

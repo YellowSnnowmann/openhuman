@@ -114,7 +114,9 @@ fn now_unix() -> u64 {
 /// Result of [`detect`] — drives which control the connect modal renders.
 #[derive(Debug, Serialize)]
 pub struct AuthDetection {
-    /// `none` (open) · `token` (static bearer/API key) · `oauth` (browser sign-in).
+    /// `none` (open) · `token` (static bearer/API key) · `oauth` (browser
+    /// sign-in) · `unknown` (couldn't classify — the UI must NOT guess a token
+    /// box; offer manual/advanced config instead).
     pub kind: String,
     pub authorization_endpoint: Option<String>,
     pub grant_types: Vec<String>,
@@ -258,12 +260,15 @@ pub async fn detect(config: &Config, server_id: &str) -> Result<AuthDetection, S
             grant_types: vec![],
         }),
         Ok(Some(ctx)) => Ok(classify_auth_context(&ctx)),
-        // 401 we couldn't fully parse, or a transient error: let the user paste
-        // a token rather than block them.
+        // 401 we couldn't fully parse, or a transient error. We deliberately do
+        // NOT guess "token" here: seeding a bearer box for a server that might
+        // actually be OAuth (or open) is exactly the misleading soft-failure we
+        // removed. Report `unknown` and let the UI offer manual/advanced config
+        // without pretending to know what the server wants.
         Err(e) => {
-            tracing::debug!("[mcp-oauth] detect fell back to token for {server_id}: {e}");
+            tracing::debug!("[mcp-oauth] detect could not classify {server_id}: {e}");
             Ok(AuthDetection {
-                kind: "token".into(),
+                kind: "unknown".into(),
                 authorization_endpoint: None,
                 grant_types: vec![],
             })

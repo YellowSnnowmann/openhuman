@@ -1422,6 +1422,8 @@ const messages: TranslationMap = {
   'mcp.tab.transport.localHint': '在您的设备上运行 — 安装时可能需要令牌',
   'mcp.tab.officialBadge': '官方',
   'mcp.tab.officialHint': '来自供应商的官方服务器',
+  'mcp.tab.auth.apiKey': 'API 密钥',
+  'mcp.tab.auth.apiKeyHint': '需要在连接时粘贴的 API 密钥——由服务器声明',
   'mcp.tab.badge.installed': '已安装',
   'mcp.tab.badge.registry': '注册表',
   'mcp.tab.action.manage': '管理',

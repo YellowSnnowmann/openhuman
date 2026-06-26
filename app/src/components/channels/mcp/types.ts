@@ -23,6 +23,17 @@ export type SmitheryServer = {
    * hidden. Stamped by the Rust dispatcher; never trusted from the wire.
    */
   official?: boolean;
+  /**
+   * Vendor/site URL the server declares (`websiteUrl`). The strict "perfect
+   * server" catalog only lists servers that declare one; the row links to it.
+   */
+  website_url?: string;
+  /**
+   * Declared auth method from registry metadata alone (no probe): `'api_key'`
+   * when the server names a secret credential, else absent. Drives the row's
+   * auth badge — only what the schema declares, never a guess.
+   */
+  auth_kind?: 'api_key';
 };
 
 /** One credential input a server declares (from its connection config_schema). */

@@ -62,6 +62,8 @@ mod tests {
             is_deployed: true,
             source: "mcp_official".to_string(),
             official: false,
+            website_url: None,
+            auth_kind: None,
             extra: Default::default(),
         }
     }

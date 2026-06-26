@@ -276,11 +276,21 @@ describe('ConnectAuthModal', () => {
     });
   });
 
-  it('falls back to token fields when detectAuth throws', async () => {
+  it('still shows declared fields when detectAuth throws (no token guess)', async () => {
     mockDetectAuth.mockRejectedValue(new Error('probe failed'));
     render(<ConnectAuthModal server={BASE_SERVER} onClose={() => {}} onConnected={() => {}} />);
-    // Non-fatal: the modal still renders and shows the declared key field.
+    // Non-fatal: the modal still renders the *declared* key field. The probe
+    // failure resolves to `unknown`, which must NOT seed a guessed bearer box
+    // (that was the misleading soft-failure we removed).
     expect(await screen.findByLabelText('Authorization')).toBeInTheDocument();
+  });
+
+  it('does not seed a token box when detectAuth is unknown and nothing is declared', async () => {
+    mockDetectAuth.mockResolvedValue({ kind: 'unknown', grant_types: [] });
+    render(<ConnectAuthModal server={NO_KEYS_SERVER} onClose={() => {}} onConnected={() => {}} />);
+    await screen.findByRole('dialog');
+    // No declared field + unknown auth → no auto-seeded Authorization row.
+    expect(screen.queryByLabelText('Authorization')).not.toBeInTheDocument();
   });
 
   it('renders a declared field from config_schema with a linkified description', async () => {
