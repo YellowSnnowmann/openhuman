@@ -10243,6 +10243,12 @@ async fn mcp_clients_lifecycle() {
 /// No npx, no network: we pre-seed `smithery:detail:<name>` with a detail whose
 /// stdio `exampleConfig.command` points at the stub binary, so
 /// `mcp_clients_install` resolves the launch command to the stub.
+///
+/// Smithery is now opt-in (only enabled when an API key is set), so we install
+/// with the explicit `smithery::` source prefix. `registry_get` routes a
+/// prefixed name straight to that adapter via `registry_for_source`, which
+/// resolves Smithery regardless of the key gate — the same path used for detail
+/// lookups of an already-installed Smithery server.
 #[tokio::test]
 async fn mcp_clients_install_connect_tool_call_happy_path() {
     let _env_lock = json_rpc_e2e_env_lock();
@@ -10296,7 +10302,7 @@ async fn mcp_clients_install_connect_tool_call_happy_path() {
         &rpc_base,
         9920,
         "openhuman.mcp_clients_install",
-        json!({ "qualified_name": qualified_name, "env": {} }),
+        json!({ "qualified_name": format!("smithery::{qualified_name}"), "env": {} }),
     )
     .await;
     let install_result = assert_no_jsonrpc_error(&install, "mcp_clients_install (happy path)");
@@ -10450,6 +10456,9 @@ async fn mcp_clients_set_enabled_smoke() {
     write_min_config(&user_scoped_dir, &mock_origin);
 
     // Seed the registry detail cache so install resolves offline to the stub.
+    // Smithery is opt-in (gated on an API key), so install routes via the
+    // explicit `smithery::` source prefix below — `registry_for_source` resolves
+    // the adapter regardless of the key gate.
     let stub_path = env!("CARGO_BIN_EXE_test-mcp-stub");
     let qualified_name = "@openhuman-test/echo-set-enabled";
     let detail = serde_json::json!({
@@ -10481,7 +10490,7 @@ async fn mcp_clients_set_enabled_smoke() {
         &rpc_base,
         9940,
         "openhuman.mcp_clients_install",
-        json!({ "qualified_name": qualified_name, "env": {} }),
+        json!({ "qualified_name": format!("smithery::{qualified_name}"), "env": {} }),
     )
     .await;
     let install_result =
