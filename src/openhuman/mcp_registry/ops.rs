@@ -150,8 +150,12 @@ pub async fn mcp_clients_install(
         if !env.is_empty() {
             // Merge over the stored values (same semantics as update_env) so a
             // partial dialog submission doesn't erase keys it didn't resend.
-            let mut merged =
-                store::load_env_values(config, &existing.server_id).unwrap_or_default();
+            // Propagate a failed read rather than defaulting to empty — an
+            // unwrap_or_default() here would silently drop the existing
+            // env_keys_json contents if the merge base came back empty and the
+            // later write succeeded.
+            let mut merged = store::load_env_values(config, &existing.server_id)
+                .map_err(|e| format!("Failed to load existing env values: {e}"))?;
             merged.extend(env.clone());
             store::set_env_values(config, &existing.server_id, &merged)
                 .map_err(|e| e.to_string())?;
