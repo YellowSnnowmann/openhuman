@@ -1523,9 +1523,6 @@ const messages: TranslationMap = {
     'Se ejecuta en tu dispositivo: puede necesitar un token al instalar',
   'mcp.tab.officialBadge': 'Oficial',
   'mcp.tab.officialHint': 'Servidor oficial del proveedor',
-  'mcp.tab.auth.apiKey': 'Clave de API',
-  'mcp.tab.auth.apiKeyHint':
-    'Necesita una clave de API que pegarás al conectar — declarada por el servidor',
   'mcp.tab.badge.installed': 'Instalado',
   'mcp.tab.badge.registry': 'Registro',
   'mcp.tab.action.manage': 'Gestionar',

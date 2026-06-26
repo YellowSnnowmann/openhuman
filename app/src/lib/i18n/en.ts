@@ -1840,9 +1840,6 @@ const en: TranslationMap = {
   'mcp.tab.transport.localHint': 'Runs on your device — may need a token when you install',
   'mcp.tab.officialBadge': 'Official',
   'mcp.tab.officialHint': 'Official server from the vendor',
-  'mcp.tab.auth.apiKey': 'API key',
-  'mcp.tab.auth.apiKeyHint':
-    'Needs an API key you’ll paste when connecting — declared by the server',
   'mcp.tab.badge.installed': 'Installed',
   'mcp.tab.badge.registry': 'Registry',
   'mcp.tab.action.manage': 'Manage',

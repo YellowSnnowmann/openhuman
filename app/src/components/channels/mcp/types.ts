@@ -29,9 +29,11 @@ export type SmitheryServer = {
    */
   website_url?: string;
   /**
-   * Declared auth method from registry metadata alone (no probe): `'api_key'`
-   * when the server names a secret credential, else absent. Drives the row's
-   * auth badge — only what the schema declares, never a guess.
+   * Declared auth method from registry metadata alone: `'api_key'` when the
+   * server names a secret credential. Used server-side by the strict catalog
+   * filter — NOT rendered as a row badge: an audit showed declared auth is
+   * wrong ~65% of the time, so the real method is only shown on the detail
+   * screen after a live probe.
    */
   auth_kind?: 'api_key';
 };

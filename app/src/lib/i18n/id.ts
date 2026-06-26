@@ -1495,9 +1495,6 @@ const messages: TranslationMap = {
   'mcp.tab.transport.localHint': 'Berjalan di perangkat Anda — mungkin perlu token saat memasang',
   'mcp.tab.officialBadge': 'Resmi',
   'mcp.tab.officialHint': 'Server resmi dari vendor',
-  'mcp.tab.auth.apiKey': 'Kunci API',
-  'mcp.tab.auth.apiKeyHint':
-    'Perlu kunci API yang Anda tempelkan saat menghubungkan — dideklarasikan oleh server',
   'mcp.tab.badge.installed': 'Terpasang',
   'mcp.tab.badge.registry': 'Registri',
   'mcp.tab.action.manage': 'Kelola',

@@ -1530,9 +1530,6 @@ const messages: TranslationMap = {
     "S'exécute sur votre appareil — peut nécessiter un jeton lors de l'installation",
   'mcp.tab.officialBadge': 'Officiel',
   'mcp.tab.officialHint': 'Serveur officiel du fournisseur',
-  'mcp.tab.auth.apiKey': 'Clé API',
-  'mcp.tab.auth.apiKeyHint':
-    'Nécessite une clé API à coller lors de la connexion — déclarée par le serveur',
   'mcp.tab.badge.installed': 'Installé',
   'mcp.tab.badge.registry': 'Registre',
   'mcp.tab.action.manage': 'Gérer',

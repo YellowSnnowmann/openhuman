@@ -276,7 +276,10 @@ describe('McpServersTab', () => {
     expect(screen.getByText('Install')).toBeInTheDocument();
   });
 
-  it('shows an API key badge on rows that declare a key', async () => {
+  it('does not claim an auth method on catalog rows (auth is only known after a probe)', async () => {
+    // Registry auth metadata is unreliable (audit: ~65% of declared-"api_key"
+    // servers are actually open/OAuth). The list never probes, so it must not
+    // render an auth badge that the detail/probe would then contradict.
     mockInstalledList.mockResolvedValue([]);
     mockStatus.mockResolvedValue([]);
     mockRegistrySearch.mockResolvedValue({
@@ -297,8 +300,8 @@ describe('McpServersTab', () => {
     vi.useRealTimers();
 
     await waitFor(() => expect(screen.getByText('AdAdvisor')).toBeInTheDocument());
-    // The declared-key badge (🔑 prefix → match loosely).
-    expect(screen.getByText(/API key/)).toBeInTheDocument();
+    // No unverified "API key" claim on the row.
+    expect(screen.queryByText(/API key/)).not.toBeInTheDocument();
   });
 
   it('renders only one row per qualified_name when the registry returns duplicates', async () => {

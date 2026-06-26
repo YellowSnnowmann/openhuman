@@ -1459,8 +1459,6 @@ const messages: TranslationMap = {
   'mcp.tab.transport.localHint': 'يعمل على جهازك — قد يحتاج إلى رمز عند التثبيت',
   'mcp.tab.officialBadge': 'رسمي',
   'mcp.tab.officialHint': 'خادم رسمي من المزوّد',
-  'mcp.tab.auth.apiKey': 'مفتاح API',
-  'mcp.tab.auth.apiKeyHint': 'يتطلب مفتاح API ستلصقه عند الاتصال — مُعلن من الخادم',
   'mcp.tab.badge.installed': 'مثبت',
   'mcp.tab.badge.registry': 'السجل',
   'mcp.tab.action.manage': 'إدارة',
