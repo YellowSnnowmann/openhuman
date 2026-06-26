@@ -8,6 +8,7 @@
 import debug from 'debug';
 
 import type {
+  AuthPlan,
   ConnStatus,
   InstalledServer,
   McpTool,
@@ -142,6 +143,22 @@ export const mcpClientsApi = {
     }>({ method: 'openhuman.mcp_clients_detect_auth', params: { server_id } });
     log('detect_auth -> %s', result.kind);
     return result;
+  },
+
+  /**
+   * Pre-install auth classification for a catalog server: probes the remote's
+   * live 401 (the truth) and reconciles it with the registry's declared fields.
+   * Unlike {@link detectAuth} this needs no installed server_id, so the install
+   * screen can show the right auth story *before* install.
+   */
+  probeAuth: async (qualified_name: string): Promise<AuthPlan> => {
+    log('probe_auth qualified_name=%s', qualified_name);
+    const result = await callCoreRpc<{ plan: AuthPlan }>({
+      method: 'openhuman.mcp_clients_probe_auth',
+      params: { qualified_name },
+    });
+    log('probe_auth -> %s (%s)', result.plan?.method, result.plan?.confidence);
+    return result.plan;
   },
 
   /**

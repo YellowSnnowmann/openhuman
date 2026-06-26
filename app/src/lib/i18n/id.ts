@@ -1514,6 +1514,15 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': 'Gagal memuat detail server',
   'mcp.install.failedInstall': 'Penginstalan gagal',
   'mcp.install.button': 'Penginstalan',
+  'mcp.install.auth.oauth':
+    'Perlu masuk — Anda akan masuk dengan {name} di browser setelah memasang.',
+  'mcp.install.auth.apiKey':
+    'Perlu kunci API — Anda akan diminta menempelkannya saat menghubungkan.',
+  'mcp.install.auth.open': 'Tidak perlu masuk — server ini terhubung tanpa autentikasi.',
+  'mcp.install.auth.unknown':
+    'Kami tidak dapat memverifikasi cara server ini masuk; Anda akan mengonfigurasi autentikasi saat menghubungkan.',
+  'mcp.install.auth.mismatch':
+    'Perhatian: daftar mendeskripsikannya berbeda dari yang sebenarnya diperlukan server ({observed}). Kami akan menggunakan yang dilaporkan server.',
   'mcp.install.installing': 'Penginstalan...',
   'mcp.install.by': 'oleh',
   'mcp.install.transportLocal': 'Berjalan secara lokal',

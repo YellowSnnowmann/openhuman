@@ -66,22 +66,17 @@ fn all_registries() -> Vec<Box<dyn Registry>> {
     ]
 }
 
-/// Registries that participate in catalog **search** for this user. The
-/// official modelcontextprotocol.io registry is always on; Smithery is included
-/// only when a Smithery API key is configured.
+/// Registries that participate in catalog **search** for this user. Both the
+/// official modelcontextprotocol.io registry and Smithery are always queried.
 ///
-/// Why gate Smithery: its servers don't run standalone — they're reached
-/// through Smithery's gateway (`server.smithery.ai/<qn>/mcp?api_key=…&profile=…`)
-/// using the user's Smithery account, with per-server credentials configured on
-/// smithery.ai. Without a key they can't connect in-app, so listing thousands
-/// of them only yields un-installable rows with a misleading "sign in" banner.
-/// Surface them only once the user has opted in by setting a key.
-pub fn enabled_registries(config: &Config) -> Vec<Box<dyn Registry>> {
-    let mut registries: Vec<Box<dyn Registry>> = vec![Box::new(mcp_official::McpOfficialRegistry)];
-    if smithery::smithery_api_key(config).is_some() {
-        registries.push(Box::new(smithery::SmitheryRegistry));
-    }
-    registries
+/// Smithery's *listing* endpoint is public (no key needed to browse), so we
+/// always surface its catalog — gating the listing behind a key made the whole
+/// catalog vanish for users without one. How each server actually authenticates
+/// is classified per-server by an unauthenticated probe (most Smithery servers
+/// are browser-OAuth via `auth.smithery.ai`, not a static account key) — see
+/// [`super::auth_plan`], surfaced through the `probe_auth` RPC.
+pub fn enabled_registries(_config: &Config) -> Vec<Box<dyn Registry>> {
+    all_registries()
 }
 
 /// Resolve a registry by [`Registry::source`] id. Searches *all* adapters (not
@@ -109,5 +104,22 @@ mod tests {
             Some(SOURCE_SMITHERY)
         );
         assert!(registry_for_source("nope").is_none());
+    }
+
+    #[test]
+    fn enabled_registries_always_includes_smithery_even_without_a_key() {
+        // Regression: gating the *listing* behind a Smithery key collapsed the
+        // whole catalog to official-only (often empty) for users with no key.
+        // Smithery's browse endpoint is public, so it must always participate.
+        let config = Config::default();
+        let sources: Vec<&str> = enabled_registries(&config)
+            .iter()
+            .map(|r| r.source())
+            .collect();
+        assert!(sources.contains(&SOURCE_MCP_OFFICIAL));
+        assert!(
+            sources.contains(&SOURCE_SMITHERY),
+            "Smithery must be listed even with no key — the key only gates connect, not browse"
+        );
     }
 }

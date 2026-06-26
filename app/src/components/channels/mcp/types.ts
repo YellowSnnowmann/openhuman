@@ -25,6 +25,38 @@ export type SmitheryServer = {
   official?: boolean;
 };
 
+/** One credential input a server declares (from its connection config_schema). */
+export type AuthField = {
+  name: string;
+  description?: string;
+  secret: boolean;
+  required: boolean;
+  get_key_url?: string;
+  /** `'header'` (http remote) or `'env'` (stdio package). */
+  location: 'header' | 'env';
+};
+
+/**
+ * How a server authenticates — the single source of truth, produced by the Rust
+ * `probe_auth` RPC (an unauthenticated probe of the live endpoint reconciled
+ * with the registry's declared fields). Both the install screen and the connect
+ * modal render from this so they can never tell two different auth stories.
+ *
+ * - `open` — no auth; just connect.
+ * - `oauth` — browser sign-in (use `provider` for the button label).
+ * - `api_key` — paste the declared `fields`.
+ * - `unknown` — couldn't determine; offer manual/advanced config.
+ */
+export type AuthPlan = {
+  method: 'open' | 'oauth' | 'api_key' | 'unknown';
+  /** `'probed'` (live 401/200) or `'declared'` (registry hint only). */
+  confidence: 'probed' | 'declared';
+  fields: AuthField[];
+  provider?: string;
+  /** Set when the registry's claim disagreed with the probe; the probe wins. */
+  mismatch?: { declared: string; observed: string };
+};
+
 export type SmitheryConnection = {
   type: 'stdio' | 'http';
   deployment_url?: string;

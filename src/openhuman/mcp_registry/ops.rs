@@ -91,6 +91,31 @@ pub async fn mcp_clients_registry_get(
     ))
 }
 
+/// Pre-install auth classification: resolve a catalog server's detail, probe its
+/// remote (the live 401 is the truth), and return the unified [`AuthPlan`] the
+/// install screen + connect modal render from. Works before install (no
+/// `server_id` needed), unlike `detect_auth`.
+pub async fn mcp_clients_probe_auth(
+    config: &Config,
+    qualified_name: String,
+) -> Result<RpcOutcome<Value>, String> {
+    if qualified_name.trim().is_empty() {
+        return Err("qualified_name must not be empty".to_string());
+    }
+    let detail = registry::registry_get(config, qualified_name.trim())
+        .await
+        .map_err(|e| e.to_string())?;
+    let plan = super::auth_plan::build_auth_plan(&detail).await;
+    let summary = format!(
+        "probe_auth {} -> {} ({})",
+        qualified_name.trim(),
+        plan.method,
+        plan.confidence
+    );
+    let value = serde_json::to_value(&plan).map_err(|e| e.to_string())?;
+    Ok(RpcOutcome::new(json!({ "plan": value }), vec![summary]))
+}
+
 // ── installed_list ────────────────────────────────────────────────────────────
 
 pub async fn mcp_clients_installed_list(config: &Config) -> Result<RpcOutcome<Value>, String> {

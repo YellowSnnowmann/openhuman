@@ -30,7 +30,11 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::mcp_client::McpHttpClient;
+#[cfg(test)]
+use crate::openhuman::mcp_client::{
+    AuthorizationServerMetadata, McpAuthChallenge, ProtectedResourceMetadata,
+};
+use crate::openhuman::mcp_client::{McpAuthorizationContext, McpHttpClient};
 
 use super::store;
 use super::types::Transport;
@@ -184,6 +188,49 @@ fn remote_url(config: &Config, server_id: &str) -> Result<String, String> {
     }
 }
 
+/// Pure classifier for a 401 authorization context (extracted from [`detect`]
+/// for unit testing).
+///
+/// - An authorization server advertising an `authorization_endpoint` (and not
+///   *excluding* `authorization_code`) → **oauth**, with the endpoint.
+/// - Else, if the 401 carried RFC 9728 protected-resource metadata (a parsed
+///   PRM *or* a bare `resource_metadata` URL) → **oauth** with no endpoint: the
+///   server is OAuth-protected even though AS-metadata discovery was incomplete
+///   here. `begin` re-runs discovery (now with RFC 8414 path-insertion) and
+///   resolves the real endpoint. Classifying this as `token` was the bug that
+///   showed a "paste a bearer token" box for browser-OAuth servers.
+/// - Else (a bare bearer 401, no PRM) → **token** (static API key / bearer).
+pub(crate) fn classify_auth_context(ctx: &McpAuthorizationContext) -> AuthDetection {
+    for asm in &ctx.authorization_server_metadata {
+        // Per RFC 8414 `grant_types_supported` is optional and *defaults* to
+        // including `authorization_code`; treat an empty list as supporting it.
+        let supports_code = asm.grant_types_supported.is_empty()
+            || asm
+                .grant_types_supported
+                .iter()
+                .any(|g| g == "authorization_code");
+        if asm.authorization_endpoint.is_some() && supports_code {
+            return AuthDetection {
+                kind: "oauth".into(),
+                authorization_endpoint: asm.authorization_endpoint.clone(),
+                grant_types: asm.grant_types_supported.clone(),
+            };
+        }
+    }
+    if ctx.protected_resource_metadata.is_some() || ctx.challenge.resource_metadata.is_some() {
+        return AuthDetection {
+            kind: "oauth".into(),
+            authorization_endpoint: None,
+            grant_types: vec![],
+        };
+    }
+    AuthDetection {
+        kind: "token".into(),
+        authorization_endpoint: None,
+        grant_types: vec![],
+    }
+}
+
 /// Classify a server's auth requirement via an unauthenticated probe — the only
 /// reliable signal (registry metadata is unreliable / mislabelled).
 pub async fn detect(config: &Config, server_id: &str) -> Result<AuthDetection, String> {
@@ -210,34 +257,7 @@ pub async fn detect(config: &Config, server_id: &str) -> Result<AuthDetection, S
             authorization_endpoint: None,
             grant_types: vec![],
         }),
-        Ok(Some(ctx)) => {
-            // A 401 that points at an OAuth authorization server exposing an
-            // `authorization_endpoint` → browser OAuth. We do NOT require
-            // `grant_types_supported` to list `authorization_code`: per RFC 8414
-            // that field is optional and *defaults* to including
-            // `authorization_code` (alpic, for one, omits it entirely). The
-            // presence of an authorize endpoint is the real signal. Otherwise a
-            // plain bearer/API-key 401 → static token.
-            for asm in &ctx.authorization_server_metadata {
-                let supports_code = asm.grant_types_supported.is_empty()
-                    || asm
-                        .grant_types_supported
-                        .iter()
-                        .any(|g| g == "authorization_code");
-                if asm.authorization_endpoint.is_some() && supports_code {
-                    return Ok(AuthDetection {
-                        kind: "oauth".into(),
-                        authorization_endpoint: asm.authorization_endpoint.clone(),
-                        grant_types: asm.grant_types_supported.clone(),
-                    });
-                }
-            }
-            Ok(AuthDetection {
-                kind: "token".into(),
-                authorization_endpoint: None,
-                grant_types: vec![],
-            })
-        }
+        Ok(Some(ctx)) => Ok(classify_auth_context(&ctx)),
         // 401 we couldn't fully parse, or a transient error: let the user paste
         // a token rather than block them.
         Err(e) => {
@@ -563,6 +583,72 @@ mod tests {
         );
         let expected = B64.encode(Sha256::digest(verifier.as_bytes()));
         assert_eq!(challenge, expected);
+    }
+
+    fn challenge(resource_metadata: Option<&str>) -> McpAuthChallenge {
+        McpAuthChallenge {
+            scheme: "Bearer".into(),
+            realm: None,
+            resource_metadata: resource_metadata.map(str::to_string),
+        }
+    }
+
+    fn asm(authorization_endpoint: Option<&str>, grants: &[&str]) -> AuthorizationServerMetadata {
+        AuthorizationServerMetadata {
+            issuer: "https://as.example".into(),
+            authorization_endpoint: authorization_endpoint.map(str::to_string),
+            token_endpoint: Some("https://as.example/token".into()),
+            registration_endpoint: Some("https://as.example/register".into()),
+            response_types_supported: vec![],
+            grant_types_supported: grants.iter().map(|s| s.to_string()).collect(),
+            code_challenge_methods_supported: vec!["S256".into()],
+        }
+    }
+
+    #[test]
+    fn classify_oauth_when_authorization_endpoint_present() {
+        let ctx = McpAuthorizationContext {
+            challenge: challenge(Some("https://x/.well-known/oauth-protected-resource")),
+            protected_resource_metadata: None,
+            authorization_server_metadata: vec![asm(Some("https://as.example/authorize"), &[])],
+        };
+        let d = classify_auth_context(&ctx);
+        assert_eq!(d.kind, "oauth");
+        assert_eq!(
+            d.authorization_endpoint.as_deref(),
+            Some("https://as.example/authorize")
+        );
+    }
+
+    #[test]
+    fn classify_oauth_from_resource_metadata_when_as_discovery_incomplete() {
+        // The golemry case: 401 carried protected-resource metadata, but the
+        // authorization-server metadata list came back empty (discovery 404'd).
+        // Must still classify as oauth, NOT downgrade to a token box.
+        let ctx = McpAuthorizationContext {
+            challenge: challenge(Some(
+                "https://golemry--golemry.run.tools/.well-known/oauth-protected-resource",
+            )),
+            protected_resource_metadata: Some(ProtectedResourceMetadata {
+                resource: "https://golemry--golemry.run.tools/".into(),
+                authorization_servers: vec!["https://auth.smithery.ai/golemry/golemry".into()],
+                scopes_supported: vec![],
+            }),
+            authorization_server_metadata: vec![],
+        };
+        let d = classify_auth_context(&ctx);
+        assert_eq!(d.kind, "oauth", "PRM presence alone proves OAuth");
+        assert_eq!(d.authorization_endpoint, None);
+    }
+
+    #[test]
+    fn classify_token_for_bare_bearer_401_without_prm() {
+        let ctx = McpAuthorizationContext {
+            challenge: challenge(None),
+            protected_resource_metadata: None,
+            authorization_server_metadata: vec![],
+        };
+        assert_eq!(classify_auth_context(&ctx).kind, "token");
     }
 
     #[test]

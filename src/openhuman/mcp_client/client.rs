@@ -643,13 +643,17 @@ impl McpHttpClient {
         &self,
         issuer: &str,
     ) -> anyhow::Result<AuthorizationServerMetadata> {
-        let trimmed = issuer.trim_end_matches('/');
-        let oidc = format!("{trimmed}/.well-known/openid-configuration");
-        if let Ok(metadata) = self.fetch_json::<AuthorizationServerMetadata>(&oidc).await {
-            return Ok(metadata);
+        let candidates = auth_server_metadata_urls(issuer);
+        let mut last_err: Option<anyhow::Error> = None;
+        for url in &candidates {
+            match self.fetch_json::<AuthorizationServerMetadata>(url).await {
+                Ok(metadata) => return Ok(metadata),
+                Err(e) => last_err = Some(e),
+            }
         }
-        let oauth = format!("{trimmed}/.well-known/oauth-authorization-server");
-        self.fetch_json::<AuthorizationServerMetadata>(&oauth).await
+        Err(last_err.unwrap_or_else(|| {
+            anyhow::anyhow!("no authorization-server metadata URL for {issuer}")
+        }))
     }
 
     fn validate_protocol_version(&self, version: &str) -> anyhow::Result<()> {
@@ -668,6 +672,40 @@ impl McpHttpClient {
         state.cached_tools.clear();
         state.negotiated_protocol_version = LATEST_PROTOCOL_VERSION.to_string();
     }
+}
+
+/// Candidate authorization-server metadata URLs for an `issuer`, in priority
+/// order.
+///
+/// Per RFC 8414 §3.1 the `.well-known` segment is inserted *between the host and
+/// the issuer's path* — `https://host/.well-known/oauth-authorization-server/PATH`
+/// — which is exactly what path-segmented issuers like
+/// `https://auth.smithery.ai/<author>/<server>` require (the naive
+/// `{issuer}/.well-known/...` form 404s for them). The legacy issuer-suffixed
+/// form is still tried last so flat issuers and OIDC servers keep resolving.
+/// Path-less issuers collapse to a single pair (dedup preserves order).
+fn auth_server_metadata_urls(issuer: &str) -> Vec<String> {
+    let trimmed = issuer.trim_end_matches('/');
+    let mut urls: Vec<String> = Vec::new();
+    let mut push = |u: String| {
+        if !urls.contains(&u) {
+            urls.push(u);
+        }
+    };
+    if let Ok(parsed) = reqwest::Url::parse(trimmed) {
+        let origin = parsed.origin().ascii_serialization();
+        // `Url::path()` is "/" for a path-less issuer → trims to "".
+        let path = parsed.path().trim_end_matches('/');
+        // RFC 8414 path-insertion (well-known BEFORE the issuer path).
+        push(format!(
+            "{origin}/.well-known/oauth-authorization-server{path}"
+        ));
+        push(format!("{origin}/.well-known/openid-configuration{path}"));
+    }
+    // Legacy issuer-suffixed (well-known AFTER the path) — flat issuers & OIDC.
+    push(format!("{trimmed}/.well-known/oauth-authorization-server"));
+    push(format!("{trimmed}/.well-known/openid-configuration"));
+    urls
 }
 
 #[derive(Debug, Clone)]

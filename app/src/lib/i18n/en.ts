@@ -1866,6 +1866,14 @@ const en: TranslationMap = {
   'mcp.install.useCount': '{count} installs',
   'mcp.install.deployed': 'Deployed',
   'mcp.install.requiresConfig': 'Requires configuration',
+  'mcp.install.auth.oauth':
+    'Sign-in required — you’ll sign in with {name} in your browser after installing.',
+  'mcp.install.auth.apiKey': 'API key required — you’ll be prompted to paste it when you connect.',
+  'mcp.install.auth.open': 'No sign-in required — this server connects without authentication.',
+  'mcp.install.auth.unknown':
+    'We couldn’t verify how this server signs in; you’ll configure authentication when you connect.',
+  'mcp.install.auth.mismatch':
+    'Heads up: the listing described this differently from what the server actually requires ({observed}). We’ll use what the server reported.',
   'mcp.install.connections': 'Available connections',
   'mcp.install.published': 'published',
   'mcp.install.configureAndInstall': 'Configure & install',

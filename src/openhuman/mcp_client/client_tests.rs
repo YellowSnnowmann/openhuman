@@ -520,3 +520,37 @@ fn display_description_returns_none_when_field_absent() {
     };
     assert!(tool.display_description().is_none());
 }
+
+#[test]
+fn auth_server_metadata_urls_uses_rfc8414_path_insertion_for_path_issuers() {
+    // Smithery's per-server auth issuer carries a path; the RFC 8414
+    // path-insertion form (well-known BEFORE the path) is the one that resolves
+    // — it must be tried first, ahead of the legacy issuer-suffixed form.
+    let urls = auth_server_metadata_urls("https://auth.smithery.ai/golemry/golemry");
+    assert_eq!(
+        urls[0],
+        "https://auth.smithery.ai/.well-known/oauth-authorization-server/golemry/golemry"
+    );
+    assert!(urls.contains(
+        &"https://auth.smithery.ai/.well-known/openid-configuration/golemry/golemry".to_string()
+    ));
+    // The legacy issuer-suffixed form is still offered as a fallback.
+    assert!(urls.contains(
+        &"https://auth.smithery.ai/golemry/golemry/.well-known/oauth-authorization-server"
+            .to_string()
+    ));
+}
+
+#[test]
+fn auth_server_metadata_urls_flat_issuer_has_no_redundant_duplicates() {
+    // A path-less issuer: insertion and suffix forms coincide, so dedup keeps
+    // exactly the two well-known documents (oauth + oidc), once each.
+    let urls = auth_server_metadata_urls("https://auth.example.com/");
+    assert_eq!(
+        urls,
+        vec![
+            "https://auth.example.com/.well-known/oauth-authorization-server".to_string(),
+            "https://auth.example.com/.well-known/openid-configuration".to_string(),
+        ]
+    );
+}

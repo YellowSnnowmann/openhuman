@@ -1542,6 +1542,15 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': 'No se pudieron cargar los detalles del servidor',
   'mcp.install.failedInstall': 'La instalación falló',
   'mcp.install.button': 'Instalar',
+  'mcp.install.auth.oauth':
+    'Requiere inicio de sesión: iniciarás sesión con {name} en tu navegador después de instalar.',
+  'mcp.install.auth.apiKey': 'Requiere clave de API: se te pedirá que la pegues al conectar.',
+  'mcp.install.auth.open':
+    'No requiere inicio de sesión: este servidor se conecta sin autenticación.',
+  'mcp.install.auth.unknown':
+    'No pudimos verificar cómo inicia sesión este servidor; configurarás la autenticación al conectar.',
+  'mcp.install.auth.mismatch':
+    'Atención: la ficha lo describía de forma distinta a lo que el servidor realmente requiere ({observed}). Usaremos lo que informó el servidor.',
   'mcp.install.installing': 'Instalando...',
   'mcp.install.by': 'por',
   'mcp.install.transportLocal': 'Se ejecuta localmente',

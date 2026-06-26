@@ -1500,6 +1500,13 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': '서버 세부 정보를 로드하지 못했습니다.',
   'mcp.install.failedInstall': '설치에 실패했습니다.',
   'mcp.install.button': '설치',
+  'mcp.install.auth.oauth': '로그인 필요 — 설치 후 브라우저에서 {name}(으)로 로그인합니다.',
+  'mcp.install.auth.apiKey': 'API 키 필요 — 연결할 때 붙여넣도록 요청됩니다.',
+  'mcp.install.auth.open': '로그인 불필요 — 이 서버는 인증 없이 연결됩니다.',
+  'mcp.install.auth.unknown':
+    '이 서버의 로그인 방식을 확인할 수 없습니다; 연결할 때 인증을 구성하게 됩니다.',
+  'mcp.install.auth.mismatch':
+    '참고: 목록의 설명이 서버가 실제로 요구하는 것({observed})과 다릅니다. 서버가 보고한 내용을 사용합니다.',
   'mcp.install.installing': '설치 중...',
   'mcp.install.by': '제작',
   'mcp.install.transportLocal': '로컬 실행',

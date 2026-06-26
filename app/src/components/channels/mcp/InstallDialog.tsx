@@ -11,13 +11,13 @@
  * the install itself, and best-effort `mcpClientsApi.connect` post-install.
  */
 import debug from 'debug';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { mcpClientsApi } from '../../../services/api/mcpClientsApi';
 import Button from '../../ui/Button';
 import { deriveAuthor } from './McpServerCard';
-import type { InstalledServer, SmitheryConnection, SmitheryServerDetail } from './types';
+import type { AuthPlan, InstalledServer, SmitheryConnection, SmitheryServerDetail } from './types';
 
 const log = debug('mcp-clients:install');
 
@@ -43,12 +43,72 @@ function formatUseCount(count: number): string {
   return String(count);
 }
 
+/**
+ * Probe-driven auth notice shown on the install screen. One message per method
+ * so the user knows up front whether they'll sign in, paste a key, or just
+ * connect — and a separate warning when the registry's claim disagreed with the
+ * server's actual 401 (the probe is authoritative). Renders nothing until the
+ * probe resolves, or when an open server is verified (no notice needed).
+ */
+const AuthPlanNotice = ({ plan, serverName }: { plan: AuthPlan | null; serverName: string }) => {
+  const { t } = useT();
+  if (!plan) return null;
+
+  const mismatch =
+    plan.mismatch && plan.confidence === 'probed' ? (
+      <div className="rounded-lg border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+        ⚠ {t('mcp.install.auth.mismatch').replace('{observed}', plan.mismatch.observed)}
+      </div>
+    ) : null;
+
+  let body: ReactNode = null;
+  if (plan.method === 'oauth') {
+    body = (
+      <div className="rounded-lg border border-primary-200 dark:border-primary-500/20 bg-primary-50 dark:bg-primary-500/10 px-4 py-3 text-sm text-primary-800 dark:text-primary-200">
+        🔐 {t('mcp.install.auth.oauth').replace('{name}', serverName)}
+      </div>
+    );
+  } else if (plan.method === 'api_key') {
+    body = (
+      <div className="rounded-lg border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+        🔑 {t('mcp.install.auth.apiKey')}
+      </div>
+    );
+  } else if (plan.method === 'unknown') {
+    body = (
+      <div className="rounded-lg border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-800/40 px-4 py-3 text-sm text-stone-600 dark:text-neutral-300">
+        {t('mcp.install.auth.unknown')}
+      </div>
+    );
+  } else if (plan.method === 'open') {
+    // A confidently-probed open server: reassure with a light note.
+    body =
+      plan.confidence === 'probed' ? (
+        <div className="rounded-lg border border-sage-200 dark:border-sage-500/20 bg-sage-50 dark:bg-sage-500/10 px-4 py-3 text-sm text-sage-700 dark:text-sage-300">
+          ✓ {t('mcp.install.auth.open')}
+        </div>
+      ) : null;
+  }
+
+  if (!body && !mismatch) return null;
+  return (
+    <div className="space-y-2">
+      {mismatch}
+      {body}
+    </div>
+  );
+};
+
 const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: InstallDialogProps) => {
   const { t } = useT();
 
   const [detail, setDetail] = useState<SmitheryServerDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // Probe-based auth classification (open / oauth / api_key / unknown). Loaded
+  // best-effort and independently of the detail so a slow/failed probe never
+  // blocks install; the notice simply doesn't render until it resolves.
+  const [authPlan, setAuthPlan] = useState<AuthPlan | null>(null);
   const latestQualifiedNameRef = useRef(qualifiedName);
 
   const [step, setStep] = useState<Step>('detail');
@@ -91,6 +151,24 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
         }
       });
   }, [qualifiedName, prefillEnv, t]);
+
+  // Probe how this server authenticates, in parallel with the detail fetch.
+  // Best-effort: any failure just leaves the notice unrendered.
+  useEffect(() => {
+    let cancelled = false;
+    setAuthPlan(null);
+    mcpClientsApi
+      .probeAuth(qualifiedName)
+      .then(plan => {
+        if (!cancelled) setAuthPlan(plan);
+      })
+      .catch(err => {
+        log('probe_auth failed for %s: %o', qualifiedName, err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [qualifiedName]);
 
   const hasEnvKeys = (detail?.required_env_keys ?? []).length > 0;
 
@@ -263,6 +341,11 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
             </span>
           )}
         </div>
+
+        {/* Auth notice — driven by the live probe so the user knows exactly how
+            they'll connect (sign in / paste a key / nothing) before installing,
+            and is warned when the registry's claim disagreed with reality. */}
+        <AuthPlanNotice plan={authPlan} serverName={detail.display_name} />
 
         {/* Description */}
         {detail.description && (

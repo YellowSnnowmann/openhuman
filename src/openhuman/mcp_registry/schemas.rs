@@ -18,6 +18,7 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
     vec![
         schemas("registry_search"),
         schemas("registry_get"),
+        schemas("probe_auth"),
         schemas("installed_list"),
         schemas("install"),
         schemas("update_env"),
@@ -51,6 +52,10 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: schemas("registry_get"),
             handler: handle_registry_get,
+        },
+        RegisteredController {
+            schema: schemas("probe_auth"),
+            handler: handle_probe_auth,
         },
         RegisteredController {
             schema: schemas("installed_list"),
@@ -197,6 +202,24 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 name: "server",
                 ty: TypeSchema::Ref("SmitheryServerDetail"),
                 comment: "Full server detail including connection specs.",
+                required: true,
+            }],
+        },
+
+        "probe_auth" => ControllerSchema {
+            namespace: "mcp_clients",
+            function: "probe_auth",
+            description: "Classify how a catalog server authenticates by probing its remote (open / oauth / api_key / unknown), reconciled with the registry's declared fields. Pre-install; no server_id needed.",
+            inputs: vec![FieldSchema {
+                name: "qualified_name",
+                ty: TypeSchema::String,
+                comment: "Registry qualified name (optionally `<source>::<name>`).",
+                required: true,
+            }],
+            outputs: vec![FieldSchema {
+                name: "plan",
+                ty: TypeSchema::Json,
+                comment: "AuthPlan: { method, confidence, fields[], provider?, mismatch? }.",
                 required: true,
             }],
         },
@@ -688,6 +711,17 @@ fn handle_registry_get(params: Map<String, Value>) -> ControllerFuture {
         let qualified_name = read_required::<String>(&params, "qualified_name")?;
         to_json(
             crate::openhuman::mcp_registry::ops::mcp_clients_registry_get(&config, qualified_name)
+                .await?,
+        )
+    })
+}
+
+fn handle_probe_auth(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let config = config_rpc::load_config_with_timeout().await?;
+        let qualified_name = read_required::<String>(&params, "qualified_name")?;
+        to_json(
+            crate::openhuman::mcp_registry::ops::mcp_clients_probe_auth(&config, qualified_name)
                 .await?,
         )
     })

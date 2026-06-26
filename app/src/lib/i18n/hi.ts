@@ -1506,6 +1506,14 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': 'सर्वर विवरण लोड करने में विफल',
   'mcp.install.failedInstall': 'इंस्टॉल विफल',
   'mcp.install.button': 'स्थापित करें',
+  'mcp.install.auth.oauth':
+    'साइन-इन आवश्यक — इंस्टॉल करने के बाद आप अपने ब्राउज़र में {name} से साइन इन करेंगे।',
+  'mcp.install.auth.apiKey': 'API कुंजी आवश्यक — कनेक्ट करते समय आपसे इसे पेस्ट करने को कहा जाएगा।',
+  'mcp.install.auth.open': 'साइन-इन आवश्यक नहीं — यह सर्वर बिना प्रमाणीकरण के कनेक्ट होता है।',
+  'mcp.install.auth.unknown':
+    'हम सत्यापित नहीं कर सके कि यह सर्वर कैसे साइन इन करता है; आप कनेक्ट करते समय प्रमाणीकरण कॉन्फ़िगर करेंगे।',
+  'mcp.install.auth.mismatch':
+    'ध्यान दें: लिस्टिंग ने इसे सर्वर की वास्तविक आवश्यकता ({observed}) से अलग बताया। हम वही उपयोग करेंगे जो सर्वर ने बताया।',
   'mcp.install.installing': 'स्थापित किया जा रहा है...',
   'mcp.install.by': 'द्वारा',
   'mcp.install.transportLocal': 'स्थानीय रूप से चलता है',

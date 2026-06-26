@@ -1549,6 +1549,16 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': 'Échec du chargement des détails du serveur',
   'mcp.install.failedInstall': "Échec de l'installation",
   'mcp.install.button': 'Installation',
+  'mcp.install.auth.oauth':
+    'Connexion requise — vous vous connecterez avec {name} dans votre navigateur après l’installation.',
+  'mcp.install.auth.apiKey':
+    'Clé API requise — il vous sera demandé de la coller lors de la connexion.',
+  'mcp.install.auth.open':
+    'Aucune connexion requise — ce serveur se connecte sans authentification.',
+  'mcp.install.auth.unknown':
+    'Nous n’avons pas pu vérifier comment ce serveur se connecte ; vous configurerez l’authentification lors de la connexion.',
+  'mcp.install.auth.mismatch':
+    'Attention : la fiche le décrivait différemment de ce que le serveur exige réellement ({observed}). Nous utiliserons ce que le serveur a indiqué.',
   'mcp.install.installing': 'Installation...',
   'mcp.install.by': 'par',
   'mcp.install.transportLocal': 'Exécution locale',

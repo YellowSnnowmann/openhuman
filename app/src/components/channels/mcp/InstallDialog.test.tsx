@@ -6,12 +6,14 @@ import InstallDialog from './InstallDialog';
 const mockRegistryGet = vi.fn();
 const mockInstall = vi.fn();
 const mockConnect = vi.fn();
+const mockProbeAuth = vi.fn();
 
 vi.mock('../../../services/api/mcpClientsApi', () => ({
   mcpClientsApi: {
     registryGet: (...args: unknown[]) => mockRegistryGet(...args),
     install: (...args: unknown[]) => mockInstall(...args),
     connect: (...args: unknown[]) => mockConnect(...args),
+    probeAuth: (...args: unknown[]) => mockProbeAuth(...args),
   },
 }));
 
@@ -41,6 +43,10 @@ describe('InstallDialog', () => {
     mockRegistryGet.mockReset();
     mockInstall.mockReset();
     mockConnect.mockReset();
+    mockProbeAuth.mockReset();
+    // Default: probe never resolves, so the auth notice stays absent unless a
+    // test opts in. Keeps existing assertions about the detail view unchanged.
+    mockProbeAuth.mockReturnValue(new Promise(() => {}));
     mockConnect.mockResolvedValue({ server_id: 'srv-1', status: 'connected', tools: [] });
   });
 
@@ -64,6 +70,38 @@ describe('InstallDialog', () => {
     expect(screen.getByText('A test server')).toBeInTheDocument();
     expect(screen.getByText('Requires configuration')).toBeInTheDocument();
     expect(screen.getByText('Runs locally')).toBeInTheDocument();
+  });
+
+  it('shows a Sign-in notice (not a token box) when the probe finds OAuth', async () => {
+    mockRegistryGet.mockResolvedValue(DETAIL_NO_ENV);
+    mockProbeAuth.mockResolvedValue({
+      method: 'oauth',
+      confidence: 'probed',
+      fields: [],
+      provider: 'Simple Server',
+    });
+    render(
+      <InstallDialog qualifiedName="acme/simple-server" onSuccess={() => {}} onCancel={() => {}} />
+    );
+    await waitFor(() => expect(screen.getByText(/Sign-in required/)).toBeInTheDocument());
+    expect(screen.getByText(/sign in with Simple Server/)).toBeInTheDocument();
+  });
+
+  it('warns when the registry claim disagreed with the probed auth', async () => {
+    mockRegistryGet.mockResolvedValue(DETAIL_NO_ENV);
+    mockProbeAuth.mockResolvedValue({
+      method: 'oauth',
+      confidence: 'probed',
+      fields: [],
+      provider: 'Simple Server',
+      mismatch: { declared: 'api_key', observed: 'oauth' },
+    });
+    render(
+      <InstallDialog qualifiedName="acme/simple-server" onSuccess={() => {}} onCancel={() => {}} />
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/the listing described this differently/)).toBeInTheDocument()
+    );
   });
 
   it('shows env key preview badges on detail step', async () => {

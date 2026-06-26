@@ -50,6 +50,7 @@
 //! backwards compatibility with existing frontend code and on-disk state.
 //! The Rust module path is `mcp_registry`.
 
+pub mod auth_plan;
 pub mod boot;
 pub mod bus;
 pub mod connections;

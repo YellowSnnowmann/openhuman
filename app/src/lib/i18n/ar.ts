@@ -1478,6 +1478,13 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': 'فشل تحميل تفاصيل الخادم',
   'mcp.install.failedInstall': 'فشل التثبيت',
   'mcp.install.button': 'تثبيت',
+  'mcp.install.auth.oauth': 'مطلوب تسجيل الدخول — ستسجّل الدخول عبر {name} في متصفحك بعد التثبيت.',
+  'mcp.install.auth.apiKey': 'مطلوب مفتاح API — سيُطلب منك لصقه عند الاتصال.',
+  'mcp.install.auth.open': 'لا يلزم تسجيل الدخول — يتصل هذا الخادم دون مصادقة.',
+  'mcp.install.auth.unknown':
+    'تعذّر علينا التحقق من طريقة تسجيل الدخول لهذا الخادم؛ ستقوم بإعداد المصادقة عند الاتصال.',
+  'mcp.install.auth.mismatch':
+    'تنبيه: وصف الإدراج هذا بشكل مختلف عمّا يتطلبه الخادم فعليًا ({observed}). سنعتمد ما أبلغ عنه الخادم.',
   'mcp.install.installing': 'جارٍ التثبيت...',
   'mcp.install.by': 'بواسطة',
   'mcp.install.transportLocal': 'يعمل محليًا',

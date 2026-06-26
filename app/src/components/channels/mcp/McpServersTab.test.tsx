@@ -19,6 +19,7 @@ const mockUninstall = vi.fn();
 const mockSetEnabled = vi.fn();
 const mockRegistryGet = vi.fn();
 const mockRegistrySearch = vi.fn();
+const mockProbeAuth = vi.fn();
 const mockConfigAssist = vi.fn();
 
 vi.mock('../../../services/api/mcpClientsApi', () => ({
@@ -32,6 +33,7 @@ vi.mock('../../../services/api/mcpClientsApi', () => ({
     setEnabled: (...args: unknown[]) => mockSetEnabled(...args),
     registryGet: (...args: unknown[]) => mockRegistryGet(...args),
     registrySearch: (...args: unknown[]) => mockRegistrySearch(...args),
+    probeAuth: (...args: unknown[]) => mockProbeAuth(...args),
     configAssist: (...args: unknown[]) => mockConfigAssist(...args),
   },
 }));
@@ -107,6 +109,10 @@ describe('McpServersTab', () => {
     mockRegistryGet.mockReset();
     mockRegistrySearch.mockReset();
     mockRegistrySearch.mockResolvedValue({ servers: [], page: 1, total_pages: 1 });
+    mockProbeAuth.mockReset();
+    // The install view (InstallDialog) probes auth on mount; keep it pending so
+    // it never resolves into a notice during tab-navigation assertions.
+    mockProbeAuth.mockReturnValue(new Promise(() => {}));
   });
 
   afterEach(() => {

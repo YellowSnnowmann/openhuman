@@ -1507,6 +1507,14 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': 'সার্ভারের বিবরণ লোড করতে ব্যর্থ',
   'mcp.install.failedInstall': 'ইনস্টল ব্যর্থ হয়েছে',
   'mcp.install.button': 'ইনস্টল করুন',
+  'mcp.install.auth.oauth':
+    'সাইন-ইন প্রয়োজন — ইনস্টল করার পরে আপনি ব্রাউজারে {name} দিয়ে সাইন ইন করবেন।',
+  'mcp.install.auth.apiKey': 'API কী প্রয়োজন — সংযোগের সময় আপনাকে এটি পেস্ট করতে বলা হবে।',
+  'mcp.install.auth.open': 'সাইন-ইন প্রয়োজন নেই — এই সার্ভারটি প্রমাণীকরণ ছাড়াই সংযোগ করে।',
+  'mcp.install.auth.unknown':
+    'এই সার্ভার কীভাবে সাইন ইন করে তা আমরা যাচাই করতে পারিনি; সংযোগের সময় আপনি প্রমাণীকরণ কনফিগার করবেন।',
+  'mcp.install.auth.mismatch':
+    'খেয়াল রাখুন: তালিকাটি সার্ভারের প্রকৃত প্রয়োজনের ({observed}) থেকে ভিন্নভাবে এটি বর্ণনা করেছে। সার্ভার যা জানিয়েছে আমরা তা ব্যবহার করব।',
   'mcp.install.installing': 'ইনস্টল করা হচ্ছে...',
   'mcp.install.by': 'দ্বারা',
   'mcp.install.transportLocal': 'স্থানীয়ভাবে চলে',

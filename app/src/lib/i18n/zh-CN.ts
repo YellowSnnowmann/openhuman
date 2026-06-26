@@ -1441,6 +1441,12 @@ const messages: TranslationMap = {
   'mcp.install.failedDetail': '无法加载服务器详细信息',
   'mcp.install.failedInstall': '安装失败',
   'mcp.install.button': '安装',
+  'mcp.install.auth.oauth': '需要登录——安装后你将在浏览器中通过 {name} 登录。',
+  'mcp.install.auth.apiKey': '需要 API 密钥——连接时会提示你粘贴。',
+  'mcp.install.auth.open': '无需登录——此服务器无需身份验证即可连接。',
+  'mcp.install.auth.unknown': '我们无法确认此服务器如何登录；你将在连接时配置身份验证。',
+  'mcp.install.auth.mismatch':
+    '注意：列表中的描述与服务器实际要求（{observed}）不同。我们将以服务器报告的为准。',
   'mcp.install.installing': '正在安装...',
   'mcp.install.by': '作者',
   'mcp.install.transportLocal': '本地运行',
