@@ -785,9 +785,9 @@ pub async fn mcp_clients_config_assist(
         .await
         .map_err(|e| format!("Failed to fetch registry detail: {e}"))?;
 
-    // Collect required env keys from connections (if already known) or from any
-    // registered schema in the connection detail.
-    let required_env_keys: Vec<String> = collect_required_env_keys(&detail);
+    // Collect required env keys from the connection the install will use (shared
+    // with the setup-agent + install-dialog paths).
+    let required_env_keys: Vec<String> = super::setup_ops::collect_required_env_keys(&detail);
 
     let system_prompt = build_config_assist_system_prompt(
         &detail.display_name,
