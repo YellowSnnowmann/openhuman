@@ -171,6 +171,56 @@ pub fn insert_server_conn(conn: &Connection, server: &InstalledServer) -> Result
     Ok(())
 }
 
+/// Insert a server row only if no row with the same `qualified_name` already
+/// exists, in a single atomic statement. The `mcp_clients_install` flow checks
+/// `find_server_by_qualified_name` before inserting, but an awaited
+/// `registry_get` sits between that read and the write, so two concurrent
+/// installs of the same service could both miss and insert (the PK is
+/// `server_id`, which doesn't prevent duplicate `qualified_name`s). `INSERT …
+/// SELECT … WHERE NOT EXISTS` closes that window without a schema change.
+/// Returns `true` if this call inserted the row, `false` if one already existed.
+pub fn insert_server_if_absent(config: &Config, server: &InstalledServer) -> Result<bool> {
+    with_connection(config, |conn| insert_server_if_absent_conn(conn, server))
+}
+
+pub fn insert_server_if_absent_conn(conn: &Connection, server: &InstalledServer) -> Result<bool> {
+    let args_json = serde_json::to_string(&server.args)?;
+    let env_keys_json = serde_json::to_string(&server.env_keys)?;
+    let config_json = server
+        .config
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let n = conn
+        .execute(
+            "INSERT INTO mcp_servers
+                     (server_id, qualified_name, display_name, description, icon_url,
+                      command_kind, command, args_json, env_keys_json, config_json,
+                      installed_at, last_connected_at, transport, deployment_url, enabled)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+                 WHERE NOT EXISTS (SELECT 1 FROM mcp_servers WHERE qualified_name = ?2)",
+            params![
+                server.server_id,
+                server.qualified_name,
+                server.display_name,
+                server.description,
+                server.icon_url,
+                server.command_kind.as_str(),
+                server.command,
+                args_json,
+                env_keys_json,
+                config_json,
+                server.installed_at,
+                server.last_connected_at,
+                server.transport.dispatch_kind(),
+                server.transport.deployment_url(),
+                server.enabled as i64,
+            ],
+        )
+        .context("Failed to insert mcp_server (if absent)")?;
+    Ok(n > 0)
+}
+
 /// Update only the `env_keys` list for an installed server. Used by
 /// `mcp_clients_update_env` to keep the persisted key-name list in sync with a
 /// reconfigure — the env *values* live in the separate `mcp_client_env` table,
@@ -547,6 +597,27 @@ mod tests {
         // None clears it back to NULL.
         update_server_config_conn(&conn, "srv-cfg", None).unwrap();
         assert_eq!(get_server_conn(&conn, "srv-cfg").unwrap().config, None);
+    }
+
+    #[test]
+    fn insert_server_if_absent_dedups_on_qualified_name() {
+        let (_f, conn) = open_test_conn();
+        // First install of a service inserts the row.
+        let mut first = sample_server("srv-a");
+        first.qualified_name = "@dup/server".to_string();
+        assert!(insert_server_if_absent_conn(&conn, &first).unwrap());
+        // A second install of the SAME qualified_name (different server_id) is a
+        // no-op — the count stays at one and the original row survives.
+        let mut second = sample_server("srv-b");
+        second.qualified_name = "@dup/server".to_string();
+        assert!(!insert_server_if_absent_conn(&conn, &second).unwrap());
+        let rows: Vec<_> = list_servers_conn(&conn)
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.qualified_name == "@dup/server")
+            .collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].server_id, "srv-a");
     }
 
     #[test]

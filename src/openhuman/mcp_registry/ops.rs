@@ -108,6 +108,58 @@ pub async fn mcp_clients_installed_list(config: &Config) -> Result<RpcOutcome<Va
 
 // ── install ───────────────────────────────────────────────────────────────────
 
+/// Refresh supplied env/config onto an already-installed row and return the
+/// idempotent install outcome (`already_installed: true`). Shared by the
+/// fast-path (the service was already present when install was called) and the
+/// race-loss path (a concurrent install won the insert). Env is MERGED over the
+/// stored values — same semantics as `update_env` — so a partial dialog
+/// submission doesn't erase keys it didn't resend. A failed env read is
+/// propagated rather than treated as an empty base (which could silently drop
+/// stored keys on the subsequent write).
+fn refresh_existing_install(
+    config: &Config,
+    mut existing: InstalledServer,
+    env: &HashMap<String, String>,
+    config_value: &Option<Value>,
+    canonical_name: &str,
+) -> Result<RpcOutcome<Value>, String> {
+    let mut refreshed = false;
+    if !env.is_empty() {
+        let mut merged = store::load_env_values(config, &existing.server_id)
+            .map_err(|e| format!("Failed to load existing env values: {e}"))?;
+        merged.extend(env.clone());
+        store::set_env_values(config, &existing.server_id, &merged).map_err(|e| e.to_string())?;
+        let mut keys: Vec<String> = merged.keys().cloned().collect();
+        keys.sort();
+        if existing.env_keys != keys {
+            store::update_server_env_keys(config, &existing.server_id, &keys)
+                .map_err(|e| e.to_string())?;
+            existing.env_keys = keys;
+        }
+        refreshed = true;
+    }
+    if let Some(cfg) = config_value.clone() {
+        store::update_server_config(config, &existing.server_id, Some(&cfg))
+            .map_err(|e| e.to_string())?;
+        existing.config = Some(cfg);
+        refreshed = true;
+    }
+    tracing::debug!(
+        "[mcp-client] install no-op{} for {} (server_id={})",
+        if refreshed {
+            " (refreshed env/config)"
+        } else {
+            ""
+        },
+        canonical_name,
+        existing.server_id
+    );
+    Ok(RpcOutcome::new(
+        json!({ "server": existing, "already_installed": true }),
+        vec![format!("already installed qualified_name={canonical_name}")],
+    ))
+}
+
 pub async fn mcp_clients_install(
     config: &Config,
     qualified_name: String,
@@ -143,47 +195,10 @@ pub async fn mcp_clients_install(
     // else prevents duplicates). The refresh matters because the install dialog
     // awaits connect() right after install — a user re-running it to replace an
     // expired token must not silently reconnect with the stale secret.
-    if let Some(mut existing) =
+    if let Some(existing) =
         store::find_server_by_qualified_name(config, canonical_name).map_err(|e| e.to_string())?
     {
-        let mut refreshed = false;
-        if !env.is_empty() {
-            // Merge over the stored values (same semantics as update_env) so a
-            // partial dialog submission doesn't erase keys it didn't resend.
-            let mut merged =
-                store::load_env_values(config, &existing.server_id).unwrap_or_default();
-            merged.extend(env.clone());
-            store::set_env_values(config, &existing.server_id, &merged)
-                .map_err(|e| e.to_string())?;
-            let mut keys: Vec<String> = merged.keys().cloned().collect();
-            keys.sort();
-            if existing.env_keys != keys {
-                store::update_server_env_keys(config, &existing.server_id, &keys)
-                    .map_err(|e| e.to_string())?;
-                existing.env_keys = keys;
-            }
-            refreshed = true;
-        }
-        if let Some(cfg) = config_value.clone() {
-            store::update_server_config(config, &existing.server_id, Some(&cfg))
-                .map_err(|e| e.to_string())?;
-            existing.config = Some(cfg);
-            refreshed = true;
-        }
-        tracing::debug!(
-            "[mcp-client] install no-op{} for {} (server_id={})",
-            if refreshed {
-                " (refreshed env/config)"
-            } else {
-                ""
-            },
-            canonical_name,
-            existing.server_id
-        );
-        return Ok(RpcOutcome::new(
-            json!({ "server": existing, "already_installed": true }),
-            vec![format!("already installed qualified_name={canonical_name}")],
-        ));
+        return refresh_existing_install(config, existing, &env, &config_value, canonical_name);
     }
 
     // Fetch registry detail to resolve command/args/env_keys. Use the full
@@ -234,7 +249,18 @@ pub async fn mcp_clients_install(
         enabled: true,
     };
 
-    store::insert_server(config, &server).map_err(|e| e.to_string())?;
+    // Insert only if no row for this canonical name exists yet, atomically — the
+    // `find_server_by_qualified_name` above and this insert are separated by the
+    // awaited `registry_get`, so two concurrent installs of the same service
+    // could otherwise both miss and write duplicate rows (the table PK is
+    // `server_id`, which doesn't prevent that). If we lost that race, refresh
+    // onto the row the winner created instead of leaving a duplicate.
+    if !store::insert_server_if_absent(config, &server).map_err(|e| e.to_string())? {
+        let existing = store::find_server_by_qualified_name(config, canonical_name)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "install raced but the existing row could not be found".to_string())?;
+        return refresh_existing_install(config, existing, &env, &server.config, canonical_name);
+    }
     store::set_env_values(config, &server_id, &env).map_err(|e| e.to_string())?;
 
     tracing::debug!(
