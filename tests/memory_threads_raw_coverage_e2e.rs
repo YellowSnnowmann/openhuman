@@ -771,7 +771,7 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
 
     let thread_schemas = all_threads_controller_schemas();
     let thread_controllers = all_threads_registered_controllers();
-    assert_eq!(thread_schemas.len(), 16);
+    assert_eq!(thread_schemas.len(), 17);
     assert_eq!(thread_schemas.len(), thread_controllers.len());
     assert_eq!(
         openhuman_core::openhuman::threads::schemas::schemas("missing").function,
@@ -794,6 +794,7 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
         "turn_state_clear",
         "task_board_get",
         "task_board_put",
+        "token_usage",
     ] {
         assert!(thread_schemas
             .iter()
@@ -4026,6 +4027,10 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
 
 #[tokio::test]
 async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes() {
+    Box::pin(memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes_body()).await;
+}
+
+async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes_body() {
     let _lock = env_lock();
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", tmp.path());

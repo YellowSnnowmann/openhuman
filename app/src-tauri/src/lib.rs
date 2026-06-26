@@ -4,7 +4,8 @@
 compile_error!("src-tauri host supports desktop (Windows/macOS/Linux) only. Mobile lives in app/src-tauri-mobile.");
 
 mod app_update;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+// Artifact export commands (#2779, #3162) — both cross-platform
+// (macOS/Windows/Linux): native Save-As dialog (rfd) + Downloads copy.
 mod artifact_commands;
 mod cdp;
 // macOS/Linux only: depends on the `nix` crate (a `cfg(unix)` dependency) and
@@ -2654,10 +2655,13 @@ pub fn run() {
         // manager. Both are no-ops on Windows/Linux, so safe to always set.
         //
         // CDP attach goes through the in-process channel only — see
-        // `app/src-tauri/src/cdp/in_process.rs`. The legacy
-        // `--remote-debugging-port` flag is no longer passed: every
+        // `app/src-tauri/src/cdp/in_process.rs`. Production builds do
+        // not pass the legacy `--remote-debugging-port` flag: every
         // scanner attaches via `Webview::send_dev_tools_message` and
-        // there is no remaining loopback DevTools listener.
+        // there is no remaining loopback DevTools listener. The E2E
+        // test-support build can opt into a loopback port below because
+        // the Appium Chromium harness still attaches through
+        // `debuggerAddress`.
         //
         // NOTE: flags must be prefixed with `--`. The runtime's
         // `on_before_command_line_processing` dispatch (in
@@ -2762,10 +2766,13 @@ pub fn run() {
             args.push(("--use-fake-ui-for-media-stream", None));
             args.push(("--use-file-for-fake-video-capture", Some(path)));
         }
-        // CDP attach runs entirely through the in-process channel; the
-        // `--remote-debugging-port` flag is intentionally NOT passed so
-        // no loopback DevTools listener is bound for the lifetime of
-        // the embedded browser.
+        #[cfg(feature = "e2e-test-support")]
+        if std::env::var("OPENHUMAN_E2E_MODE").ok().as_deref() == Some("1") {
+            let port = std::env::var("CEF_CDP_PORT").unwrap_or_else(|_| "19222".to_string());
+            let leaked_port: &'static str = Box::leak(port.into_boxed_str());
+            log::info!("[cef-startup] e2e remote-debugging-port enabled port={leaked_port}");
+            args.push(("--remote-debugging-port", Some(leaked_port)));
+        }
         let force_gpu_env = std::env::var("OPENHUMAN_FORCE_GPU").ok();
         append_platform_cef_gpu_workarounds(
             &mut args,
@@ -3611,11 +3618,11 @@ pub fn run() {
             core_rpc::relay_http_rpc,
             overlay_parent_rpc_url,
             process_diagnostics_list_owned,
-            // `mod artifact_commands;` is `#[cfg(any(target_os = "macos", target_os = "linux"))]`
-            // (Downloads-dir + `tokio::fs::copy` flow is non-Windows-only today).
-            // The handler entry MUST carry the same gate or Windows builds fail
-            // with "function not found in scope" (CR #3328947313 on PR #3026).
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            // Artifact export commands — both cross-platform (#3162). The
+            // Downloads command was previously macOS/Linux-gated, but the
+            // `directories` + `tokio::fs::copy` flow compiles on Windows too,
+            // and the Save-As fallback needs it there (CodeRabbit on #4127).
+            artifact_commands::save_artifact_via_dialog,
             artifact_commands::download_artifact_to_downloads,
             check_core_update,
             apply_core_update,
