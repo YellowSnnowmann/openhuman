@@ -98,8 +98,11 @@ describe('Skill activation persistence across restart', () => {
     // memory, warm localStorage — is covered by the connectionCache unit test,
     // which tauri-driver cannot cheaply reproduce with a real relaunch.)
     const persisted = await browser.execute(() => {
-      const key = Object.keys(window.localStorage).find(k => k.endsWith('composio:connections:v1'));
-      return key ? window.localStorage.getItem(key) : null;
+      // Resolve the active user id and read that exact user-scoped key, rather
+      // than suffix-matching any cache entry — otherwise a stale blob from a
+      // different user could satisfy the assertion (PR #4288 review).
+      const userId = window.localStorage.getItem('OPENHUMAN_ACTIVE_USER_ID');
+      return userId ? window.localStorage.getItem(`${userId}:composio:connections:v1`) : null;
     });
     expect(persisted).toBeTruthy();
     expect(String(persisted).toLowerCase()).toContain(TOOLKIT_SLUG);
