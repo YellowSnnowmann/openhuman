@@ -245,6 +245,19 @@ pub struct SmitheryServerSummary {
     /// the dispatcher; never trusted from the wire.
     #[serde(default)]
     pub official: bool,
+    /// Vendor/site URL declared by the server, when present. A trust/quality
+    /// signal: the strict catalog filter requires it and the UI renders it as a
+    /// clickable link. `None` for servers that declare no website (and for
+    /// Smithery summaries, which don't carry one). Set by the registry adapter.
+    #[serde(default)]
+    pub website_url: Option<String>,
+    /// Declared auth method derived from registry metadata: `Some("api_key")`
+    /// when the server declares a named static secret (an `isSecret` /
+    /// `Authorization` header or an `isSecret` env var). `None` when no static
+    /// credential is declared (open, OAuth-only, or under-specified). Set by the
+    /// official adapter; never trusted from the wire.
+    #[serde(default)]
+    pub auth_kind: Option<String>,
     /// Raw extra fields preserved for future use.
     #[serde(flatten, default)]
     pub extra: std::collections::HashMap<String, Value>,
@@ -507,6 +520,8 @@ mod tests {
             is_deployed: true,
             source: "mcp_official".to_string(),
             official: false,
+            website_url: None,
+            auth_kind: None,
             extra: Default::default(),
         };
         let v = serde_json::to_value(&s).unwrap();

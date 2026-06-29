@@ -79,8 +79,12 @@ impl Tool for McpRegistrySearchTool {
             .get("page_size")
             .and_then(Value::as_u64)
             .map(|v| v as u32);
+        let transport = args
+            .get("transport")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         emit!(
-            ops::mcp_clients_registry_search(&self.config, query, page, page_size).await,
+            ops::mcp_clients_registry_search(&self.config, query, transport, page, page_size).await,
             "mcp_registry_search"
         )
     }
