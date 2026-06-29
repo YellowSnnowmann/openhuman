@@ -13,10 +13,13 @@
 //!
 //! 1. Probe the user's interactive login shell (`$SHELL -ilc`) for its `$PATH`
 //!    so version managers that hook into shell rc files are honoured.
-//! 2. Augment with well-known version-manager bin directories as a fallback for
-//!    when the login-shell probe is unavailable (non-interactive sandboxes, rc
-//!    files that don't export PATH, etc.).
-//! 3. Merge those ahead of the inherited process PATH, de-duplicated.
+//! 2. Keep well-known version-manager bin directories as a fallback for when the
+//!    login-shell probe is unavailable (non-interactive sandboxes, rc files that
+//!    don't export PATH, etc.).
+//! 3. Merge, de-duplicated. When the probe succeeds it is authoritative — the
+//!    shell PATH leads and the fallback dirs are appended only to fill gaps, so
+//!    they never override the shell's chosen Node version. When the probe fails
+//!    the fallback dirs lead instead.
 //!
 //! The result is resolved once per process and cached. [`locate_command`] and
 //! [`missing_command_error`] let callers fail *before* spawn with actionable
@@ -44,12 +47,13 @@ pub async fn spawn_path() -> String {
 
 async fn build_spawn_path() -> String {
     let process_path = std::env::var("PATH").unwrap_or_default();
+    let fallback = join_dirs(&version_manager_dirs());
     let login_path = login_shell_path().await;
-    let resolved = merge_path_sources(
-        &version_manager_dirs(),
+    let resolved = merge_path_strings(order_sources(
         login_path.as_deref(),
         &process_path,
-    );
+        &fallback,
+    ));
     tracing::debug!(
         target: "[mcp_client::spawn_env]",
         resolved_login = login_path.is_some(),
@@ -186,22 +190,38 @@ fn parse_semver(raw: &str) -> Option<Vec<u32>> {
     parts.filter(|p| !p.is_empty())
 }
 
-/// Merge PATH sources, de-duplicating while preserving first-seen order:
-/// version-manager dirs first, then the login-shell PATH, then the inherited
-/// process PATH.
-fn merge_path_sources(extra: &[PathBuf], login: Option<&str>, process: &str) -> String {
+/// Order the PATH sources so the authoritative one leads.
+///
+/// When the login-shell probe succeeds it *is* the user's terminal environment,
+/// so it wins: shell PATH, then the inherited process PATH, and the
+/// version-manager fallback dirs appended only to fill in locations the shell
+/// didn't already expose (never to override the shell's chosen Node version).
+/// When the probe fails the fallback dirs are the primary source of
+/// version-manager paths and therefore lead.
+fn order_sources<'a>(login: Option<&'a str>, process: &'a str, fallback: &'a str) -> Vec<&'a str> {
+    match login {
+        Some(login) => vec![login, process, fallback],
+        None => vec![fallback, process],
+    }
+}
+
+/// Join directories into a single PATH-style string.
+fn join_dirs(dirs: &[PathBuf]) -> String {
+    dirs.iter()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(&PATH_SEP.to_string())
+}
+
+/// Merge PATH-style sources left-to-right, de-duplicating while preserving
+/// first-seen order.
+fn merge_path_strings<'a>(sources: impl IntoIterator<Item = &'a str>) -> String {
     let mut seen = HashSet::new();
     let mut out: Vec<String> = Vec::new();
-    for dir in extra {
-        push_entry(&mut out, &mut seen, &dir.to_string_lossy());
-    }
-    if let Some(login) = login {
-        for entry in login.split(PATH_SEP) {
+    for source in sources {
+        for entry in source.split(PATH_SEP) {
             push_entry(&mut out, &mut seen, entry);
         }
-    }
-    for entry in process.split(PATH_SEP) {
-        push_entry(&mut out, &mut seen, entry);
     }
     out.join(&PATH_SEP.to_string())
 }
@@ -220,15 +240,21 @@ fn push_entry(out: &mut Vec<String>, seen: &mut HashSet<String>, entry: &str) {
 /// executable name at spawn time. Returns the resolved path, or `None` when the
 /// command cannot be found.
 ///
-/// A `command` containing a path separator is treated as a direct path and used
-/// verbatim (matching `execvp`/`CreateProcess` semantics).
-pub fn locate_command(command: &str, path: &str) -> Option<PathBuf> {
+/// A `command` containing a path separator is treated as a direct path
+/// (matching `execvp`/`CreateProcess` semantics). A *relative* direct path is
+/// resolved against `cwd` when set, mirroring the child's working directory so a
+/// `command = "./server"` + `cwd` config isn't rejected.
+pub fn locate_command(command: &str, path: &str, cwd: Option<&Path>) -> Option<PathBuf> {
     if command.is_empty() {
         return None;
     }
     if has_path_separator(command) {
         let candidate = PathBuf::from(command);
-        return candidate.is_file().then_some(candidate);
+        let resolved = match (candidate.is_relative(), cwd) {
+            (true, Some(dir)) => dir.join(&candidate),
+            _ => candidate,
+        };
+        return resolved.is_file().then_some(resolved);
     }
     for dir in path.split(PATH_SEP) {
         if dir.is_empty() {
@@ -316,12 +342,11 @@ mod tests {
 
     #[test]
     fn merge_dedups_preserving_first_seen_order() {
-        let extra = vec![PathBuf::from("/opt/homebrew/bin")];
-        let merged = merge_path_sources(
-            &extra,
-            Some("/opt/homebrew/bin:/usr/local/bin"),
+        let merged = merge_path_strings([
+            "/opt/homebrew/bin",
+            "/opt/homebrew/bin:/usr/local/bin",
             "/usr/bin:/bin",
-        );
+        ]);
         let parts: Vec<&str> = merged.split(PATH_SEP).collect();
         assert_eq!(
             parts,
@@ -331,10 +356,47 @@ mod tests {
 
     #[test]
     fn merge_skips_empty_entries() {
-        let merged = merge_path_sources(&[], None, "/usr/bin::/bin:");
+        let merged = merge_path_strings(["/usr/bin::/bin:"]);
         assert_eq!(
             merged.split(PATH_SEP).collect::<Vec<_>>(),
             vec!["/usr/bin", "/bin"]
+        );
+    }
+
+    #[test]
+    fn probe_success_lets_shell_path_win_over_fallback() {
+        // nvm default is v20 on the shell PATH but v22 is the highest install
+        // (a fallback dir). The shell's choice must win; fallback only appends.
+        let merged = merge_path_strings(order_sources(
+            Some("/nvm/v20/bin:/usr/bin"),
+            "/usr/bin:/bin",
+            "/nvm/v22/bin",
+        ));
+        let parts: Vec<&str> = merged.split(PATH_SEP).collect();
+        assert_eq!(
+            parts,
+            vec!["/nvm/v20/bin", "/usr/bin", "/bin", "/nvm/v22/bin"]
+        );
+        let shell = parts.iter().position(|p| *p == "/nvm/v20/bin").unwrap();
+        let fallback = parts.iter().position(|p| *p == "/nvm/v22/bin").unwrap();
+        assert!(shell < fallback, "shell PATH must precede fallback dirs");
+    }
+
+    #[test]
+    fn probe_failure_leads_with_fallback_dirs() {
+        let merged = merge_path_strings(order_sources(None, "/usr/bin:/bin", "/nvm/v22/bin"));
+        assert_eq!(
+            merged.split(PATH_SEP).collect::<Vec<_>>(),
+            vec!["/nvm/v22/bin", "/usr/bin", "/bin"]
+        );
+    }
+
+    #[test]
+    fn join_dirs_uses_path_separator() {
+        let joined = join_dirs(&[PathBuf::from("/a/bin"), PathBuf::from("/b/bin")]);
+        assert_eq!(
+            joined.split(PATH_SEP).collect::<Vec<_>>(),
+            vec!["/a/bin", "/b/bin"]
         );
     }
 
@@ -357,10 +419,29 @@ mod tests {
             .unwrap();
         let path = dir.to_string_lossy().to_string();
 
-        assert!(locate_command("oh-fake-cmd", &path).is_some());
-        assert!(locate_command("definitely-missing-xyz", &path).is_none());
-        assert!(locate_command(&exe.to_string_lossy(), "").is_some());
-        assert!(locate_command("", &path).is_none());
+        assert!(locate_command("oh-fake-cmd", &path, None).is_some());
+        assert!(locate_command("definitely-missing-xyz", &path, None).is_none());
+        assert!(locate_command(&exe.to_string_lossy(), "", None).is_some());
+        assert!(locate_command("", &path, None).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn locate_command_resolves_relative_path_against_cwd() {
+        let dir = std::env::temp_dir().join(format!("oh-spawnenv-cwd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("rel-server");
+        std::fs::File::create(&exe)
+            .unwrap()
+            .write_all(b"x")
+            .unwrap();
+
+        // A relative `command` resolves against the configured cwd, not the
+        // process directory — mirroring where the child actually spawns.
+        assert!(locate_command("./rel-server", "", Some(&dir)).is_some());
+        // Without a cwd it resolves against the process dir and isn't found.
+        assert!(locate_command("./rel-server", "", None).is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -90,7 +90,7 @@ impl McpStdioClient {
             .find(|(key, _)| key == "PATH")
             .map(|(_, value)| value.as_str())
             .unwrap_or(resolved_path.as_str());
-        if spawn_env::locate_command(&self.command, effective_path).is_none() {
+        if spawn_env::locate_command(&self.command, effective_path, self.cwd.as_deref()).is_none() {
             tracing::warn!(
                 target: "[mcp_client::stdio]",
                 command = %self.command,
