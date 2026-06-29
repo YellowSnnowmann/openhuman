@@ -31,7 +31,7 @@ const CATALOG_RPC_TIMEOUT_MS = 120_000;
  * bounds staleness for very long-lived sessions; `force_refresh` and
  * `invalidateSkillBrowseCache()` both drop it on demand.
  */
-const BROWSE_CACHE_TTL_MS = 10 * 60 * 1000;
+const BROWSE_CACHE_TTL_MS = 30 * 60 * 1000;
 let browseCache: { fetchedAt: number; entries: CatalogEntry[] } | null = null;
 let browseInflight: Promise<CatalogEntry[]> | null = null;
 
