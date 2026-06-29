@@ -160,7 +160,7 @@ export async function authorize(
 
 /**
  * Delete an existing Composio connection. Backend verifies ownership
- * before forwarding to Composio.
+ * before forwarding to Composio
  */
 export async function deleteConnection(
   connectionId: string,
