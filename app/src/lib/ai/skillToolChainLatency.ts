@@ -23,7 +23,8 @@ export interface ToolChainMeasurement {
   threadId: string;
   /** Wall-clock from the first tool call to turn completion, in ms. */
   elapsedMs: number;
-  /** Distinct tool calls observed during the chain. */
+  /** Number of tool calls observed during the chain — counts every call, not
+   *  unique tool names (the tracker is keyed only by chain id, not by tool). */
   toolCount: number;
   /** Whether the chain finished within {@link SKILL_TOOL_CHAIN_TARGET_MS}. */
   withinTarget: boolean;

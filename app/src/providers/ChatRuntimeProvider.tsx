@@ -519,7 +519,9 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           return;
 
         // Start (or extend) the tool-chain latency window for this turn (#4273).
-        skillLatencyRef.current.noteToolCall(event.thread_id);
+        // Key by thread+request (same scheme as segment delivery) so parallel /
+        // forked turns that share a thread_id keep independent chains (#4288).
+        skillLatencyRef.current.noteToolCall(segmentDeliveryKey(event.thread_id, event.request_id));
 
         const existing = store.getState().chatRuntime.toolTimelineByThread[event.thread_id] ?? [];
         const existingIdx = event.tool_call_id
@@ -1134,17 +1136,21 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
 
         // Close the tool-chain latency window and surface overruns of the 60s
         // target (#4273, AC3). Observability only — never blocks the turn.
-        const latency = skillLatencyRef.current.finishChain(event.thread_id, { ok: true });
+        const latency = skillLatencyRef.current.finishChain(
+          segmentDeliveryKey(event.thread_id, event.request_id),
+          { ok: true }
+        );
         if (latency) {
           rtLog('skill_tool_chain_latency', {
-            thread: latency.threadId,
+            thread: event.thread_id,
+            request: event.request_id,
             elapsed_ms: latency.elapsedMs,
             tools: latency.toolCount,
             within_target: latency.withinTarget ? 'true' : 'false',
           });
           if (!latency.withinTarget) {
             console.warn(
-              `[skill-latency] tool chain on thread ${latency.threadId} took ${latency.elapsedMs}ms ` +
+              `[skill-latency] tool chain on thread ${event.thread_id} took ${latency.elapsedMs}ms ` +
                 `across ${latency.toolCount} tool(s) — exceeds the ${SKILL_TOOL_CHAIN_TARGET_MS}ms target`
             );
           }
@@ -1294,10 +1300,14 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
 
         // A failed turn still closes its latency window so the chain timer never
         // leaks into a later turn on the same thread (#4273, AC3).
-        const errLatency = skillLatencyRef.current.finishChain(event.thread_id, { ok: false });
+        const errLatency = skillLatencyRef.current.finishChain(
+          segmentDeliveryKey(event.thread_id, event.request_id),
+          { ok: false }
+        );
         if (errLatency) {
           rtLog('skill_tool_chain_latency', {
-            thread: errLatency.threadId,
+            thread: event.thread_id,
+            request: event.request_id,
             elapsed_ms: errLatency.elapsedMs,
             tools: errLatency.toolCount,
             within_target: errLatency.withinTarget ? 'true' : 'false',
@@ -1419,6 +1429,10 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
     const threadIds = Object.keys(lifecycles);
     const activeThreadIds = Object.keys(state.thread.activeThreadIds);
     if (threadIds.length === 0 && activeThreadIds.length === 0) return;
+    // Abandon any in-flight tool-chain latency windows: a disconnect tears down
+    // these turns without an onDone/onError, so without this the next tool call
+    // on a reused thread would attribute stale elapsed/tool counts (#4288).
+    skillLatencyRef.current.reset();
     rtLog('socket_disconnect_reconcile', {
       socket: socketStatus,
       inFlight: threadIds.length,

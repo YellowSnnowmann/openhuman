@@ -66,6 +66,13 @@ export function useComposioIntegrations(pollIntervalMs = 5_000): UseComposioInte
     isLocalSession ? null : true
   );
   const mountedRef = useRef(true);
+  // Bumped whenever the Composio client identity changes (backend ↔ direct /
+  // BYO key) via the config-changed handler. Any refresh/poll started under an
+  // older generation must not commit its result — otherwise an in-flight fetch
+  // can repopulate the cache the handler just cleared with the previous
+  // tenant's connections, painting phantom activations on the next restart
+  // (PR #4288).
+  const configGenerationRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -95,6 +102,7 @@ export function useComposioIntegrations(pollIntervalMs = 5_000): UseComposioInte
   }, [isLocalSession]);
 
   const refresh = useCallback(async () => {
+    const generation = configGenerationRef.current;
     const enabled = fetchEnabled ?? (await resolveFetchEnabled());
     if (!enabled) {
       // Direct mode with no API key configured: there can be no connections, so
@@ -120,7 +128,9 @@ export function useComposioIntegrations(pollIntervalMs = 5_000): UseComposioInte
         getToolkitCatalog({ timeoutMs: COMPOSIO_FETCH_TIMEOUT_MS }),
         listConnections({ timeoutMs: COMPOSIO_FETCH_TIMEOUT_MS }),
       ]);
-      if (!mountedRef.current) return;
+      // Drop results from a client that has since been swapped out — committing
+      // them would revive the previous tenant's state post-invalidation.
+      if (!mountedRef.current || generation !== configGenerationRef.current) return;
 
       if (toolkitsResult.status === 'fulfilled') {
         setToolkits(toolkitsResult.value.toolkits ?? []);
@@ -172,9 +182,10 @@ export function useComposioIntegrations(pollIntervalMs = 5_000): UseComposioInte
     void refresh();
     if (pollIntervalMs <= 0 || fetchEnabled !== true) return;
     const id = window.setInterval(() => {
+      const generation = configGenerationRef.current;
       void listConnections({ timeoutMs: COMPOSIO_FETCH_TIMEOUT_MS })
         .then(resp => {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current || generation !== configGenerationRef.current) return;
           const freshConnections = resp.connections ?? [];
           setConnections(freshConnections);
           // Keep the durable cache current with each poll so a restart paints
@@ -203,6 +214,9 @@ export function useComposioIntegrations(pollIntervalMs = 5_000): UseComposioInte
   useEffect(() => {
     const onConfigChanged = () => {
       console.debug('[composio-cache] window:composio:config-changed → refresh()');
+      // Invalidate any refresh/poll already in flight under the previous client
+      // so it can't write its result back after the caches below are cleared.
+      configGenerationRef.current += 1;
       // The Composio client identity changed (backend ↔ direct / BYO key),
       // so the cached catalog AND connections belong to the previous tenant.
       // Drop both before refetching, mirroring the core-side

@@ -97,15 +97,57 @@ describe('connectionCache', () => {
   });
 
   it('returns null on malformed persisted JSON', () => {
-    window.localStorage.setItem('composio:connections:v1:user-a', '{ not json');
+    window.localStorage.setItem('user-a:composio:connections:v1', '{ not json');
     expect(readConnectionCache()).toBeNull();
   });
 
   it('returns null when the persisted shape is invalid', () => {
     window.localStorage.setItem(
-      'composio:connections:v1:user-a',
+      'user-a:composio:connections:v1',
       JSON.stringify({ fetchedAt: Date.now(), connections: 'nope' })
     );
     expect(readConnectionCache()).toBeNull();
+  });
+
+  it('namespaces the cache under the user prefix so clearAllAppData purges it', () => {
+    writeConnectionCache({ connections: [conn('gmail')] });
+    // clearAllAppData removes every `${userId}:` key — the cache must live there.
+    expect(window.localStorage.getItem('user-a:composio:connections:v1')).not.toBeNull();
+  });
+
+  it('does not revive expired toolkit/catalog via a later connections-only write', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    writeConnectionCache({
+      connections: [conn('gmail')],
+      toolkits: ['gmail'],
+      catalog: [cat('gmail')],
+    });
+
+    // Past the TTL: the snapshot is stale. A connections-only poll write must
+    // start from an empty base, not resurrect the expired toolkits/catalog.
+    vi.setSystemTime(new Date('2026-01-02T00:00:01Z'));
+    writeConnectionCache({ connections: [conn('gmail'), conn('notion')] });
+
+    const got = readConnectionCache();
+    expect(got?.connections.map(c => c.toolkit)).toEqual(['gmail', 'notion']);
+    expect(got?.toolkits).toEqual([]);
+    expect(got?.catalog).toEqual([]);
+  });
+
+  it('survives a simulated process restart (warm localStorage, cold module memory)', async () => {
+    writeConnectionCache({
+      connections: [conn('gmail')],
+      toolkits: ['gmail'],
+      catalog: [cat('gmail')],
+    });
+
+    // Drop the module-level in-memory mirror but keep the durable localStorage
+    // blob, exactly like a cold app restart, then re-import the module fresh.
+    vi.resetModules();
+    const fresh = await import('./connectionCache');
+    const got = fresh.readConnectionCache();
+    expect(got?.connections.map(c => c.toolkit)).toEqual(['gmail']);
+    expect(got?.toolkits).toEqual(['gmail']);
   });
 });

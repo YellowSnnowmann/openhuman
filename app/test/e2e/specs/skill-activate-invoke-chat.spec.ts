@@ -125,11 +125,10 @@ describe('Skill activate → invoke from chat', () => {
       timeoutMs: 45_000,
       logPrefix: LOG_PREFIX,
     });
-    if (!toolHit) {
-      console.warn(
-        `${LOG_PREFIX} composio execute not observed in mock log (final answer is the oracle)`
-      );
-    }
+    // Hard assertion: the whole point of this spec is the activate→invoke
+    // routing guarantee, so the agent MUST hit the Composio execute endpoint —
+    // a missing call is a failure, not a warning (PR #4288 review).
+    expect(toolHit).toBeDefined();
 
     // Hard oracle: the skill's result renders in the conversation.
     const replied = await waitForAssistantReplyContaining(CANARY_FINAL, {

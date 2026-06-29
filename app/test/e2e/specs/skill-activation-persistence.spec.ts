@@ -85,17 +85,33 @@ describe('Skill activation persistence across restart', () => {
     await stopMockServer();
   });
 
-  it('shows the activated skill on first load (populates the durable cache)', async function () {
+  it('shows the activated skill on first load and writes it to the durable cache', async function () {
     this.timeout(60_000);
     await assertConnectorCardVisible(CONNECTOR_NAME);
-    console.log(`${LOG} PASS: activated skill visible on first load`);
+
+    // Durable-write proof (PR #4288 review): the connection must be persisted to
+    // localStorage under the user-scoped `${userId}:composio:connections:v1`
+    // key — not merely held in the module's in-memory mirror. Asserting the
+    // durable blob here makes the persistence path load-bearing for this spec,
+    // so a broken write fails the test instead of being masked by the in-memory
+    // hydrate on the re-mount below. (Cold-restart read-back — fresh module
+    // memory, warm localStorage — is covered by the connectionCache unit test,
+    // which tauri-driver cannot cheaply reproduce with a real relaunch.)
+    const persisted = await browser.execute(() => {
+      const key = Object.keys(window.localStorage).find(k => k.endsWith('composio:connections:v1'));
+      return key ? window.localStorage.getItem(key) : null;
+    });
+    expect(persisted).toBeTruthy();
+    expect(String(persisted).toLowerCase()).toContain(TOOLKIT_SLUG);
+    console.log(`${LOG} PASS: activated skill visible + persisted to durable cache`);
   });
 
   it('still shows the activated skill after a restart when the backend is unreachable', async function () {
     this.timeout(60_000);
 
     // From here on, any fresh Composio fetch fails — so a card that appears
-    // after the re-mount can only have come from the persisted cache.
+    // after the re-mount came from the seeded/persisted state, not a new
+    // backend fetch.
     injectComposioFault(500);
 
     await simulateRestart();

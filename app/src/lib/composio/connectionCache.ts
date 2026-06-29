@@ -27,7 +27,7 @@
  */
 import type { ComposioConnection, ComposioToolkitCatalogEntry } from './types';
 
-const CACHE_KEY_PREFIX = 'composio:connections:v1';
+const CACHE_KEY_SUFFIX = 'composio:connections:v1';
 /**
  * Bound how stale a seeded snapshot may be. The value only gates the *initial
  * paint* — the hook always issues a live fetch on mount regardless — so this is
@@ -67,7 +67,16 @@ function activeUserId(): string | null {
 }
 
 function cacheKey(userId: string): string {
-  return `${CACHE_KEY_PREFIX}:${userId}`;
+  // User id FIRST so the key matches userScopedStorage's `${userId}:...` shape.
+  // clearAllAppData's purge removes every `${userId}:` key, so this namespacing
+  // ensures "clear my data" also drops the connection cache instead of leaving
+  // it to re-seed stale connected toolkits on the next sign-in (PR #4288).
+  return `${userId}:${CACHE_KEY_SUFFIX}`;
+}
+
+/** A cached snapshot is usable only while still inside the TTL window. */
+function isFresh(entry: CachedConnectionState): boolean {
+  return Date.now() - entry.fetchedAt < TTL_MS;
 }
 
 function isValid(parsed: unknown): parsed is CachedConnectionState {
@@ -92,16 +101,21 @@ export function readConnectionCache(): CachedConnectionState | null {
   // share a blob and leak one user's connections into another's shell.
   if (userId === null) return null;
   if (memory && memoryUserId === userId) {
-    return Date.now() - memory.fetchedAt < TTL_MS ? memory : null;
+    return isFresh(memory) ? memory : null;
   }
   try {
     const raw = window.localStorage.getItem(cacheKey(userId));
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!isValid(parsed)) return null;
+    // Never promote an expired snapshot into the in-memory mirror: a later
+    // partial write (e.g. a connections-only poll after a failed toolkit fetch)
+    // would otherwise merge against — and revive — stale toolkit/catalog data
+    // the TTL was meant to suppress (PR #4288).
+    if (!isFresh(parsed)) return null;
     memory = parsed;
     memoryUserId = userId;
-    return Date.now() - parsed.fetchedAt < TTL_MS ? parsed : null;
+    return parsed;
   } catch {
     return null;
   }
@@ -123,7 +137,7 @@ export function writeConnectionCache(patch: {
   // no-op so we never write a user-shaped blob to a shared key.
   if (userId === null) return;
   const base =
-    memory && memoryUserId === userId
+    memory && memoryUserId === userId && isFresh(memory)
       ? memory
       : { fetchedAt: 0, connections: [], toolkits: [], catalog: [] };
   const entry: CachedConnectionState = {

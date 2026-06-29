@@ -103,7 +103,7 @@ describe('useComposioIntegrations', () => {
     // under the active user's namespace (the cache is inert without a user id).
     window.localStorage.setItem('OPENHUMAN_ACTIVE_USER_ID', 'test-user');
     window.localStorage.setItem(
-      'composio:connections:v1:test-user',
+      'test-user:composio:connections:v1',
       JSON.stringify({
         fetchedAt: Date.now(),
         connections: [{ id: 'seed', toolkit: 'gmail', status: 'ACTIVE' }],
@@ -129,7 +129,7 @@ describe('useComposioIntegrations', () => {
   it('reconciles a stale cached connection away once the live fetch lands', async () => {
     window.localStorage.setItem('OPENHUMAN_ACTIVE_USER_ID', 'test-user');
     window.localStorage.setItem(
-      'composio:connections:v1:test-user',
+      'test-user:composio:connections:v1',
       JSON.stringify({
         fetchedAt: Date.now(),
         connections: [{ id: 'seed', toolkit: 'gmail', status: 'ACTIVE' }],

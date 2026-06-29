@@ -1,7 +1,7 @@
 import { render, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { Provider } from 'react-redux';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as chatService from '../../services/chatService';
 import { threadApi } from '../../services/api/threadApi';
@@ -1431,6 +1431,13 @@ describe('ChatRuntimeProvider — skill tool-chain latency (#4273 AC3)', () => {
     } as never);
   });
 
+  afterEach(() => {
+    // Restore the console.warn spy + real timers in shared cleanup so a failing
+    // assertion can't leave a mocked console for the next test (PR #4288).
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   const toolCall = (thread: string): chatService.ChatToolCallEvent => ({
     thread_id: thread,
     request_id: 'r1',
@@ -1472,7 +1479,6 @@ describe('ChatRuntimeProvider — skill tool-chain latency (#4273 AC3)', () => {
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[skill-latency]'));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds the 60000ms target'));
-    warnSpy.mockRestore();
   });
 
   it('does not warn for a chain that completes within the target', () => {
@@ -1496,7 +1502,6 @@ describe('ChatRuntimeProvider — skill tool-chain latency (#4273 AC3)', () => {
     expect(warnSpy.mock.calls.some(args => String(args[0]).includes('[skill-latency]'))).toBe(
       false
     );
-    warnSpy.mockRestore();
   });
 
   it('closes the latency window on chat_error without warning', () => {
@@ -1521,6 +1526,5 @@ describe('ChatRuntimeProvider — skill tool-chain latency (#4273 AC3)', () => {
     expect(warnSpy.mock.calls.some(args => String(args[0]).includes('[skill-latency]'))).toBe(
       false
     );
-    warnSpy.mockRestore();
   });
 });
