@@ -78,11 +78,15 @@ async fn login_shell_path() -> Option<String> {
     // Markers fence the PATH from any rc-file noise (MOTD, banners, prompts) so
     // we extract exactly the value of `$PATH` and nothing else.
     let script = format!("printf '{PATH_MARK_START}%s{PATH_MARK_END}' \"$PATH\"");
+    // `kill_on_drop` so the 3s `timeout` below actually tears the shell down:
+    // `timeout` only drops the `output()` future, and Tokio leaves the child
+    // running otherwise — a hung rc file would outlive the timeout.
     let probe = Command::new(&shell)
         .arg("-ilc")
         .arg(&script)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
+        .kill_on_drop(true)
         .output();
 
     let stdout = match tokio::time::timeout(LOGIN_SHELL_TIMEOUT, probe).await {
@@ -254,14 +258,14 @@ pub fn locate_command(command: &str, path: &str, cwd: Option<&Path>) -> Option<P
             (true, Some(dir)) => dir.join(&candidate),
             _ => candidate,
         };
-        return resolved.is_file().then_some(resolved);
+        return is_executable_file(&resolved).then_some(resolved);
     }
     for dir in path.split(PATH_SEP) {
         if dir.is_empty() {
             continue;
         }
         for candidate in executable_candidates(Path::new(dir).join(command)) {
-            if candidate.is_file() {
+            if is_executable_file(&candidate) {
                 return Some(candidate);
             }
         }
@@ -271,6 +275,28 @@ pub fn locate_command(command: &str, path: &str, cwd: Option<&Path>) -> Option<P
 
 fn has_path_separator(command: &str) -> bool {
     command.contains('/') || (cfg!(windows) && command.contains('\\'))
+}
+
+/// Whether `path` is a file the OS would accept as an executable, so preflight
+/// matches what `spawn` will actually run. On Unix that means the execute bit is
+/// set; on Windows executability is determined by extension (already enumerated
+/// via `executable_candidates`/`PATHEXT`), so a regular file is sufficient.
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return path
+            .metadata()
+            .map(|meta| meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 #[cfg(windows)]
@@ -322,6 +348,21 @@ pub fn missing_command_error(command: &str) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    fn write_file(path: &Path, executable: bool) {
+        std::fs::File::create(path)
+            .unwrap()
+            .write_all(b"x")
+            .unwrap();
+        #[cfg(unix)]
+        if executable {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
+        let _ = executable;
+    }
 
     #[test]
     fn parse_marked_path_extracts_between_markers() {
@@ -413,10 +454,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("oh-spawnenv-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let exe = dir.join("oh-fake-cmd");
-        std::fs::File::create(&exe)
-            .unwrap()
-            .write_all(b"x")
-            .unwrap();
+        write_file(&exe, true);
         let path = dir.to_string_lossy().to_string();
 
         assert!(locate_command("oh-fake-cmd", &path, None).is_some());
@@ -431,17 +469,28 @@ mod tests {
     fn locate_command_resolves_relative_path_against_cwd() {
         let dir = std::env::temp_dir().join(format!("oh-spawnenv-cwd-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let exe = dir.join("rel-server");
-        std::fs::File::create(&exe)
-            .unwrap()
-            .write_all(b"x")
-            .unwrap();
+        write_file(&dir.join("rel-server"), true);
 
         // A relative `command` resolves against the configured cwd, not the
         // process directory — mirroring where the child actually spawns.
         assert!(locate_command("./rel-server", "", Some(&dir)).is_some());
         // Without a cwd it resolves against the process dir and isn't found.
         assert!(locate_command("./rel-server", "", None).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn locate_command_rejects_non_executable_file() {
+        let dir = std::env::temp_dir().join(format!("oh-spawnenv-noexec-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_file(&dir.join("plain-file"), false);
+        let path = dir.to_string_lossy().to_string();
+
+        // A regular, non-executable file must not satisfy preflight — spawn
+        // would reject it too.
+        assert!(locate_command("plain-file", &path, None).is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
