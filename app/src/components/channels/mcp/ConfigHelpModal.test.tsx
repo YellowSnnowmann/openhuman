@@ -38,9 +38,7 @@ describe('ConfigHelpModal', () => {
     // The help opens instantly — no blocking LLM call on open (#4272). The
     // research is offered as a one-click action instead.
     expect(mockConfigAssist).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('button', { name: 'Get step-by-step setup help' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Get step-by-step setup help' })).toBeInTheDocument();
   });
 
   it('runs a server-specific prompt on demand, naming the display name and qualified name', async () => {
