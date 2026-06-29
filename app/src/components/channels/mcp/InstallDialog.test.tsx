@@ -62,8 +62,10 @@ describe('InstallDialog', () => {
       expect(screen.getByText('Test Server')).toBeInTheDocument();
     });
     expect(screen.getByText('A test server')).toBeInTheDocument();
-    expect(screen.getByText('Requires configuration')).toBeInTheDocument();
-    expect(screen.getByText('Runs locally')).toBeInTheDocument();
+    // Transport badge uses the same Stdio/Hosted vocabulary as the catalog list
+    // (the old separate "Cloud hosted"/"Requires configuration" pills were
+    // dropped — the env-vars section below already conveys configuration).
+    expect(screen.getByText('Stdio')).toBeInTheDocument();
   });
 
   it('shows env key preview badges on detail step', async () => {
