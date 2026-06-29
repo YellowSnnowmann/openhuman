@@ -191,6 +191,10 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
   if (!detail) return null;
 
   const author = deriveAuthor(qualifiedName);
+  // The detail DTO doesn't carry `is_deployed`, so derive transport from the
+  // connection types instead (an `http` connection ⇒ hosted, else stdio) —
+  // otherwise hosted-only servers are always mislabeled "Stdio".
+  const isHosted = (detail.connections ?? []).some(c => c.type === 'http');
 
   // ── Step 1: Detail overview ──────────────────────────────────────────────
 
@@ -234,7 +238,7 @@ const InstallDialog = ({ qualifiedName, prefillEnv, onSuccess, onCancel }: Insta
             below already convey both). */}
         <div className="flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-surface-subtle text-content-secondary">
-            {detail.is_deployed ? t('mcp.tab.transport.hosted') : t('mcp.tab.transport.local')}
+            {isHosted ? t('mcp.tab.transport.hosted') : t('mcp.tab.transport.local')}
           </span>
           {detail.use_count != null && detail.use_count > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-surface-subtle text-content-secondary">

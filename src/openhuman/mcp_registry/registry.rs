@@ -62,6 +62,11 @@ pub async fn registry_search(
     )
     .await;
 
+    // A total outage (every registry errored) is distinct from "no perfect
+    // servers": return an error so the UI shows its registry error state instead
+    // of an empty catalog. `merge_registry_results` logs+skips the individual
+    // failures.
+    let any_ok = results.iter().any(Result::is_ok);
     let labelled = results
         .into_iter()
         .enumerate()
@@ -69,6 +74,10 @@ pub async fn registry_search(
         .collect();
 
     let (mut merged, mut total_pages) = merge_registry_results(labelled);
+
+    if !any_ok && !registries.is_empty() {
+        anyhow::bail!("all MCP registries failed to respond");
+    }
 
     // Badge the canonical first-party server, drop non-perfect rows, refine
     // search relevance, filter by transport, float official to the top.

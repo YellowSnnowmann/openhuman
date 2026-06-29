@@ -214,14 +214,19 @@ async function setupMockRpc(page: Page, state: MockState) {
       case 'openhuman.mcp_clients_connect': {
         const sid = params.server_id;
         const inst = state.installed.find(s => s.server_id === sid);
+        // Reject unknown server ids so the test can't pass while wired to the
+        // wrong server.
+        if (!inst) {
+          return route.fulfill(rpcError(id, `server not installed: ${sid}`));
+        }
         // Mark the server connected for subsequent status polls and hand back
         // its tool list (what `onConnected` feeds into the detail's tool list).
         state.statuses = [
           ...state.statuses.filter(s => s.server_id !== sid),
           {
             server_id: sid,
-            qualified_name: inst?.qualified_name ?? '',
-            display_name: inst?.display_name ?? '',
+            qualified_name: inst.qualified_name,
+            display_name: inst.display_name,
             status: 'connected',
             tool_count: MOCK_TOOLS.length,
           },
@@ -229,11 +234,19 @@ async function setupMockRpc(page: Page, state: MockState) {
         return route.fulfill(rpcOk(id, { status: 'connected', tools: MOCK_TOOLS }));
       }
 
-      // Tool execution — what the playground's "Run tool" calls.
-      case 'openhuman.mcp_clients_tool_call':
+      // Tool execution — what the playground's "Run tool" calls. Unknown tools
+      // come back as a tool error so the spec can't pass on a wrong tool name.
+      case 'openhuman.mcp_clients_tool_call': {
+        const known = MOCK_TOOLS.some(t => t.name === params.tool_name);
+        if (!known) {
+          return route.fulfill(
+            rpcOk(id, { result: `unknown tool: ${params.tool_name}`, is_error: true })
+          );
+        }
         return route.fulfill(
           rpcOk(id, { result: `ran ${params.tool_name}: memory created id=42`, is_error: false })
         );
+      }
 
       case 'openhuman.mcp_clients_disconnect':
         state.statuses = state.statuses.filter(s => s.server_id !== params.server_id);

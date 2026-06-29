@@ -178,6 +178,10 @@ const CatalogRow = memo(
         aria-label={t('mcp.tab.aria.installServer').replace('{name}', server.display_name)}
         onClick={() => onInstall(server.qualified_name)}
         onKeyDown={e => {
+          // Only act on keys aimed at the row itself — Enter/Space bubble up
+          // from the nested Website/Repository buttons, which must not open
+          // the install flow.
+          if (e.target !== e.currentTarget) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             onInstall(server.qualified_name);
@@ -266,6 +270,9 @@ const McpServersTab = () => {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogPage, setCatalogPage] = useState(1);
   const [catalogTotalPages, setCatalogTotalPages] = useState(1);
+  // Set when a registry fetch fails so the Registry view shows an error state
+  // (with retry) instead of silently falling back to an empty/stale catalog.
+  const [catalogError, setCatalogError] = useState(false);
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -310,9 +317,13 @@ const McpServersTab = () => {
         );
         setCatalogPage(result.page);
         setCatalogTotalPages(result.total_pages);
+        setCatalogError(false);
       } catch (err) {
         if (seq !== requestSeqRef.current) return;
         log('catalog fetch error: %o', err);
+        // A fresh (non-append) fetch that fails leaves no usable rows — surface
+        // the error. A failed "load more" keeps the rows already shown.
+        if (!append) setCatalogError(true);
       } finally {
         if (seq === requestSeqRef.current) setCatalogLoading(false);
       }
@@ -410,25 +421,32 @@ const McpServersTab = () => {
     void fetchCatalog(searchQuery, transportFilter, catalogPage + 1, true);
   };
 
-  // Bulk lifecycle actions for the health toolbar. Each reconnects/disconnects
-  // the given servers (best-effort — one failure doesn't abort the batch) then
-  // refreshes status so the dots reflect reality immediately.
+  // Bulk lifecycle actions for the health toolbar. One failure doesn't abort the
+  // batch (allSettled), and we always refresh status so the dots reflect reality
+  // — but if any call rejected we then throw so the toolbar can surface the
+  // failure (otherwise a partial/total failure would look like success).
   const handleReconnectAll = useCallback(
     async (serverIds: string[]) => {
       log('reconnect all: %o', serverIds);
-      await Promise.allSettled(serverIds.map(id => mcpClientsApi.connect(id)));
+      const results = await Promise.allSettled(serverIds.map(id => mcpClientsApi.connect(id)));
       await fetchStatuses();
+      if (results.some(r => r.status === 'rejected')) {
+        throw new Error(t('mcp.health.opErrorGeneric'));
+      }
     },
-    [fetchStatuses]
+    [fetchStatuses, t]
   );
 
   const handleDisconnectAll = useCallback(
     async (serverIds: string[]) => {
       log('disconnect all: %o', serverIds);
-      await Promise.allSettled(serverIds.map(id => mcpClientsApi.disconnect(id)));
+      const results = await Promise.allSettled(serverIds.map(id => mcpClientsApi.disconnect(id)));
       await fetchStatuses();
+      if (results.some(r => r.status === 'rejected')) {
+        throw new Error(t('mcp.health.opErrorGeneric'));
+      }
     },
-    [fetchStatuses]
+    [fetchStatuses, t]
   );
 
   const selectedServer =
@@ -715,6 +733,23 @@ const McpServersTab = () => {
           </tbody>
         </table>
 
+        {/* Registry fetch error — takes precedence over the empty state so a
+            failed load reads as an error (with retry), not "no results". */}
+        {showRegistry && catalogError && !catalogLoading && (
+          <div
+            data-testid="mcp-catalog-error"
+            className="py-8 text-center text-sm text-coral-700 dark:text-coral-300 space-y-2">
+            <p>{t('mcp.catalog.loadFailed')}</p>
+            <Button
+              variant="tertiary"
+              size="xs"
+              onClick={() => void fetchCatalog(searchQuery, transportFilter, 1, false)}
+              className="text-primary-600 dark:text-primary-400 hover:underline">
+              {t('common.retry')}
+            </Button>
+          </div>
+        )}
+
         {/* Empty states */}
         {activeChip === 'installed' && filteredInstalled.length === 0 && (
           <div
@@ -723,19 +758,23 @@ const McpServersTab = () => {
             {t('mcp.installed.empty')}
           </div>
         )}
-        {activeChip === 'registry' && availableCatalog.length === 0 && !catalogLoading && (
-          <div
-            data-testid="mcp-catalog-empty"
-            className="py-8 text-center text-sm text-content-faint">
-            {searchQuery
-              ? t('mcp.catalog.noResultsFor').replace('{query}', searchQuery)
-              : t('mcp.catalog.noResults')}
-          </div>
-        )}
+        {activeChip === 'registry' &&
+          availableCatalog.length === 0 &&
+          !catalogLoading &&
+          !catalogError && (
+            <div
+              data-testid="mcp-catalog-empty"
+              className="py-8 text-center text-sm text-content-faint">
+              {searchQuery
+                ? t('mcp.catalog.noResultsFor').replace('{query}', searchQuery)
+                : t('mcp.catalog.noResults')}
+            </div>
+          )}
         {activeChip === 'all' &&
           filteredInstalled.length === 0 &&
           availableCatalog.length === 0 &&
-          !catalogLoading && (
+          !catalogLoading &&
+          !catalogError && (
             <div
               data-testid="mcp-catalog-empty"
               className="py-8 text-center text-sm text-content-faint">

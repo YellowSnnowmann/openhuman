@@ -516,6 +516,31 @@ describe('McpServersTab', () => {
     expect(screen.queryByText('Verified only')).not.toBeInTheDocument();
   });
 
+  it('shows a registry error state with retry when the catalog fetch fails', async () => {
+    mockInstalledList.mockResolvedValue([]);
+    mockStatus.mockResolvedValue([]);
+    // First catalog fetch fails → error state; retry succeeds → rows render.
+    mockRegistrySearch.mockRejectedValueOnce(new Error('registry down'));
+    mockRegistrySearch.mockResolvedValue({
+      servers: [{ qualified_name: 'a/srv', display_name: 'Recovered Srv', is_deployed: false }],
+      page: 1,
+      total_pages: 1,
+    });
+
+    await renderAndWaitForLoad();
+    vi.useRealTimers();
+
+    // Error surfaces instead of a silent empty state.
+    const errorBox = await screen.findByTestId('mcp-catalog-error');
+    expect(errorBox).toHaveTextContent('Failed to load catalog');
+    expect(screen.queryByTestId('mcp-catalog-empty')).not.toBeInTheDocument();
+
+    // Retry re-fetches and renders the recovered catalog.
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.getByText('Recovered Srv')).toBeInTheDocument());
+    expect(screen.queryByTestId('mcp-catalog-error')).not.toBeInTheDocument();
+  });
+
   it('surfaces the health toolbar and reconnects error-state servers via Retry all', async () => {
     mockInstalledList.mockResolvedValue(SERVERS);
     mockStatus.mockResolvedValue([
