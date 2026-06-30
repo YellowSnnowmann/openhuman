@@ -73,7 +73,7 @@ pub use client::ComposioClient;
 pub use identity::connection_identity;
 pub use ops::{
     cached_active_integrations, connected_set_hash, fetch_connected_integrations,
-    fetch_connected_integrations_status, fetch_toolkit_actions,
+    fetch_connected_integrations_status, fetch_toolkit_actions, fetch_toolkit_actions_cached,
     invalidate_connected_integrations_cache, FetchConnectedIntegrationsStatus,
 };
 pub use schemas::{

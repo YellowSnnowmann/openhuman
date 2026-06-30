@@ -356,7 +356,7 @@ async fn run_typed_mode(
             {
                 let fresh_actions = match &client_kind {
                     Some(ComposioClientKind::Backend(client)) => {
-                        match crate::openhuman::composio::fetch_toolkit_actions(client, tk, None)
+                        match crate::openhuman::composio::fetch_toolkit_actions_cached(client, tk)
                             .await
                         {
                             Ok(actions) if !actions.is_empty() => actions,

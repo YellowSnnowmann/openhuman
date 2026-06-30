@@ -49,6 +49,47 @@ pub(crate) struct CachedIntegrations {
 pub(crate) static INTEGRATIONS_CACHE: LazyLock<RwLock<HashMap<String, CachedIntegrations>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
+/// TTL for the per-toolkit action catalogue cache (see
+/// [`TOOLKIT_ACTIONS_CACHE`]). Action *definitions* (e.g. the
+/// `GMAIL_SEND_EMAIL` parameter shape + the curated visibility set) change
+/// far less often than connection state, so this is more generous than
+/// [`CACHE_TTL`]. The event-driven invalidation path (a new OAuth
+/// connection clears this alongside the integrations cache) covers the
+/// common "user just connected a toolkit" case; the TTL only backstops
+/// rarer action-scope changes.
+pub(crate) const TOOLKIT_ACTIONS_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Cached per-toolkit action catalogue plus the timestamp we wrote it.
+#[derive(Clone)]
+pub(crate) struct CachedToolkitActions {
+    pub(crate) actions: Vec<ConnectedIntegrationTool>,
+    pub(crate) cached_at: Instant,
+}
+
+/// Process-wide cache for the curated per-toolkit action catalogue
+/// returned by [`fetch_toolkit_actions`], keyed by the normalized toolkit
+/// slug. Populated on first delegation to an integrations sub-agent for a
+/// toolkit and reused (within [`TOOLKIT_ACTIONS_CACHE_TTL`]) on subsequent
+/// delegations, so a meeting that asks several Slack/Gmail questions pays
+/// the multi-second `list_tools` round-trip once instead of every turn.
+/// Invalidated together with [`INTEGRATIONS_CACHE`] whenever a connection
+/// changes.
+pub(crate) static TOOLKIT_ACTIONS_CACHE: LazyLock<RwLock<HashMap<String, CachedToolkitActions>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Normalize a toolkit slug for use as a cache key (trim + lowercase) so
+/// `"Slack"`, `"slack"`, and `" slack "` share one entry.
+pub(crate) fn toolkit_cache_key(toolkit: &str) -> String {
+    toolkit.trim().to_lowercase()
+}
+
+/// Whether a cache entry written at `cached_at` is still fresh relative to
+/// `now` and `ttl`. Pure so the freshness rule can be unit-tested without
+/// the global cache or a real clock.
+pub(crate) fn cache_entry_fresh(cached_at: Instant, now: Instant, ttl: Duration) -> bool {
+    now.duration_since(cached_at) < ttl
+}
+
 /// Crate-wide test serialization lock for all tests that mutate or read
 /// the process-global `INTEGRATIONS_CACHE`. Defined here so it is shared
 /// by every `cfg(test)` module in this crate (ops_tests, tools_tests, …).
@@ -84,6 +125,19 @@ pub fn invalidate_connected_integrations_cache() {
         tracing::info!(
             cached_keys = entries,
             "[composio][integrations] cache invalidated"
+        );
+    }
+    // The per-toolkit action catalogue is downstream of the same
+    // connection state, so clear it on the same triggers (new OAuth
+    // connection, list_connections divergence, tests). Otherwise a
+    // freshly connected toolkit's actions could stay missing for up to
+    // TOOLKIT_ACTIONS_CACHE_TTL.
+    if let Ok(mut guard) = TOOLKIT_ACTIONS_CACHE.write() {
+        let entries = guard.len();
+        guard.clear();
+        tracing::info!(
+            cached_toolkits = entries,
+            "[composio][toolkit_actions] cache invalidated"
         );
     }
 }
@@ -976,6 +1030,59 @@ async fn fetch_connected_integrations_uncached(
 /// toolkit (valid steady state for a freshly-authorised integration
 /// whose catalogue hasn't been published yet). Returns `Err` only for
 /// transport / auth failures the caller should surface to the user.
+/// Cached variant of [`fetch_toolkit_actions`] for the delegation hot
+/// path (no tag filter). Returns the same curated catalogue, but serves
+/// repeat lookups for the same toolkit from [`TOOLKIT_ACTIONS_CACHE`]
+/// within [`TOOLKIT_ACTIONS_CACHE_TTL`] instead of re-running the
+/// multi-second backend `list_tools` round-trip every delegation.
+///
+/// A cache miss (or a stale/contended entry) falls through to a live
+/// `fetch_toolkit_actions` and repopulates the cache. Errors are never
+/// cached. Callers needing a tag filter or guaranteed-fresh results
+/// should call [`fetch_toolkit_actions`] directly.
+pub async fn fetch_toolkit_actions_cached(
+    client: &ComposioClient,
+    toolkit: &str,
+) -> anyhow::Result<Vec<ConnectedIntegrationTool>> {
+    let key = toolkit_cache_key(toolkit);
+    if !key.is_empty() {
+        // `try_read` so a concurrent writer never blocks a delegation;
+        // worst case is a single live fetch while the lock is held.
+        if let Ok(guard) = TOOLKIT_ACTIONS_CACHE.try_read() {
+            if let Some(cached) = guard.get(&key) {
+                if cache_entry_fresh(cached.cached_at, Instant::now(), TOOLKIT_ACTIONS_CACHE_TTL) {
+                    tracing::debug!(
+                        toolkit = %key,
+                        action_count = cached.actions.len(),
+                        "[composio][toolkit_actions] cache hit"
+                    );
+                    return Ok(cached.actions.clone());
+                }
+            }
+        }
+    }
+
+    let actions = fetch_toolkit_actions(client, toolkit, None).await?;
+
+    if !key.is_empty() {
+        if let Ok(mut guard) = TOOLKIT_ACTIONS_CACHE.write() {
+            guard.insert(
+                key.clone(),
+                CachedToolkitActions {
+                    actions: actions.clone(),
+                    cached_at: Instant::now(),
+                },
+            );
+            tracing::debug!(
+                toolkit = %key,
+                action_count = actions.len(),
+                "[composio][toolkit_actions] cache populated"
+            );
+        }
+    }
+    Ok(actions)
+}
+
 pub async fn fetch_toolkit_actions(
     client: &ComposioClient,
     toolkit: &str,
@@ -1016,6 +1123,53 @@ pub async fn fetch_toolkit_actions(
         "[composio] fetch_toolkit_actions: done"
     );
     Ok(actions)
+}
+
+#[cfg(test)]
+mod toolkit_actions_cache_tests {
+    use super::*;
+
+    #[test]
+    fn cache_key_normalizes_slug() {
+        assert_eq!(toolkit_cache_key("Slack"), "slack");
+        assert_eq!(toolkit_cache_key("  GMAIL "), "gmail");
+        assert_eq!(toolkit_cache_key(""), "");
+        assert_eq!(toolkit_cache_key("   "), "");
+    }
+
+    #[test]
+    fn cache_entry_freshness_respects_ttl() {
+        let base = Instant::now();
+        let ttl = Duration::from_secs(300);
+        // Well within the window: fresh.
+        assert!(cache_entry_fresh(base, base + Duration::from_secs(10), ttl));
+        // Exactly at the TTL boundary: stale (strict `<`).
+        assert!(!cache_entry_fresh(base, base + ttl, ttl));
+        // Past the window: stale.
+        assert!(!cache_entry_fresh(
+            base,
+            base + Duration::from_secs(400),
+            ttl
+        ));
+    }
+
+    #[test]
+    fn invalidate_clears_toolkit_actions_cache() {
+        let _guard = composio_cache_test_lock();
+        TOOLKIT_ACTIONS_CACHE.write().unwrap().insert(
+            "slack".to_string(),
+            CachedToolkitActions {
+                actions: Vec::new(),
+                cached_at: Instant::now(),
+            },
+        );
+        assert!(!TOOLKIT_ACTIONS_CACHE.read().unwrap().is_empty());
+        invalidate_connected_integrations_cache();
+        assert!(
+            TOOLKIT_ACTIONS_CACHE.read().unwrap().is_empty(),
+            "invalidation must clear the toolkit action cache alongside the integrations cache"
+        );
+    }
 }
 
 #[cfg(test)]

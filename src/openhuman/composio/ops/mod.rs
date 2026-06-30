@@ -57,7 +57,7 @@ pub use triggers::{
 
 pub use super::connected_integrations::{
     cached_active_integrations, connected_set_hash, fetch_connected_integrations,
-    fetch_connected_integrations_status, fetch_toolkit_actions,
+    fetch_connected_integrations_status, fetch_toolkit_actions, fetch_toolkit_actions_cached,
     invalidate_connected_integrations_cache, FetchConnectedIntegrationsStatus,
 };
 
