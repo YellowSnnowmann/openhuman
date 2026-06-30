@@ -56,6 +56,17 @@ pub const CAPTIONS_BRIDGE_JS: &str = include_str!("captions_bridge.js");
 const TARGET_DISCOVERY_BUDGET: Duration = Duration::from_secs(20);
 const TARGET_DISCOVERY_INTERVAL: Duration = Duration::from_millis(500);
 
+/// CDP `Page.reload` params for the audio/captions bridge install.
+///
+/// Intentionally omits `ignoreCache`: a plain reload already re-runs the
+/// document-start bridge scripts (a reload always reloads the document;
+/// bfcache applies only to history navigation), so forcing a cold cache
+/// bypass merely re-downloaded Meet's SPA bundle for no install benefit.
+/// The unit test guards against a regression that reintroduces it.
+fn audio_bridge_reload_params() -> Value {
+    json!({})
+}
+
 /// Run the inject + reload sequence. Returns the attached CDP
 /// connection + session id so the caller (the speak pump) can keep
 /// using it for `Runtime.evaluate` calls — opening one CDP session
@@ -94,16 +105,19 @@ pub async fn install_audio_bridge<R: tauri::Runtime>(
     .await
     .map_err(|e| format!("addScriptToEvaluateOnNewDocument(captions): {e}"))?;
 
-    // Reload so the script applies to the (already-loaded) meet page.
-    // `ignoreCache: true` defeats the bfcache so we get a real
-    // document-start hook for the bridge.
-    cdp.call(
-        "Page.reload",
-        json!({ "ignoreCache": true }),
-        Some(&session),
-    )
-    .await
-    .map_err(|e| format!("Page.reload: {e}"))?;
+    // Reload so the registered document-start scripts apply to the
+    // (already-loaded) Meet page. A plain reload is enough: `Page.reload`
+    // always performs a fresh document load, which re-runs every
+    // `addScriptToEvaluateOnNewDocument` hook — bfcache only applies to
+    // history (back/forward) navigation, not to an explicit reload. The
+    // previous `ignoreCache: true` additionally forced a cold re-fetch of
+    // Meet's multi-MB SPA bundle on this concurrent reload, doubling
+    // join-time network cost for no bridge-install benefit. Keep the cache
+    // warm; `confirm_bridge_alive` below still verifies the bridge booted
+    // and the speak pump retries if it somehow didn't.
+    cdp.call("Page.reload", audio_bridge_reload_params(), Some(&session))
+        .await
+        .map_err(|e| format!("Page.reload: {e}"))?;
 
     log::info!("[meet-audio] inject reload requested session={session}");
 
@@ -319,4 +333,23 @@ pub async fn flush_audio_bridge(cdp: &mut CdpConn, session: &str) -> Result<i64,
         .and_then(|v| v.as_i64())
         .unwrap_or(0);
     Ok(stopped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_bridge_reload_keeps_cache_warm() {
+        // The bridge install reload must NOT set `ignoreCache`: a plain
+        // reload already re-runs the document-start scripts, and forcing a
+        // cold re-fetch of Meet's SPA bundle is wasted join-time network
+        // cost. Regression guard.
+        let params = audio_bridge_reload_params();
+        assert!(
+            params.get("ignoreCache").is_none(),
+            "audio bridge reload must keep the cache warm (no ignoreCache); got {params}"
+        );
+        assert!(params.is_object(), "reload params must be a JSON object");
+    }
 }
