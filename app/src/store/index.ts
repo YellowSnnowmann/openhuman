@@ -15,6 +15,7 @@ import {
 import { E2E_RESTART_APP_AS_RELOAD, IS_DEV } from '../utils/config';
 import accountsReducer from './accountsSlice';
 import agentProfileReducer from './agentProfileSlice';
+import announcementReducer from './announcementSlice';
 import {
   type ArtifactsByThread,
   filterArtifactsForPersist,
@@ -104,6 +105,9 @@ const themePersistConfig = {
     'agentMessageViewMode',
     'developerMode',
     'hideAgentInsights',
+    'activeThemeId',
+    'themeVariant',
+    'customThemes',
   ],
 };
 const persistedThemeReducer = persistReducer(themePersistConfig, themeReducer);
@@ -155,13 +159,14 @@ const persistedThreadReducer = persistReducer(threadPersistConfig, threadReducer
 const layoutPersistConfig = { key: 'layout', storage, whitelist: ['panels'] };
 const persistedLayoutReducer = persistReducer(layoutPersistConfig, layoutReducer);
 
-// Persist only previously persisted mascot appearance fields plus the custom
-// GIF override added by this feature; leave existing non-persisted mascot
-// fields as runtime state to avoid changing refresh behavior.
+// Persist the mascot appearance fields, the custom GIF override, and the
+// selected mascot id (so the chosen GitHub-manifest mascot survives a reload —
+// the slice's REHYDRATE guard re-validates it). Other mascot fields stay as
+// runtime state.
 const mascotPersistConfig = {
   key: 'mascot',
   storage,
-  whitelist: ['color', 'voiceId', 'customMascotGifUrl'],
+  whitelist: ['color', 'voiceId', 'customMascotGifUrl', 'selectedMascotId'],
 };
 const persistedMascotReducer = persistReducer(mascotPersistConfig, mascotReducer);
 
@@ -208,6 +213,11 @@ const chatRuntimePersistConfig = {
 };
 const persistedChatRuntimeReducer = persistReducer(chatRuntimePersistConfig, chatRuntimeReducer);
 
+// Persist the set of announcement ids this user has already seen so the
+// harness-init banner shows each announcement exactly once (user-scoped).
+const announcementPersistConfig = { key: 'announcement', storage, whitelist: ['shownIds'] };
+const persistedAnnouncementReducer = persistReducer(announcementPersistConfig, announcementReducer);
+
 export const store = configureStore({
   reducer: {
     backendMeet: backendMeetReducer,
@@ -228,6 +238,7 @@ export const store = configureStore({
     persona: persistedPersonaReducer,
     theme: persistedThemeReducer,
     ptt: persistedPttReducer,
+    announcement: persistedAnnouncementReducer,
     // In-memory only (not persisted): survives route changes / background-job
     // completion, resets on restart + user switch. Durable storage is a #3931
     // follow-up.

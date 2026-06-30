@@ -396,14 +396,15 @@ fn create_chat_provider_uses_role() {
 // `make_openhuman_backend` only special-cased `vision`, so `hint = "coding"`
 // sub-agents (code_executor, skill_creator, tool_maker) silently ran on
 // `chat-v1` instead of `coding-v1`, and likewise for `agentic`/`reasoning`.
-// (`summarization` is intentionally excluded — see
-// `managed_backend_summarization_role_inherits_default_model`.) This drives
+// (`summarization`/`memory` resolve their tier separately from
+// `memory_tree.cloud_llm_model` — see
+// `managed_backend_summarization_role_resolves_summarization_tier`.) This drives
 // `make_openhuman_backend` directly via the explicit `"openhuman"` provider
 // string.
 #[test]
 fn managed_backend_pins_specialised_role_to_tier() {
     use crate::openhuman::config::{
-        MODEL_AGENTIC_V1, MODEL_CODING_V1, MODEL_REASONING_V1, MODEL_VISION_V1,
+        MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CODING_V1, MODEL_REASONING_V1, MODEL_VISION_V1,
     };
     // default_model is chat-v1 — the value the buggy path would have leaked.
     let config = Config::default();
@@ -412,6 +413,7 @@ fn managed_backend_pins_specialised_role_to_tier() {
     for (role, expected_tier) in &[
         ("reasoning", MODEL_REASONING_V1),
         ("agentic", MODEL_AGENTIC_V1),
+        ("burst", MODEL_BURST_V1),
         ("coding", MODEL_CODING_V1),
         ("vision", MODEL_VISION_V1),
     ] {
@@ -424,24 +426,53 @@ fn managed_backend_pins_specialised_role_to_tier() {
     }
 }
 
-// `summarization` is deliberately NOT pinned: the memory subsystem
-// (`memory::chat::build_chat_runtime`) routes the summarization model through
-// `default_model` (sourced from the user-configurable
-// `memory_tree.cloud_llm_model`), so it must keep inheriting `default_model`.
+// The managed `summarization`/`memory` role is fixed at `summarization-v1` (via
+// `summarization_tier_model`), independent of both `config.default_model` and
+// `memory_tree.cloud_llm_model`. This is what makes EVERY managed summarization
+// caller — memory tree, chat-turn payload summarizer, meeting summaries, and
+// `hint = "summarization"` sub-agents — reach the dedicated `summarization-v1`
+// tier without each caller pre-routing `default_model`.
 #[test]
-fn managed_backend_summarization_role_inherits_default_model() {
-    let mut config = Config::default();
-    config.default_model = Some("summarization-v1".to_string());
+fn managed_backend_summarization_role_resolves_summarization_tier() {
+    // Default config: cloud_llm_model defaults to summarization-v1.
+    let config = Config::default();
     let (_, model) = create_chat_provider_from_string("summarization", "openhuman", &config)
         .expect("managed backend must build");
     assert_eq!(model, "summarization-v1");
 
-    // A non-tier custom override is not pinned away — it follows the existing
-    // known-tier validation (unknown → platform default reasoning-v1).
-    config.default_model = Some("custom-summary-model".to_string());
+    // `memory` is an alias of `summarization` (both → memory_provider).
+    let (_, model) = create_chat_provider_from_string("memory", "openhuman", &config)
+        .expect("managed backend must build");
+    assert_eq!(model, "summarization-v1");
+}
+
+// `default_model` does NOT drive the summarization tier any more — only
+// `memory_tree.cloud_llm_model` does. A stray `default_model` must not leak in.
+#[test]
+fn managed_backend_summarization_ignores_default_model() {
+    let mut config = Config::default();
+    config.default_model = Some("reasoning-v1".to_string());
     let (_, model) = create_chat_provider_from_string("summarization", "openhuman", &config)
         .expect("managed backend must build");
-    assert_eq!(model, "reasoning-v1");
+    assert_eq!(model, "summarization-v1");
+}
+
+// The managed summarization tier is LOCKED to `summarization-v1` — the
+// (deprecated, inert) `memory_tree.cloud_llm_model` must not change it, whether
+// set to another known tier or a custom string. Users who want a different model
+// run summarization on a BYOK/local `memory_provider` instead.
+#[test]
+fn managed_backend_summarization_ignores_cloud_llm_model_override() {
+    let mut config = Config::default();
+    config.memory_tree.cloud_llm_model = Some("chat-v1".to_string());
+    let (_, model) = create_chat_provider_from_string("summarization", "openhuman", &config)
+        .expect("managed backend must build");
+    assert_eq!(model, "summarization-v1");
+
+    config.memory_tree.cloud_llm_model = Some("custom-summary-model".to_string());
+    let (_, model) = create_chat_provider_from_string("summarization", "openhuman", &config)
+        .expect("managed backend must build");
+    assert_eq!(model, "summarization-v1");
 }
 
 // End-to-end of the sub-agent path: the subagent runner resolves a
@@ -451,11 +482,14 @@ fn managed_backend_summarization_role_inherits_default_model() {
 // `code_executor` agent (`hint = "coding"`) makes when it spawns.
 #[test]
 fn subagent_hint_resolves_to_tier_on_managed_backend() {
-    use crate::openhuman::config::{MODEL_AGENTIC_V1, MODEL_CODING_V1, MODEL_REASONING_V1};
+    use crate::openhuman::config::{
+        MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CODING_V1, MODEL_REASONING_V1,
+    };
     let config = Config::default();
     for (hint, expected_tier) in &[
         ("coding", MODEL_CODING_V1),
         ("agentic", MODEL_AGENTIC_V1),
+        ("burst", MODEL_BURST_V1),
         ("reasoning", MODEL_REASONING_V1),
     ] {
         let (_, model) =
@@ -962,6 +996,7 @@ fn known_tiers_pass() {
         "reasoning-v1",
         "chat-v1",
         "agentic-v1",
+        "burst-v1",
         "coding-v1",
         "reasoning-quick-v1",
         "summarization-v1",
@@ -979,9 +1014,22 @@ fn known_hints_pass() {
     assert!(is_known_openhuman_tier("hint:reasoning"));
     assert!(is_known_openhuman_tier("hint:chat"));
     assert!(is_known_openhuman_tier("hint:agentic"));
+    assert!(is_known_openhuman_tier("hint:burst"));
     assert!(is_known_openhuman_tier("hint:coding"));
     assert!(is_known_openhuman_tier("hint:summarization"));
     assert!(is_known_openhuman_tier("hint:vision"));
+}
+
+// `hint:burst` is accepted by `is_known_openhuman_tier`, so it must also be
+// translated to `burst-v1` by the managed backend — otherwise a saved
+// `default_model = "hint:burst"` would be forwarded literally and 400.
+#[test]
+fn managed_backend_translates_hint_burst_to_burst_tier() {
+    let mut config = Config::default();
+    config.default_model = Some("hint:burst".to_string());
+    let (_, model) = create_chat_provider_from_string("chat", "openhuman", &config)
+        .expect("managed backend must build");
+    assert_eq!(model, crate::openhuman::config::MODEL_BURST_V1);
 }
 
 #[test]
@@ -1013,11 +1061,13 @@ fn reasoning_is_the_vision_capable_managed_tier() {
     for model in [
         "chat-v1",
         "agentic-v1",
+        "burst-v1",
         "coding-v1",
         "reasoning-quick-v1",
         "summarization-v1",
         "hint:chat",
         "hint:agentic",
+        "hint:burst",
         "hint:coding",
         "hint:summarization",
     ] {
@@ -1414,6 +1464,33 @@ fn byok_fallback_explicit_agentic_overrides_chat_byok() {
     assert_eq!(
         result, "anthropic:claude-haiku-4-5",
         "explicit agentic_provider must win over inherited BYOK"
+    );
+}
+
+#[test]
+fn burst_role_uses_explicit_agentic_provider() {
+    let mut config = Config::default();
+    config.cloud_providers.push(openai_entry("p_oai", "openai"));
+    config.chat_provider = Some("openai:gpt-4o".to_string());
+    config.agentic_provider = Some("anthropic:claude-haiku-4-5".to_string());
+
+    assert_eq!(
+        provider_for_role("burst", &config),
+        "anthropic:claude-haiku-4-5",
+        "burst workers must preserve explicit agentic provider routing"
+    );
+}
+
+#[test]
+fn burst_role_does_not_inherit_chat_byok_when_agentic_unset() {
+    let mut config = Config::default();
+    config.cloud_providers.push(openai_entry("p_oai", "openai"));
+    config.chat_provider = Some("openai:gpt-4o".to_string());
+
+    assert_eq!(
+        provider_for_role("burst", &config),
+        "openhuman",
+        "unset burst must stay on managed backend rather than inherit chat BYOK"
     );
 }
 
@@ -2200,6 +2277,7 @@ fn resolve_model_for_hint_maps_known_hints_to_tiers() {
         resolve_model_for_hint("hint:agentic", &config),
         "agentic-v1"
     );
+    assert_eq!(resolve_model_for_hint("hint:burst", &config), "burst-v1");
     assert_eq!(resolve_model_for_hint("hint:coding", &config), "coding-v1");
     assert_eq!(
         resolve_model_for_hint("hint:summarization", &config),

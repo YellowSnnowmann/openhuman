@@ -25,7 +25,8 @@
 //! Unknown slugs and missing-creds configurations produce actionable errors.
 
 use crate::openhuman::config::schema::cloud_providers::{
-    builtin_cloud_supports_responses_api, is_builtin_cloud_slug, AuthStyle,
+    builtin_cloud_supports_responses_api, endpoint_host_is_chat_completions_only,
+    is_builtin_cloud_slug, AuthStyle,
 };
 use crate::openhuman::config::Config;
 use crate::openhuman::credentials::AuthService;
@@ -76,17 +77,15 @@ pub(crate) const NO_MODEL_CONFIGURED_ANCHOR: &str = "resolved to an empty model 
 
 fn is_abstract_tier_model(model: &str) -> bool {
     use crate::openhuman::config::{
-        MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
-        MODEL_REASONING_V1, MODEL_VISION_V1,
+        MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
+        MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1, MODEL_VISION_V1,
     };
-    // No dedicated constant for the summarization tier yet; keep the literal
-    // in sync with the tier name used by the summarizer sub-agent.
-    const MODEL_SUMMARIZATION_V1: &str = "summarization-v1";
     let trimmed = model.trim();
     trimmed == MODEL_REASONING_V1
         || trimmed == MODEL_REASONING_QUICK_V1
         || trimmed == MODEL_CHAT_V1
         || trimmed == MODEL_AGENTIC_V1
+        || trimmed == MODEL_BURST_V1
         || trimmed == MODEL_CODING_V1
         || trimmed == MODEL_VISION_V1
         || trimmed == MODEL_SUMMARIZATION_V1
@@ -110,9 +109,13 @@ pub fn resolve_model_for_hint(hint_or_tier: &str, config: &Config) -> String {
         ("reasoning", crate::openhuman::config::MODEL_REASONING_V1),
         ("chat", crate::openhuman::config::MODEL_CHAT_V1),
         ("agentic", crate::openhuman::config::MODEL_AGENTIC_V1),
+        ("burst", crate::openhuman::config::MODEL_BURST_V1),
         ("coding", crate::openhuman::config::MODEL_CODING_V1),
         ("vision", crate::openhuman::config::MODEL_VISION_V1),
-        ("summarization", "summarization-v1"),
+        (
+            "summarization",
+            crate::openhuman::config::MODEL_SUMMARIZATION_V1,
+        ),
         // Background subconscious workload rides the lightweight chat tier on the
         // managed backend; its `subconscious` *role* (handled below) still selects
         // the provider via `subconscious_provider`.
@@ -123,9 +126,13 @@ pub fn resolve_model_for_hint(hint_or_tier: &str, config: &Config) -> String {
         (crate::openhuman::config::MODEL_CHAT_V1, "chat"),
         (crate::openhuman::config::MODEL_REASONING_QUICK_V1, "chat"),
         (crate::openhuman::config::MODEL_AGENTIC_V1, "agentic"),
+        (crate::openhuman::config::MODEL_BURST_V1, "burst"),
         (crate::openhuman::config::MODEL_CODING_V1, "coding"),
         (crate::openhuman::config::MODEL_VISION_V1, "vision"),
-        ("summarization-v1", "summarization"),
+        (
+            crate::openhuman::config::MODEL_SUMMARIZATION_V1,
+            "summarization",
+        ),
     ];
 
     let (tier, role) = if let Some(hint_key) = hint_or_tier.strip_prefix("hint:") {
@@ -180,7 +187,7 @@ pub fn resolve_model_for_hint(hint_or_tier: &str, config: &Config) -> String {
 /// to the backend.
 pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
     use crate::openhuman::config::{
-        MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
+        MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
         MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1, MODEL_VISION_V1,
     };
     matches!(
@@ -188,6 +195,7 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
         MODEL_REASONING_V1
             | MODEL_CHAT_V1
             | MODEL_AGENTIC_V1
+            | MODEL_BURST_V1
             | MODEL_CODING_V1
             | MODEL_REASONING_QUICK_V1
             | MODEL_SUMMARIZATION_V1
@@ -195,6 +203,7 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
             | "hint:reasoning"
             | "hint:chat"
             | "hint:agentic"
+            | "hint:burst"
             | "hint:coding"
             | "hint:summarization"
             | "hint:vision"
@@ -215,7 +224,7 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
 /// ([`crate::openhuman::inference::model_context::model_vision_enabled`]).
 pub(crate) fn oh_tier_supports_vision(model: &str) -> bool {
     use crate::openhuman::config::{
-        MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
+        MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
         MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1, MODEL_VISION_V1,
     };
     match model {
@@ -226,6 +235,8 @@ pub(crate) fn oh_tier_supports_vision(model: &str) -> bool {
         MODEL_CHAT_V1 | "hint:chat" => false,
         MODEL_REASONING_QUICK_V1 => false,
         MODEL_AGENTIC_V1 | "hint:agentic" => false,
+        // Burst is a text-only tier.
+        MODEL_BURST_V1 | "hint:burst" => false,
         MODEL_CODING_V1 | "hint:coding" => false,
         MODEL_SUMMARIZATION_V1 | "hint:summarization" => false,
         _ => false,
@@ -241,9 +252,10 @@ pub(crate) fn oh_tier_supports_vision(model: &str) -> bool {
 ///
 /// Only `chat`, `reasoning`, and `coding` participate in BYOK inheritance.
 /// Background workloads (`memory`, `embeddings`, `heartbeat`, `learning`,
-/// `subconscious`) and the `agentic` workload always fall through to
-/// `primary_cloud` — they use tier-specific models that BYOK providers don't
-/// understand, and their providers are configured independently.
+/// `subconscious`) and the `agentic`/`burst` workloads always fall through to
+/// `primary_cloud` when their explicit provider route is unset — they use
+/// tier-specific models that BYOK providers don't understand, and their
+/// providers are configured independently.
 ///
 /// For backwards compatibility, a legacy external `inference_url` takes
 /// precedence when `primary_cloud` still points at OpenHuman because
@@ -255,6 +267,10 @@ pub fn provider_for_role(role: &str, config: &Config) -> String {
         "reasoning" => config.reasoning_provider.as_deref(),
         "agentic" => config.agentic_provider.as_deref(),
         "coding" => config.coding_provider.as_deref(),
+        // Burst uses the existing Agentic workload route for BYOK/local parity.
+        // If unset, it falls through to the managed backend and is pinned to
+        // `burst-v1` by `managed_tier_for_role`.
+        "burst" => config.agentic_provider.as_deref(),
         // Tier-specific multimodal model; like `agentic` it is NOT part of the
         // chat-tier BYOK inheritance below — when unset it falls through to
         // `primary_cloud` (→ managed `vision-v1`).
@@ -275,9 +291,9 @@ pub fn provider_for_role(role: &str, config: &Config) -> String {
     if s.is_empty() || s == "cloud" {
         // BYOK inheritance is scoped to the three chat-tier roles only.
         // Background workloads (memory, embeddings, heartbeat, learning,
-        // subconscious) and the agentic workload must stay on the managed
-        // backend — they use tier-specific models that BYOK providers don't
-        // understand, and their providers are configured separately.
+        // subconscious) and the agentic/burst workloads must stay on the managed
+        // backend when unset — they use tier-specific models that BYOK providers
+        // don't understand, and their providers are configured separately.
         if matches!(role, "chat" | "reasoning" | "coding") {
             if let Some(byok) = resolve_byok_fallback_provider_string(config) {
                 log::debug!(
@@ -295,13 +311,17 @@ pub fn provider_for_role(role: &str, config: &Config) -> String {
         if !matches!(role, "chat" | "reasoning" | "coding") {
             if let Some(chat) = config.chat_provider.as_deref() {
                 if crate::openhuman::inference::local::profile::is_local_provider_string(chat) {
+                    let override_hint = if role == "burst" {
+                        "set agentic_provider explicitly to override".to_string()
+                    } else {
+                        format!("set {role}_provider explicitly to override")
+                    };
                     log::info!(
                         "[providers][local-fallback] role={} using managed backend (chat is \
-                         local '{}' but background workloads require cloud — set \
-                         {}_provider explicitly to override)",
+                         local '{}' but background workloads require cloud — {})",
                         role,
                         chat,
-                        role
+                        override_hint
                     );
                 }
             }
@@ -846,11 +866,11 @@ pub(crate) fn create_local_chat_provider_from_string(
 ///   `default_model = "reasoning-v1"` installs deliberately fall through to the
 ///   `chat` role (see the session builder) and rely on `default_model` driving
 ///   the model — pinning `chat` here would regress them.
-/// - `summarization`, which is intentionally NOT pinned: the memory subsystem
-///   ([`crate::openhuman::memory::chat::build_chat_runtime`]) routes the
-///   summarization model through `routed.default_model`, sourced from the
-///   user-configurable `memory_tree.cloud_llm_model`. Pinning `summarization`
-///   to a fixed tier would silently ignore that override.
+/// - `summarization` / `memory`, which are pinned in a dedicated branch of
+///   [`make_openhuman_backend`] via [`summarization_tier_model`] (fixed at
+///   `summarization-v1`) rather than here, only so the `memory` alias and the
+///   role string share one resolution site. They do **not** fall through to
+///   `default_model`.
 ///
 /// `subconscious` IS pinned (to the lightweight `chat-v1` tier) even though it
 /// is a background workload: the cloud subconscious tick builds via the session
@@ -867,12 +887,18 @@ pub(crate) fn create_local_chat_provider_from_string(
 /// every attached image — leaving the managed vision sub-agent blind.
 fn managed_tier_for_role(role: &str) -> Option<&'static str> {
     use crate::openhuman::config::{
-        MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_V1, MODEL_VISION_V1,
+        MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_V1,
+        MODEL_VISION_V1,
     };
     match role {
         "reasoning" => Some(MODEL_REASONING_V1),
         "agentic" => Some(MODEL_AGENTIC_V1),
         "coding" => Some(MODEL_CODING_V1),
+        // Burst rides the managed backend's high-throughput tier. Pinned here
+        // (rather than collapsing to `default_model`) so the `hint = "burst"`
+        // sub-agent — the super-context scout — actually reaches `burst-v1`.
+        // There is no `burst_provider` knob: burst is managed-only.
+        "burst" => Some(MODEL_BURST_V1),
         "vision" => Some(MODEL_VISION_V1),
         // Background subconscious tick/triage: pinned to the lightweight chat
         // tier (see the doc above for why it is pinned despite being background).
@@ -881,14 +907,34 @@ fn managed_tier_for_role(role: &str) -> Option<&'static str> {
     }
 }
 
+/// The **managed-backend** summarization tier model — fixed at
+/// [`MODEL_SUMMARIZATION_V1`] (`summarization-v1`).
+///
+/// Read **only** on the managed OpenHuman path (inside [`make_openhuman_backend`]),
+/// so it is consumed iff the `summarization`/`memory` role actually resolves to
+/// the managed backend — BYOK and local routes carry their own model in the
+/// provider string and never reach here.
+///
+/// The managed summarization tier is intentionally **not** user-overridable: the
+/// hosted backend serves exactly one tier (`summarization-v1`) for this workload,
+/// so there is nothing else valid to point it at. Users who want a different
+/// model run summarization on a BYOK/local `memory_provider`, where the model
+/// rides in the provider string. (`memory_tree.cloud_llm_model` is no longer
+/// consumed — see its config doc.)
+pub(crate) fn summarization_tier_model() -> &'static str {
+    crate::openhuman::config::MODEL_SUMMARIZATION_V1
+}
+
 /// Build the OpenHuman backend provider (session-JWT auth).
 ///
 /// `role` is the workload name (e.g. `"chat"`, `"coding"`, `"vision"`). A
 /// specialised workload role is pinned to its canonical managed tier via
 /// [`managed_tier_for_role`] so the `hint = "..."` a sub-agent declares actually
 /// reaches the matching backend tier instead of collapsing to `default_model`.
-/// The generic `chat` role (and background roles) keep inheriting
-/// `config.default_model`.
+/// The `summarization`/`memory` roles resolve their tier from
+/// [`summarization_tier_model`] (fixed at `summarization-v1`) so they never
+/// collapse to `default_model`. The generic `chat` role (and background roles)
+/// keep inheriting `config.default_model`.
 fn make_openhuman_backend(
     role: &str,
     config: &Config,
@@ -900,6 +946,21 @@ fn make_openhuman_backend(
             tier
         );
         tier.to_string()
+    } else if matches!(role, "summarization" | "memory") {
+        // Managed summarization/memory tier — fixed at `summarization-v1` rather
+        // than inherited from `config.default_model`, so every managed
+        // summarization caller — the memory tree, the chat-turn payload
+        // summarizer, meeting summaries, and any `hint = "summarization"`
+        // sub-agent — reaches the dedicated tier instead of silently collapsing
+        // to `chat-v1`. BYOK/local routes never reach here — they build from the
+        // provider string.
+        let tier = summarization_tier_model().to_string();
+        log::debug!(
+            "[providers][chat-factory] role={} resolved managed summarization tier model={}",
+            role,
+            tier
+        );
+        tier
     } else {
         config
             .default_model
@@ -937,6 +998,7 @@ fn make_openhuman_backend(
         Some("reasoning") => crate::openhuman::config::MODEL_REASONING_V1.to_string(),
         Some("chat") => crate::openhuman::config::MODEL_CHAT_V1.to_string(),
         Some("agentic") => crate::openhuman::config::MODEL_AGENTIC_V1.to_string(),
+        Some("burst") => crate::openhuman::config::MODEL_BURST_V1.to_string(),
         Some("coding") => crate::openhuman::config::MODEL_CODING_V1.to_string(),
         Some("summarization") => crate::openhuman::config::MODEL_SUMMARIZATION_V1.to_string(),
         Some("vision") => crate::openhuman::config::MODEL_VISION_V1.to_string(),
@@ -950,7 +1012,7 @@ fn make_openhuman_backend(
             } else {
                 log::warn!(
                     "[providers][chat-factory] model '{}' is not a recognized OpenHuman \
-                     backend tier (valid: reasoning-v1, chat-v1, agentic-v1, coding-v1, \
+                     backend tier (valid: reasoning-v1, chat-v1, agentic-v1, burst-v1, coding-v1, \
                      reasoning-quick-v1, summarization-v1, vision-v1); falling back to '{}'",
                     model,
                     crate::openhuman::config::MODEL_REASONING_V1,
@@ -1601,8 +1663,16 @@ fn make_cloud_provider_by_slug(
             // local-provider TAURI-RUST-59Y fix). OpenAI keeps the fallback
             // (genuine `/responses`), and so do custom / unknown slugs, whose
             // endpoint may be a real OpenAI proxy.
-            let responses_fallback =
-                !is_builtin_cloud_slug(slug) || builtin_cloud_supports_responses_api(slug);
+            //
+            // The builtin-slug gate alone leaks for a *custom* slug pointed at a
+            // known chat-only host (e.g. a user slug at
+            // `integrate.api.nvidia.com`): `is_builtin_cloud_slug` is false so
+            // the fallback stayed on and `/responses` 404'd (TAURI-RUST-5A1).
+            // Also consult the endpoint host so a chat-only host disables the
+            // fallback regardless of slug; an unknown proxy host still keeps it.
+            let responses_fallback = (!is_builtin_cloud_slug(slug)
+                || builtin_cloud_supports_responses_api(slug))
+                && !endpoint_host_is_chat_completions_only(&openai_codex_routing.endpoint);
             let credential = (!key.trim().is_empty()).then_some(key.as_str());
             let base_provider = if responses_fallback {
                 OpenAiCompatibleProvider::new(

@@ -493,7 +493,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
     }
     if (status?.state === 'installing') return 'text-amber-600 dark:text-amber-300';
     if (ready) return 'text-emerald-600 dark:text-emerald-300';
-    return 'text-neutral-500 dark:text-neutral-400';
+    return 'text-content-muted';
   };
 
   const handleInstallWhisper = async () => {
@@ -566,7 +566,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
       contentClassName=""
       description={embedded ? undefined : t('pages.settings.ai.voiceDesc')}
       leading={embedded ? undefined : <SettingsBackButton onBack={navigateBack} />}>
-      <div className={embedded ? 'space-y-4' : 'p-4 space-y-4'}>
+      <div className={embedded ? 'space-y-5' : 'p-4 space-y-5'}>
         {/* Always-on listening moved to Settings → Features → Desktop Agent. */}
 
         {/* ─── Section 1: Voice Provider Chips ─────────────────────────── */}
@@ -587,7 +587,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                   className="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full bg-emerald-500 disabled:cursor-not-allowed">
                   <span
                     aria-hidden
-                    className="inline-block h-3 w-3 transform rounded-full bg-white shadow translate-x-3.5"
+                    className="inline-block h-3 w-3 transform rounded-full bg-surface shadow translate-x-3.5"
                   />
                 </button>
               </div>
@@ -628,10 +628,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                           setPendingKeyValue('');
                         }
                       }}
-                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}>
+                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-surface-strong'}`}>
                       <span
                         aria-hidden
-                        className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`}
+                        className={`inline-block h-3 w-3 transform rounded-full bg-surface shadow transition-transform ${enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`}
                       />
                     </button>
                   </div>
@@ -667,10 +667,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                           setPendingKeyValue('');
                         }
                       }}
-                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}>
+                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-surface-strong'}`}>
                       <span
                         aria-hidden
-                        className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`}
+                        className={`inline-block h-3 w-3 transform rounded-full bg-surface shadow transition-transform ${enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`}
                       />
                     </button>
                   </div>
@@ -726,10 +726,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                           setPendingKeyValue('');
                         }
                       }}
-                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}>
+                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-surface-strong'}`}>
                       <span
                         aria-hidden
-                        className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`}
+                        className={`inline-block h-3 w-3 transform rounded-full bg-surface shadow transition-transform ${enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`}
                       />
                     </button>
                   </div>
@@ -751,18 +751,18 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
               }
             }}
             data-testid="voice-provider-key-modal">
-            <div className="w-full max-w-md rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-6 space-y-4">
+            <div className="w-full max-w-md rounded-2xl border border-line dark:border-line-strong bg-surface shadow-xl p-6 space-y-4">
               {pendingKeySlug === 'whisper' || pendingKeySlug === 'piper' ? (
                 /* ── Local provider modal (Whisper / Piper) ──────────── */
                 <>
                   <div>
-                    <h3 className="text-base font-semibold text-neutral-800 dark:text-neutral-100">
+                    <h3 className="text-base font-semibold text-content">
                       {t('voice.modal.title')}{' '}
                       {pendingKeySlug === 'whisper'
                         ? t('voice.providers.chip.whisper')
                         : t('voice.providers.chip.piper')}
                     </h3>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                    <p className="text-xs text-content-muted mt-1">
                       {pendingKeySlug === 'whisper'
                         ? t('voice.modal.whisperDesc')
                         : t('voice.modal.piperDesc')}
@@ -771,7 +771,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
 
                   {pendingKeySlug === 'whisper' && (
                     <label className="block space-y-1">
-                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                      <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                         {t('voice.providers.whisperModel')}
                       </span>
                       <SettingsSelect
@@ -791,7 +791,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
 
                   {pendingKeySlug === 'piper' && (
                     <label className="block space-y-1">
-                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                      <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                         {t('voice.providers.piperVoice')}
                       </span>
                       <SettingsSelect
@@ -883,17 +883,15 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                 /* ── External provider modal (API key) ───────────────── */
                 <>
                   <div>
-                    <h3 className="text-base font-semibold text-neutral-800 dark:text-neutral-100">
+                    <h3 className="text-base font-semibold text-content">
                       {t('voice.modal.title')}{' '}
                       {BUILTIN_VOICE_PROVIDER_META[pendingKeySlug]?.label ?? pendingKeySlug}
                     </h3>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                      {t('voice.modal.desc')}
-                    </p>
+                    <p className="text-xs text-content-muted mt-1">{t('voice.modal.desc')}</p>
                   </div>
 
                   <label className="block space-y-1">
-                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                    <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                       {t('voice.providers.chip.apiKeyLabel')}
                     </span>
                     <SettingsTextField
@@ -1000,7 +998,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                 {/* STT routing */}
                 <div className="space-y-2">
                   <label className="block space-y-1">
-                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                    <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                       {t('voice.providers.sttProvider')}
                     </span>
                     <SettingsSelect
@@ -1067,7 +1065,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                   {/* Whisper model picker — shown when Whisper is selected */}
                   {sttProvider === 'whisper' && (
                     <label className="block space-y-1">
-                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                      <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                         {t('voice.providers.whisperModel')}
                       </span>
                       <SettingsSelect
@@ -1096,7 +1094,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                 {/* TTS routing */}
                 <div className="space-y-2">
                   <label className="block space-y-1">
-                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                    <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                       {t('voice.providers.ttsProvider')}
                     </span>
                     <SettingsSelect
@@ -1169,7 +1167,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                   {/* Piper voice picker — shown when Piper is selected */}
                   {ttsProvider === 'piper' && (
                     <label className="block space-y-1">
-                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                      <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                         {t('voice.providers.piperVoice')}
                       </span>
                       <SettingsSelect
@@ -1221,7 +1219,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                           className="mt-1 w-full"
                         />
                       )}
-                      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                      <p className="text-[11px] text-content-muted mt-0.5">
                         {t('voice.providers.piperVoicesDesc')}
                       </p>
                     </label>
@@ -1230,7 +1228,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                   {/* ElevenLabs voice picker — shown when ElevenLabs is selected for TTS */}
                   {ttsProvider === 'elevenlabs' && (
                     <label className="block space-y-1">
-                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-300">
+                      <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
                         {t('voice.routing.elevenlabsVoice')}
                       </span>
                       <SettingsSelect
@@ -1264,7 +1262,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                           className="mt-1 w-full"
                         />
                       )}
-                      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                      <p className="text-[11px] text-content-muted mt-0.5">
                         {t('voice.routing.elevenlabsVoiceDesc')}
                       </p>
                     </label>
@@ -1273,7 +1271,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
               </div>
             }
           />
-          <div className="flex justify-end px-4 py-3 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="flex justify-end px-4 py-3 border-t border-line-subtle">
             <Button
               type="button"
               variant="primary"
@@ -1303,7 +1301,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                 stacked
                 label={t('voice.providers.mascotVoice')}
                 control={
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="text-xs text-content-muted">
                     {t('voice.providers.mascotVoiceDescPrefix')}{' '}
                     <button
                       type="button"
