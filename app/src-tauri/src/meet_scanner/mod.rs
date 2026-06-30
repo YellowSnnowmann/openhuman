@@ -101,6 +101,20 @@ pub fn spawn<R: Runtime>(
     handle.abort_handle()
 }
 
+/// CDP `Page.reload` params for the Phase 0 pre-join reload.
+///
+/// We reload to drop the user's leaked Google session cookies (cleared
+/// just before) so Meet re-renders the anonymous pre-join page, but we
+/// deliberately leave the HTTP cache warm: `ignoreCache` is intentionally
+/// absent. Meet's multi-MB SPA bundle is identical for every visitor and
+/// the CEF HTTP cache is shared across joins, so re-fetching it cold was
+/// pure join-time cost with no privacy benefit. Re-adding `ignoreCache`
+/// here would reintroduce the cold-reload regression — the unit test
+/// guards against exactly that.
+fn pre_join_reload_params() -> Value {
+    json!({})
+}
+
 async fn run<R: Runtime>(
     app: &AppHandle<R>,
     request_id: &str,
@@ -117,23 +131,31 @@ async fn run<R: Runtime>(
     let _ = cdp.call("Page.enable", json!({}), Some(&session)).await;
     let _ = cdp.call("Runtime.enable", json!({}), Some(&session)).await;
 
-    // Phase 0 — strip any leaked Google session cookies/cache before
-    // we touch the page. The vendored tauri-cef runtime does not yet
-    // honour our per-request_id `data_directory` as a fresh CEF
-    // RequestContext — webviews end up sharing the parent process's
-    // cookie + cache store. Without this clear, Meet recognises the
-    // signed-in Google account on the user's main openhuman session
-    // ("nikhil@tinyhumans.ai" / "Verify it's you" screen) and the bot
-    // never reaches the anonymous "Your name" pre-join input we drive
-    // in Phase 2.
+    // Phase 0 — strip any leaked Google session cookies before we touch
+    // the page. The vendored tauri-cef runtime does not yet honour our
+    // per-request_id `data_directory` as a fresh CEF RequestContext —
+    // webviews end up sharing the parent process's cookie store. Without
+    // this clear, Meet recognises the signed-in Google account on the
+    // user's main openhuman session ("nikhil@tinyhumans.ai" / "Verify
+    // it's you" screen) and the bot never reaches the anonymous "Your
+    // name" pre-join input we drive in Phase 2.
     //
-    // `Network.clearBrowserCookies` + `Network.clearBrowserCache` are
-    // CDP-wide for the attached browser instance, so they wipe the
-    // session for THIS Meet target without touching the user's main
-    // openhuman webviews (those run in separate browser instances).
-    // Best-effort: if Network domain isn't enabled or CDP returns an
-    // error, we log and continue — the bot may still land on the
-    // verify screen but won't get worse than the pre-clear state.
+    // `Network.clearBrowserCookies` is CDP-wide for the attached browser
+    // instance, so it wipes the session for THIS Meet target without
+    // touching the user's main openhuman webviews (those run in separate
+    // browser instances). Best-effort: if the Network domain isn't
+    // enabled or CDP returns an error, we log and continue — the bot may
+    // still land on the verify screen but won't get worse than before.
+    //
+    // We deliberately do NOT clear the HTTP cache and do NOT reload with
+    // `ignoreCache`. Anonymity is a *cookie* concern, not a cache one:
+    // Meet's multi-MB JS/CSS bundle is identical for every visitor, and
+    // (because data_directory is ignored) the CEF HTTP cache is shared
+    // and warm across joins. Wiping it forced a fully cold re-fetch +
+    // re-parse of the SPA on every single join — the dominant join-time
+    // cost — for no privacy benefit. Clearing cookies then reloading
+    // with the cache intact gives the same anonymous pre-join page far
+    // faster.
     let _ = cdp.call("Network.enable", json!({}), Some(&session)).await;
     if let Err(err) = cdp
         .call("Network.clearBrowserCookies", json!({}), Some(&session))
@@ -143,18 +165,13 @@ async fn run<R: Runtime>(
     } else {
         log::info!("[meet-scanner] cleared browser cookies for fresh anonymous session");
     }
+    // Reload once so Meet re-evaluates auth without the user's Google
+    // session cookies. Without the reload, Meet's React state still holds
+    // the post-auth view and we'd be clicking buttons on a stale page.
+    // Cache is left warm (no `ignoreCache`) so the reload re-uses the
+    // already-downloaded bundle instead of re-fetching it cold.
     if let Err(err) = cdp
-        .call("Network.clearBrowserCache", json!({}), Some(&session))
-        .await
-    {
-        log::info!("[meet-scanner] clearBrowserCache skipped: {err}");
-    }
-    // Reload the page once so Meet re-fetches from scratch without the
-    // user's Google session cookies. Without the reload, Meet's React
-    // state still holds the post-auth view; we'd be clicking buttons
-    // on a stale page.
-    if let Err(err) = cdp
-        .call("Page.reload", json!({"ignoreCache": true}), Some(&session))
+        .call("Page.reload", pre_join_reload_params(), Some(&session))
         .await
     {
         log::warn!("[meet-scanner] post-cookie-clear reload failed: {err}");
@@ -668,6 +685,21 @@ async fn type_into_named_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pre_join_reload_keeps_cache_warm() {
+        // The pre-join reload must NOT set `ignoreCache`: doing so forces
+        // a cold re-fetch of Meet's multi-MB SPA bundle on every join,
+        // which was the dominant join-latency regression this change
+        // removed. Anonymity comes from clearing cookies, not the cache.
+        let params = pre_join_reload_params();
+        assert!(
+            params.get("ignoreCache").is_none(),
+            "pre-join reload must keep the HTTP cache warm (no ignoreCache); got {params}"
+        );
+        // It is an object payload (CDP expects a params object, even if empty).
+        assert!(params.is_object(), "reload params must be a JSON object");
+    }
 
     #[test]
     fn budget_constants_are_sane() {
