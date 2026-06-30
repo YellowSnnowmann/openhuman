@@ -27,10 +27,17 @@ pub(super) fn agent_cache() -> &'static TokioMutex<HashMap<String, Arc<TokioMute
 
 /// Wall-clock ceiling on one agentic turn. Slack / Gmail fetches via
 /// Composio + per-message filtering + iteration-2 synthesis can hit
-/// 60-80s in the slow path. 90s gives the long integrations a chance
-/// to land. The turn_in_progress gate blocks new wakes during the
-/// wait, so the user cannot spawn parallel queries by re-asking.
-pub(super) const AGENTIC_TURN_TIMEOUT_SECS: u64 = 90;
+/// 60-80s in the slowest path, but in a *live* meeting that much dead
+/// air — even behind the pre-roll ack — means the participant has moved
+/// on. So we cap tighter than the slowest possible integration turn:
+/// 60s bounds the worst-case silence while still letting the large
+/// majority of integration queries land (and the per-toolkit action
+/// cache trims their latency further). Turns that exceed it fall back to
+/// the polite "let me get back to you" ack. The turn_in_progress gate
+/// blocks new wakes during the wait, so the user cannot spawn parallel
+/// queries by re-asking. Tunable — lower it for snappier voice at the
+/// cost of dropping the very slowest integration answers.
+pub(super) const AGENTIC_TURN_TIMEOUT_SECS: u64 = 60;
 
 /// Spoken filler played immediately after wake-word fires, before the
 /// (possibly slow) orchestrator+tool path runs. Bridges the 30-60s
@@ -164,3 +171,18 @@ name appearing inside a longer thought aimed at someone else), output an empty s
 - For dictation / note requests (\"remember…\", \"action item…\", \"follow up on…\"), a 2-3 word \
 ack is enough (\"Got it.\", \"Noted.\").\n\
 - For genuinely unanswerable questions, say so in one short sentence rather than guessing.";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agentic_timeout_is_in_live_voice_range() {
+        // Tight enough that a stuck turn doesn't strand a live meeting in
+        // dead air, loose enough that typical integration queries land.
+        assert!(
+            (20..=75).contains(&AGENTIC_TURN_TIMEOUT_SECS),
+            "AGENTIC_TURN_TIMEOUT_SECS={AGENTIC_TURN_TIMEOUT_SECS} outside the live-voice range"
+        );
+    }
+}

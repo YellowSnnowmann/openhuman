@@ -36,8 +36,9 @@ pub(super) fn short_id(id: &str) -> String {
 ///
 /// We rebuild the Agent per turn (cheap relative to the LLM call
 /// itself, since the registry is initialised once at startup) and
-/// wrap `run_single` in a 20s timeout so a slow tool iteration
-/// doesn't leave the meeting participant in silence indefinitely.
+/// wrap `run_single` in an `AGENTIC_TURN_TIMEOUT_SECS` timeout so a slow
+/// tool iteration doesn't leave the meeting participant in silence
+/// indefinitely.
 ///
 /// Errors propagate to the caller, which falls back to the bare
 /// chat-completions path (`llm_meeting_basic`) so a config /
