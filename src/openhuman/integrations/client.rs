@@ -163,7 +163,15 @@ fn handle_session_jwt_unauthorized(method: &str, path: &str, url: &str, detail: 
 /// a dead session has no in-place CTA to fall back to (its error renders as a
 /// per-row toggle failure, not the panel banner).
 fn is_composio_soft_auth_path(method: &str, path: &str) -> bool {
-    method.eq_ignore_ascii_case("GET") && path.starts_with("/agent-integrations/composio/triggers")
+    // Match on a real path boundary, not a bare prefix: `…/triggers` exact,
+    // `…/triggers/…` (the `available` catalog), or `…/triggers?…` (the active
+    // list with a `toolkit` query). A bare `starts_with` would also match an
+    // unrelated `…/triggersXYZ` route and wrongly suppress the global sign-out.
+    const BASE: &str = "/agent-integrations/composio/triggers";
+    method.eq_ignore_ascii_case("GET")
+        && path
+            .strip_prefix(BASE)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/') || rest.starts_with('?'))
 }
 
 /// Strip any inference-style path that snuck into a backend URL before

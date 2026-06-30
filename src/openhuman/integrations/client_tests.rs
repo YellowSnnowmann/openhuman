@@ -575,6 +575,17 @@ fn composio_soft_auth_path_covers_only_trigger_reads() {
         "GET",
         "/agent-integrations/composio/triggers"
     ));
+    // GET active-triggers list with a `toolkit` query (the `?` boundary).
+    assert!(is_composio_soft_auth_path(
+        "GET",
+        "/agent-integrations/composio/triggers?toolkit=gmail"
+    ));
+    // Path-boundary guard: a bare prefix must NOT match an unrelated route
+    // that merely begins with "triggers" (CodeRabbit catch).
+    assert!(!is_composio_soft_auth_path(
+        "GET",
+        "/agent-integrations/composio/triggersXYZ"
+    ));
     // Authoritative — a 401 here must still log the user out:
     // trigger WRITES (enable/disable/create POST to the same path)…
     assert!(!is_composio_soft_auth_path(
