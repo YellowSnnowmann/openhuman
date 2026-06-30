@@ -44,7 +44,34 @@ use crate::cdp::{self, CdpConn};
 /// renderer-side target a few hundred ms after the host-side window is
 /// ready.
 const TARGET_DISCOVERY_BUDGET: Duration = Duration::from_secs(20);
+/// Steady-state poll interval used once the fast escalating
+/// [`INITIAL_TARGET_ATTACH_SCHEDULE`] is exhausted.
 const TARGET_DISCOVERY_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Escalating inter-attempt delays for the first few target-attach tries,
+/// mirroring `cdp::session::INITIAL_ATTACH_SCHEDULE`. The CEF renderer
+/// surfaces its page target a few hundred ms after the host window builds,
+/// so we retry immediately, then escalate quickly, instead of burning a
+/// flat 500 ms between every attempt. On the warm path this shaves
+/// ~350-500 ms off target discovery (the first thing on the join hot path)
+/// versus the old fixed `sleep(500ms)` loop. After the schedule is
+/// exhausted we fall back to [`TARGET_DISCOVERY_INTERVAL`].
+const INITIAL_TARGET_ATTACH_SCHEDULE: [Duration; 4] = [
+    Duration::from_millis(0),
+    Duration::from_millis(50),
+    Duration::from_millis(150),
+    Duration::from_millis(400),
+];
+
+/// Inter-attempt delay before retry number `attempt` (0-based) in
+/// [`wait_for_meet_target`]: the escalating schedule first, then the
+/// steady interval. Pure so the schedule can be unit-tested.
+fn target_attach_delay(attempt: usize) -> Duration {
+    INITIAL_TARGET_ATTACH_SCHEDULE
+        .get(attempt)
+        .copied()
+        .unwrap_or(TARGET_DISCOVERY_INTERVAL)
+}
 
 /// Per-phase polling budgets. With the mascot fake-camera flag set
 /// process-wide in `lib.rs`, Meet sees a "real" webcam and does NOT
@@ -56,7 +83,14 @@ const TARGET_DISCOVERY_INTERVAL: Duration = Duration::from_millis(500);
 const DEVICE_CHECK_BUDGET: Duration = Duration::from_secs(6);
 const NAME_INPUT_BUDGET: Duration = Duration::from_secs(30);
 const JOIN_BUTTON_BUDGET: Duration = Duration::from_secs(30);
-const POLL_INTERVAL: Duration = Duration::from_millis(500);
+/// Inter-attempt delay for the in-page click/type phases (device-check,
+/// name input, mic/camera toggles, ask-to-join). These poll a cheap
+/// `Runtime.evaluate` snippet, so a tight interval costs little CPU but
+/// noticeably cuts the slack between an element appearing and us acting on
+/// it. Kept well above zero to avoid hammering CDP. The post-admission
+/// wait (`wait_for_admission`) intentionally keeps its own coarser 1 s
+/// cadence — it is not on the pre-join hot path.
+const POLL_INTERVAL: Duration = Duration::from_millis(150);
 
 /// Spawn the CDP-driven join automation and return an abort handle.
 ///
@@ -533,6 +567,7 @@ async fn wait_for_meet_target<R: Runtime>(
     let label = crate::meet_call::window_label_for(request_id);
     let deadline = tokio::time::Instant::now() + TARGET_DISCOVERY_BUDGET;
     let mut last_err = String::new();
+    let mut attempt = 0usize;
     while tokio::time::Instant::now() < deadline {
         let meet_url_owned = meet_url.to_string();
         let pred =
@@ -545,7 +580,10 @@ async fn wait_for_meet_target<R: Runtime>(
             Ok(pair) => return Ok(pair),
             Err(err) => {
                 last_err = err;
-                tokio::time::sleep(TARGET_DISCOVERY_INTERVAL).await;
+                // Escalating backoff: immediate retry, then 50/150/400 ms,
+                // then steady. Beats the old flat 500 ms between attempts.
+                tokio::time::sleep(target_attach_delay(attempt)).await;
+                attempt += 1;
             }
         }
     }
@@ -699,6 +737,41 @@ mod tests {
         );
         // It is an object payload (CDP expects a params object, even if empty).
         assert!(params.is_object(), "reload params must be a JSON object");
+    }
+
+    #[test]
+    fn target_attach_schedule_escalates_then_steadies() {
+        // Immediate first retry, then quick escalation, then the steady
+        // fallback interval once the schedule is exhausted.
+        assert_eq!(target_attach_delay(0), Duration::from_millis(0));
+        assert_eq!(target_attach_delay(1), Duration::from_millis(50));
+        assert_eq!(target_attach_delay(2), Duration::from_millis(150));
+        assert_eq!(target_attach_delay(3), Duration::from_millis(400));
+        // Past the schedule: steady-state interval.
+        assert_eq!(target_attach_delay(4), TARGET_DISCOVERY_INTERVAL);
+        assert_eq!(target_attach_delay(99), TARGET_DISCOVERY_INTERVAL);
+        // Monotonic non-decreasing across the escalating schedule.
+        for w in INITIAL_TARGET_ATTACH_SCHEDULE.windows(2) {
+            assert!(w[0] <= w[1], "attach schedule must be non-decreasing");
+        }
+        // The escalating phase must front-load attempts well within budget.
+        let total: Duration = INITIAL_TARGET_ATTACH_SCHEDULE.iter().sum();
+        assert!(total < TARGET_DISCOVERY_BUDGET);
+    }
+
+    #[test]
+    fn poll_interval_is_tight_but_sane() {
+        // Pre-join phases poll a cheap Runtime.evaluate; the interval must
+        // stay tight (regression guard against the old 500 ms) yet not
+        // hammer CDP.
+        assert!(
+            POLL_INTERVAL <= Duration::from_millis(200),
+            "POLL_INTERVAL must stay tight; got {POLL_INTERVAL:?}"
+        );
+        assert!(
+            POLL_INTERVAL >= Duration::from_millis(50),
+            "POLL_INTERVAL must not hammer CDP; got {POLL_INTERVAL:?}"
+        );
     }
 
     #[test]
