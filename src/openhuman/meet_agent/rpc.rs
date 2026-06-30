@@ -58,6 +58,18 @@ pub async fn handle_start_session(params: Map<String, Value>) -> Result<Value, S
         req.bot_display_name.chars().count()
     );
 
+    // Pre-warm the orchestrator Agent now so its 5-10s cold build
+    // (memory tree + MCP + tool registry) overlaps the CEF join window
+    // instead of stalling the first wake's reply. Fire-and-forget: the
+    // first caption turn falls back to the lazy build if this hasn't
+    // finished or failed, so the RPC reply is never blocked on it.
+    {
+        let request_id = req.request_id.clone();
+        tokio::spawn(async move {
+            brain::prewarm_session_agent(&request_id).await;
+        });
+    }
+
     RpcOutcome::new(
         json!({
             "ok": true,

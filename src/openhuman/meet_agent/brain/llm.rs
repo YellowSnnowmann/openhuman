@@ -137,7 +137,9 @@ pub(super) async fn llm_meeting_agentic(prompt: &str, request_id: &str) -> Resul
 /// Get the cached orchestrator for this meet, or build it on first
 /// call. Returns an `Arc<TokioMutex<Agent>>` so the caller can lock
 /// across the run_single().await.
-async fn get_or_build_agent_for_meet(request_id: &str) -> Result<Arc<TokioMutex<Agent>>, String> {
+pub(super) async fn get_or_build_agent_for_meet(
+    request_id: &str,
+) -> Result<Arc<TokioMutex<Agent>>, String> {
     {
         let cache = agent_cache().lock().await;
         if let Some(existing) = cache.get(request_id) {

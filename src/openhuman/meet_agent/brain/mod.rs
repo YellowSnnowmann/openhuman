@@ -50,6 +50,26 @@ pub(crate) use text::strip_for_speech;
 
 use constants::agent_cache;
 
+/// Build + cache the orchestrator Agent for a meet session ahead of the
+/// first wake. The cold build (memory tree + MCP clients + tool registry)
+/// costs 5-10s; running it here — kicked off at `start_session`, while the
+/// CEF webview is still joining the call — means it overlaps the join
+/// instead of stalling the first reply. Fire-and-forget: on failure (or if
+/// the wake fires before it finishes) the first turn falls back to the
+/// lazy build in `llm_meeting_agentic`, so behaviour is unchanged, just
+/// slower in that case.
+pub async fn prewarm_session_agent(request_id: &str) {
+    match llm::get_or_build_agent_for_meet(request_id).await {
+        Ok(_) => {
+            log::info!("[meet-agent] pre-warmed orchestrator for request_id={request_id}")
+        }
+        Err(err) => log::warn!(
+            "[meet-agent] orchestrator pre-warm failed request_id={request_id} \
+             (first wake will build lazily): {err}"
+        ),
+    }
+}
+
 /// Drop the cached orchestrator for a meet session. Called from
 /// `handle_stop_session` so a finished call doesn't leak the Agent
 /// (each one carries memory tree + tool registry handles).
