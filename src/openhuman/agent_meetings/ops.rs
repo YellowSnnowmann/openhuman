@@ -799,6 +799,10 @@ pub async fn handle_speak(params: Map<String, Value>) -> Result<Value, String> {
         if let Some(cid) = &req.correlation_id {
             map.insert("correlationId".to_string(), json!(cid));
         }
+        // Manual speak is a terminal utterance — tag it like the in-call
+        // helper's reply path so the backend mascot settles to idle afterwards
+        // (keeps the bot:speak payload shape consistent across producers).
+        map.insert("kind".to_string(), json!("reply"));
     }
 
     mgr.emit("bot:speak", speak_payload)
