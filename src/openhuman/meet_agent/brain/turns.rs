@@ -32,6 +32,17 @@ pub(super) fn pick_ack_phrase(prompt: &str) -> &'static str {
     ACK_PHRASES[(h as usize) % ACK_PHRASES.len()]
 }
 
+/// Whether a caption turn should play the "On it." pre-roll ack.
+///
+/// Skipped for short prompts — greetings ("hi"), checks ("can you hear
+/// me"), time questions — which the agent answers in 2-5s without tools,
+/// where the ack would be redundant. Real second-brain questions ("am I
+/// free Friday afternoon for a 30 min slot") clear the threshold. The
+/// bare-wake case is handled separately by the caller.
+fn should_preroll(prompt: &str) -> bool {
+    prompt.chars().count() > PREROLL_SKIP_PROMPT_CHARS
+}
+
 /// Fire one brain turn for the named session. Returns `Ok(true)` when a
 /// turn actually ran, `Ok(false)` when the inbound buffer was below the
 /// floor.
@@ -229,21 +240,18 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     // can hear you" sounds redundant. The 50-char threshold is a
     // rough proxy; real second-brain questions ("am I free Friday
     // afternoon for a 30 min slot") are almost always longer.
-    if !was_bare_wake && prompt.chars().count() > PREROLL_SKIP_PROMPT_CHARS {
-        if let Ok(ack_pcm) = tts(PREROLL_ACK_PHRASE).await {
-            let _ = registry().with_session(request_id, |s| {
-                s.enqueue_outbound_pcm(&ack_pcm, false);
-            });
-            log::info!(
-                "[meet-agent] pre-roll ack queued request_id={request_id} samples={}",
-                ack_pcm.len()
-            );
-        } else {
-            log::debug!(
-                "[meet-agent] pre-roll ack synth failed request_id={request_id} — skipping pre-roll"
-            );
-        }
-    }
+    // Kick the pre-roll ack synth off CONCURRENTLY with the agentic turn.
+    // Synthesizing it inline before the LLM (as this used to) serialized
+    // ~1-1.5s of TTS in front of the model call for no reason. We start it
+    // now, let it run while the LLM works, and drain it just below —
+    // before the real reply is enqueued — so audio order ("On it." then
+    // the answer) is preserved. By the time the LLM returns the ack synth
+    // has almost always already finished, so the join rarely blocks.
+    let preroll_synth = if !was_bare_wake && should_preroll(&prompt) {
+        Some(tokio::spawn(tts(PREROLL_ACK_PHRASE)))
+    } else {
+        None
+    };
 
     // Route the turn through the FULL orchestrator agent first — it
     // owns the user's connected integrations, memory tree, MCP
@@ -275,6 +283,31 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
             "Let me get back to you on that.".to_string()
         }
     };
+
+    // Drain the concurrent pre-roll synth (started before the LLM call)
+    // and enqueue it AHEAD of the real reply so playback order holds
+    // ("On it." then the answer). The LLM has almost always outlasted the
+    // ~1-1.5s ack synth by now, so this await rarely blocks. Best-effort:
+    // a failed synth or a cancelled task just means no ack — never fatal.
+    if let Some(handle) = preroll_synth {
+        match handle.await {
+            Ok(Ok(ack_pcm)) => {
+                let queued = ack_pcm.len();
+                let _ = registry().with_session(request_id, |s| {
+                    s.enqueue_outbound_pcm(&ack_pcm, false);
+                });
+                log::info!(
+                    "[meet-agent] pre-roll ack queued request_id={request_id} samples={queued}"
+                );
+            }
+            Ok(Err(err)) => log::debug!(
+                "[meet-agent] pre-roll ack synth failed request_id={request_id} — skipping pre-roll: {err}"
+            ),
+            Err(join_err) => log::debug!(
+                "[meet-agent] pre-roll ack task did not complete request_id={request_id}: {join_err}"
+            ),
+        }
+    }
 
     let synthesized = if reply_text.trim().is_empty() {
         Vec::new()
@@ -328,4 +361,32 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
         reply_text.chars().take(120).collect::<String>(),
     );
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_preroll_skips_short_prompts() {
+        // Short asks (greetings, "what's the time") answer fast without
+        // tools — the ack would be redundant.
+        assert!(!should_preroll(""));
+        assert!(!should_preroll("hi"));
+        assert!(!should_preroll("what's the time"));
+        // A prompt exactly at the threshold is still "short" (strict >).
+        let at_threshold: String = "x".repeat(PREROLL_SKIP_PROMPT_CHARS);
+        assert!(!should_preroll(&at_threshold));
+    }
+
+    #[test]
+    fn should_preroll_fires_for_real_questions() {
+        // Longer second-brain questions cross the threshold and get the
+        // "On it." pre-roll while the slow agentic turn runs.
+        let long: String = "x".repeat(PREROLL_SKIP_PROMPT_CHARS + 1);
+        assert!(should_preroll(&long));
+        assert!(should_preroll(
+            "am I free friday afternoon for a 30 minute slot with alice"
+        ));
+    }
 }
