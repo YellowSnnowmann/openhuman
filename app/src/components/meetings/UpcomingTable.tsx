@@ -392,11 +392,20 @@ export function UpcomingTable({
     // the user; without it we keep the safe listen-only default (the bot has no
     // one to reply to and would otherwise talk to everyone).
     const anchor = replyDisplayName.trim();
+    // Mint a fresh correlation id per join. It becomes the call record's
+    // `request_id` (recent-calls list key + per-call detail filename), so it
+    // MUST be unique per join — reusing the deterministic `calendar_event_id`
+    // collapsed re-joins of the same event onto one request_id, overwriting the
+    // earlier call's transcript and double-highlighting the history row (#4338).
+    // `calendar_event_id` stays the dedup/policy key only (handleJoinPolicyChange,
+    // setJoiningId), mirroring the background auto-join in calendar.rs.
+    const correlationId = crypto.randomUUID();
     log(
-      '[upcoming] joining %s platform=%s reply_mode=%s',
+      '[upcoming] joining %s platform=%s reply_mode=%s correlationId=%s',
       meeting.calendar_event_id,
       platform,
-      Boolean(anchor)
+      Boolean(anchor),
+      correlationId
     );
     setJoiningId(meeting.calendar_event_id);
     try {
@@ -408,7 +417,7 @@ export function UpcomingTable({
         mascotId: mascotId || undefined,
         respondToParticipant: anchor || undefined,
         listenOnly: !anchor,
-        correlationId: meeting.calendar_event_id,
+        correlationId,
         riveColors,
       });
     } catch (err) {
