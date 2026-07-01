@@ -1625,6 +1625,12 @@ const messages: TranslationMap = {
   'mcp.connectAuth.oauthOrToken':
     'Sudah punya token akses? Tempelkan sebagai header Authorization di bawah ini saja.',
   'mcp.connectAuth.oauthTimeout': 'Waktu menunggu proses masuk lewat browser habis. Coba lagi.',
+  'mcp.connectAuth.authError.oauthRequired':
+    'Server ini menggunakan OAuth. Gunakan “Masuk dengan browser” — token yang ditempelkan tidak akan diterima.',
+  'mcp.connectAuth.authError.tokenRejected':
+    'Server menolak token ini. Pastikan token benar dan belum kedaluwarsa.',
+  'mcp.connectAuth.authError.credentialRequired':
+    'Server ini memerlukan autentikasi. Tambahkan token, atau masuk.',
   'onboarding.skipForNow': 'Lewati Sekarang',
   'onboarding.localAI.continueWithCloud': 'Lanjutkan dengan Cloud',
   'onboarding.localAI.useLocalAnyway':
@@ -2269,6 +2275,10 @@ const messages: TranslationMap = {
   'chat.attachment.remove': 'Hapus {name}',
   'chat.attachment.tooMany': 'Maksimal {max} gambar per pesan',
   'chat.attachment.tooManyFiles': 'Maksimal {max} file per pesan',
+  'chat.attachment.tooManyVideos': 'Maksimal {max} video per pesan',
+  'chat.attachment.videoNotSupported':
+    'Model ini tidak dapat membaca video. Anda dapat menggunakan tingkat Penalaran OpenHuman untuk melampirkan video Anda.',
+  'chat.attachment.dropToAttach': 'Lepaskan file untuk melampirkan',
   'chat.attachment.tooLarge': 'Gambar melebihi batas ukuran {max}',
   'chat.attachment.unsupportedType':
     'Jenis file tidak didukung. Gunakan gambar (PNG, JPEG, WebP, GIF, BMP) atau file PDF, TXT, atau Markdown.',
@@ -6045,6 +6055,8 @@ const messages: TranslationMap = {
     'Tidak ada penyedia ringkasan yang tersedia untuk Buat Pohon Ringkasan. Aktifkan AI lokal (Ollama), atau aktifkan ringkasan cloud di Pengaturan → AI → Memori.',
   'memory.health.remediation.empty_input_refused':
     'Item memori dilewati karena teksnya kosong. Tidak diperlukan tindakan — item baru tetap disematkan seperti biasa.',
+  'memory.health.remediation.storage_unavailable':
+    'OpenHuman tidak dapat menulis ke penyimpanan memorinya — disk atau kartu SD tampaknya rusak, penuh, atau hanya-baca. Periksa drive dan kosongkan ruang; pemrosesan memori akan dilanjutkan secara otomatis setelah penyimpanan dapat ditulisi kembali.',
   'memory.health.remediation.transient':
     'Kesalahan sementara mengganggu pemrosesan memori. Akan dicoba lagi secara otomatis.',
   'memory.health.remediation.unknown':

@@ -1616,6 +1616,12 @@ const messages: TranslationMap = {
     'क्या आपके पास पहले से एक एक्सेस टोकन है? इसके बजाय इसे नीचे Authorization हेडर के रूप में पेस्ट करें।',
   'mcp.connectAuth.oauthTimeout':
     'ब्राउज़र साइन-इन की प्रतीक्षा का समय समाप्त हो गया। पुनः प्रयास करें।',
+  'mcp.connectAuth.authError.oauthRequired':
+    'यह सर्वर OAuth का उपयोग करता है। “ब्राउज़र से साइन इन करें” का उपयोग करें — पेस्ट किया गया टोकन स्वीकार नहीं किया जाएगा।',
+  'mcp.connectAuth.authError.tokenRejected':
+    'सर्वर ने इस टोकन को अस्वीकार कर दिया। जाँचें कि यह सही है और इसकी समय-सीमा समाप्त नहीं हुई है।',
+  'mcp.connectAuth.authError.credentialRequired':
+    'इस सर्वर के लिए प्रमाणीकरण आवश्यक है। एक टोकन जोड़ें, या साइन इन करें।',
   'onboarding.skipForNow': 'अभी के लिए छोड़ें',
   'onboarding.localAI.continueWithCloud': 'बादल के साथ जारी रखें',
   'onboarding.localAI.useLocalAnyway':
@@ -2265,6 +2271,10 @@ const messages: TranslationMap = {
   'chat.attachment.remove': '{name} हटाएं',
   'chat.attachment.tooMany': 'प्रति संदेश अधिकतम {max} छवियां',
   'chat.attachment.tooManyFiles': 'प्रति संदेश अधिकतम {max} फ़ाइलें',
+  'chat.attachment.tooManyVideos': 'प्रति संदेश अधिकतम {max} वीडियो',
+  'chat.attachment.videoNotSupported':
+    'यह मॉडल वीडियो नहीं पढ़ सकता। अपना वीडियो संलग्न करने के लिए आप OpenHuman तर्क टियर का उपयोग कर सकते हैं।',
+  'chat.attachment.dropToAttach': 'संलग्न करने के लिए फ़ाइलें छोड़ें',
   'chat.attachment.tooLarge': 'छवि {max} आकार सीमा से अधिक है',
   'chat.attachment.unsupportedType':
     'असमर्थित फ़ाइल प्रकार। कोई छवि (PNG, JPEG, WebP, GIF, BMP) या PDF, TXT, या Markdown फ़ाइल का उपयोग करें।',
@@ -6029,6 +6039,8 @@ const messages: TranslationMap = {
     'सारांश ट्री बनाएँ के लिए कोई सारांश प्रदाता उपलब्ध नहीं है। स्थानीय AI (Ollama) सक्षम करें, या सेटिंग्स → AI → मेमोरी में क्लाउड सारांश सक्षम करें।',
   'memory.health.remediation.empty_input_refused':
     'एक मेमोरी आइटम छोड़ दिया गया क्योंकि उसका टेक्स्ट खाली था। कोई कार्रवाई आवश्यक नहीं — नए आइटम सामान्य रूप से एम्बेड होते रहेंगे।',
+  'memory.health.remediation.storage_unavailable':
+    'OpenHuman अपने मेमोरी स्टोरेज में नहीं लिख पा रहा है — डिस्क या SD कार्ड खराब, भरा हुआ या केवल-पढ़ने योग्य लगता है। ड्राइव जाँचें और कुछ जगह खाली करें; स्टोरेज के फिर से लिखने योग्य होते ही मेमोरी प्रोसेसिंग अपने आप फिर शुरू हो जाएगी।',
   'memory.health.remediation.transient':
     'एक अस्थायी त्रुटि ने मेमोरी प्रोसेसिंग को बाधित किया। स्वचालित रूप से पुनः प्रयास किया जाएगा।',
   'memory.health.remediation.unknown':
