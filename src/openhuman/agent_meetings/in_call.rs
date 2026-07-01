@@ -281,7 +281,7 @@ pub async fn handle_in_call_request(
 
 /// Route a spoken yes/no to a parked in-call approval. Returns `true`
 /// when the command was consumed as an approval decision (the caller
-/// must not dispatch it as a fresh turn).
+/// must not dispatch it as a fresh turn)
 async fn try_voice_approval_decision(correlation_id: Option<&str>, command: &str) -> bool {
     let Some(gate) = ApprovalGate::try_global() else {
         return false;
