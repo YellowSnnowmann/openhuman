@@ -818,6 +818,13 @@ fn build_action_payload(
 /// Pure function so the `respondToParticipant` anchor wiring is unit-testable
 /// without a live socket. A `None`/empty owner omits `respondToParticipant`,
 /// which the backend bot treats as "respond to everyone".
+///
+/// Active mode (`listen_only = false`) also sets `wakePhrase` so the backend
+/// only forwards captions that address the bot (`"Hey Tiny, …"`) as in-call
+/// commands. Without it the bot joined `bot:join` with no wake gate, so every
+/// caption from `respondToParticipant` would be treated as a command — matching
+/// the manual reply-mode join (`ops::build_notification_join_map` /
+/// `MeetComposer`), which both pass a wake phrase.
 fn build_auto_join_payload(
     meet_url: &str,
     platform: &str,
@@ -835,6 +842,12 @@ fn build_auto_join_payload(
     if let Some(map) = payload.as_object_mut() {
         if let Some(owner) = owner_display_name.map(str::trim).filter(|s| !s.is_empty()) {
             map.insert("respondToParticipant".to_string(), serde_json::json!(owner));
+        }
+        // Reply mode: gate in-call agency behind the "Hey Tiny" wake phrase so
+        // the bot only reacts when addressed, never to every caption. The bot
+        // joins as "Tiny" (see `displayName` above), so the phrase matches.
+        if !listen_only {
+            map.insert("wakePhrase".to_string(), serde_json::json!("Hey Tiny"));
         }
     }
     payload
@@ -1168,6 +1181,8 @@ mod tests {
         assert_eq!(p["displayName"], json!("Tiny"));
         assert_eq!(p["listenOnly"], json!(false));
         assert_eq!(p["correlationId"], json!("corr-1"));
+        // Active mode gates in-call agency behind the "Hey Tiny" wake phrase.
+        assert_eq!(p["wakePhrase"], json!("Hey Tiny"));
     }
 
     #[test]
@@ -1175,6 +1190,23 @@ mod tests {
         let p =
             build_auto_join_payload("https://meet.google.com/abc", "gmeet", "corr-1", true, None);
         assert!(p.get("respondToParticipant").is_none());
+    }
+
+    #[test]
+    fn auto_join_payload_sets_wake_phrase_only_in_active_mode() {
+        // Listen-only auto-join: no wake phrase (bot never speaks anyway).
+        let listen =
+            build_auto_join_payload("https://meet.google.com/abc", "gmeet", "corr-1", true, None);
+        assert!(listen.get("wakePhrase").is_none());
+        // Active auto-join: wake phrase gates which captions become commands.
+        let active = build_auto_join_payload(
+            "https://meet.google.com/abc",
+            "gmeet",
+            "corr-1",
+            false,
+            Some("Aditya"),
+        );
+        assert_eq!(active["wakePhrase"], json!("Hey Tiny"));
     }
 
     #[test]

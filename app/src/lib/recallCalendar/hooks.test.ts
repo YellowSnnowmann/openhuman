@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import * as recallCalendarApi from './recallCalendarApi';
@@ -36,5 +36,33 @@ describe('useRecallCalendar', () => {
     await waitFor(() => {
       expect(openhumanUpdateMeetSettings).toHaveBeenCalledWith({ calendar_provider: 'recall' });
     });
+  });
+
+  test('clears a stale generic error once a later status poll succeeds', async () => {
+    // Benign default: not connected → provider settles on 'composio'.
+    vi.mocked(recallCalendarApi.status).mockResolvedValue({ enabled: false, connected: false });
+
+    const { result } = renderHook(() => useRecallCalendar());
+
+    // Mount poll syncs the provider once; no error.
+    await waitFor(() =>
+      expect(openhumanUpdateMeetSettings).toHaveBeenCalledWith({ calendar_provider: 'composio' })
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+
+    // A transient fetch failure records a generic error.
+    vi.mocked(recallCalendarApi.status).mockRejectedValueOnce(new Error('network blip'));
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.error).toContain('network blip');
+
+    // A later successful poll — provider already 'composio', so the flip branch
+    // is skipped — must still clear the stale error (regression guard).
+    await act(async () => {
+      await result.current.refresh();
+    });
+    await waitFor(() => expect(result.current.error).toBeNull());
   });
 });

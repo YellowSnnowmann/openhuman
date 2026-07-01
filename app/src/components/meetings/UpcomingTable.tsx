@@ -392,6 +392,12 @@ export function UpcomingTable({
     // the user; without it we keep the safe listen-only default (the bot has no
     // one to reply to and would otherwise talk to everyone).
     const anchor = replyDisplayName.trim();
+    // Reply mode gates the bot behind a wake phrase so it only reacts when
+    // addressed ("Hey Alex, …"), never to every caption from the anchor —
+    // mirroring MeetComposer. The bot joins as `agentName`, so the phrase must
+    // match it. Listen-only joins (no anchor) send no wake phrase.
+    const agentName = personaDisplayName.trim() || 'Tiny';
+    const wakePhrase = anchor ? `Hey ${agentName}` : undefined;
     // Mint a fresh correlation id per join. It becomes the call record's
     // `request_id` (recent-calls list key + per-call detail filename), so it
     // MUST be unique per join — reusing the deterministic `calendar_event_id`
@@ -412,10 +418,11 @@ export function UpcomingTable({
       await joinMeetViaBackendBot({
         meetUrl: meeting.meet_url,
         platform: platform as MeetingPlatform | undefined,
-        agentName: personaDisplayName || undefined,
+        agentName,
         systemPrompt: personaDescription || undefined,
         mascotId: mascotId || undefined,
         respondToParticipant: anchor || undefined,
+        wakePhrase,
         listenOnly: !anchor,
         correlationId,
         riveColors,

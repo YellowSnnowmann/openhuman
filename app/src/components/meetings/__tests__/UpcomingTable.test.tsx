@@ -474,9 +474,15 @@ describe('UpcomingTable', () => {
     expect(joinMock).toHaveBeenCalledWith(
       expect.objectContaining({ respondToParticipant: 'Alex Kim', listenOnly: false })
     );
-    const { correlationId } = joinMock.mock.calls[0][0] as { correlationId: string };
+    const { correlationId, wakePhrase } = joinMock.mock.calls[0][0] as {
+      correlationId: string;
+      wakePhrase?: string;
+    };
     expect(correlationId).toBeTruthy();
     expect(correlationId).not.toBe('evt-1');
+    // Reply mode must gate the bot behind a wake phrase so it only reacts when
+    // addressed — otherwise every caption from the anchor becomes a command.
+    expect(wakePhrase).toMatch(/^Hey /);
   });
 
   it('joins listen-only when replyDisplayName is blank/whitespace (no respondToParticipant)', async () => {
@@ -488,8 +494,14 @@ describe('UpcomingTable', () => {
     fireEvent.click(joinBtn);
 
     await waitFor(() => expect(joinMock).toHaveBeenCalledOnce());
-    const arg = joinMock.mock.calls[0][0] as { listenOnly: boolean; respondToParticipant?: string };
+    const arg = joinMock.mock.calls[0][0] as {
+      listenOnly: boolean;
+      respondToParticipant?: string;
+      wakePhrase?: string;
+    };
     expect(arg.listenOnly).toBe(true);
     expect(arg.respondToParticipant).toBeUndefined();
+    // Listen-only: the bot never speaks, so no wake phrase is sent.
+    expect(arg.wakePhrase).toBeUndefined();
   });
 });

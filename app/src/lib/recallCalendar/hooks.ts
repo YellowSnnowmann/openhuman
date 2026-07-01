@@ -37,6 +37,13 @@ export function useRecallCalendar(): UseRecallCalendar {
     try {
       const next = await recallCalendarApi.status();
       setStatus(next);
+      // A successful poll means the fetch itself recovered — clear any stale
+      // generic fetch error from a previous blip. Provider-switch errors are
+      // owned by the flip branch below (which clears them on its own success),
+      // so leave those untouched here.
+      setError(current =>
+        current && !current.startsWith('calendar provider switch failed:') ? null : current
+      );
       const desiredProvider: CalendarProvider =
         next.enabled && next.connected ? 'recall' : 'composio';
       // Keep the local core routing flag in sync even when the first status
