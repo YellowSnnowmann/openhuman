@@ -21,6 +21,11 @@ import {
   setEventPolicy,
   type UpcomingMeeting,
 } from '../../services/meetCallService';
+import {
+  selectBackendMeetMeetingId,
+  selectBackendMeetStatus,
+  selectBackendMeetUrl,
+} from '../../store/backendMeetSlice';
 import { useAppSelector } from '../../store/hooks';
 import {
   selectCustomPrimaryColor,
@@ -164,9 +169,17 @@ interface MeetingRowProps {
   onJoinPolicyChange: (v: JoinPolicy) => void;
   onJoin: (m: UpcomingMeeting) => void;
   joining: boolean;
+  joined: boolean;
 }
 
-function MeetingRow({ meeting, joinPolicy, onJoinPolicyChange, onJoin, joining }: MeetingRowProps) {
+function MeetingRow({
+  meeting,
+  joinPolicy,
+  onJoinPolicyChange,
+  onJoin,
+  joining,
+  joined,
+}: MeetingRowProps) {
   const { t } = useT();
   const imminent = isImminent(meeting.start_time_ms);
   const { relative, absolute } = formatWhen(meeting.start_time_ms, t);
@@ -262,7 +275,15 @@ function MeetingRow({ meeting, joinPolicy, onJoinPolicyChange, onJoin, joining }
 
       {/* ACTION */}
       <td className="py-2 px-3 whitespace-nowrap">
-        {imminent ? (
+        {joined ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
+              aria-hidden="true"
+            />
+            {t('skills.meetingBots.liveBadge')}
+          </span>
+        ) : imminent ? (
           <Button
             variant="primary"
             size="xs"
@@ -314,12 +335,19 @@ export interface UpcomingTableProps {
    * `true` = on — no hint needed.
    */
   watchCalendar?: boolean | null;
+  /**
+   * The user's saved meeting display name (from meet settings). Used as the
+   * bot's reply anchor when joining via "Join now" — when set, the bot joins in
+   * reply mode instead of listen-only so it can respond to the user.
+   */
+  replyDisplayName?: string;
 }
 
 export function UpcomingTable({
   lookaheadMinutes,
   limit,
   watchCalendar = null,
+  replyDisplayName = '',
 }: UpcomingTableProps) {
   const { t } = useT();
   const { meetings, loading, error, refresh } = useUpcomingMeetings(lookaheadMinutes, limit);
@@ -336,6 +364,19 @@ export function UpcomingTable({
   const customPrimaryColor = useAppSelector(selectCustomPrimaryColor);
   const customSecondaryColor = useAppSelector(selectCustomSecondaryColor);
 
+  // Live in-call state — lets a row detect that its meeting is already joined
+  // and suppress the "Join now" button. The backend echoes the join back keyed
+  // by the same id we pass as correlationId (calendar_event_id), and also by
+  // meet_url as a fallback match.
+  const backendMeetStatus = useAppSelector(selectBackendMeetStatus);
+  const backendMeetMeetingId = useAppSelector(selectBackendMeetMeetingId);
+  const backendMeetUrl = useAppSelector(selectBackendMeetUrl);
+  const isMeetingJoined = (m: UpcomingMeeting): boolean => {
+    if (backendMeetStatus !== 'active' && backendMeetStatus !== 'joining') return false;
+    if (backendMeetMeetingId && backendMeetMeetingId === m.calendar_event_id) return true;
+    return Boolean(backendMeetUrl && m.meet_url && backendMeetUrl === m.meet_url);
+  };
+
   // Resolve bot join params the same way MeetComposer does.
   const mascotId = selectedMascotId ?? (mascotColor === 'custom' ? undefined : mascotColor);
   const riveColors =
@@ -346,7 +387,17 @@ export function UpcomingTable({
   const handleJoin = async (meeting: UpcomingMeeting) => {
     if (!meeting.meet_url) return;
     const platform = meeting.platform ?? inferPlatformFromUrl(meeting.meet_url) ?? undefined;
-    log('[upcoming] joining %s platform=%s', meeting.calendar_event_id, platform);
+    // Reply anchor: the display name the user saved on the Meetings page. When
+    // present the bot joins in reply mode (not listen-only) so it can respond to
+    // the user; without it we keep the safe listen-only default (the bot has no
+    // one to reply to and would otherwise talk to everyone).
+    const anchor = replyDisplayName.trim();
+    log(
+      '[upcoming] joining %s platform=%s reply_mode=%s',
+      meeting.calendar_event_id,
+      platform,
+      Boolean(anchor)
+    );
     setJoiningId(meeting.calendar_event_id);
     try {
       await joinMeetViaBackendBot({
@@ -355,7 +406,8 @@ export function UpcomingTable({
         agentName: personaDisplayName || undefined,
         systemPrompt: personaDescription || undefined,
         mascotId: mascotId || undefined,
-        listenOnly: true,
+        respondToParticipant: anchor || undefined,
+        listenOnly: !anchor,
         correlationId: meeting.calendar_event_id,
         riveColors,
       });
@@ -551,6 +603,7 @@ export function UpcomingTable({
                     onJoinPolicyChange={v => handleJoinPolicyChange(m.calendar_event_id, v)}
                     onJoin={handleJoin}
                     joining={joiningId === m.calendar_event_id}
+                    joined={isMeetingJoined(m)}
                   />
                 );
               }),
