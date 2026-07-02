@@ -39,6 +39,10 @@ pub async fn connect(config: &Config) -> Result<RpcOutcome<RecallCalendarConnect
         .post::<RecallCalendarConnect>(CONNECT_PATH, &json!({}))
         .await
         .map_err(|e| format!("[recall_calendar] connect failed: {e:#}"))?;
+    // Connection state is about to change — drop the memoized probe so the
+    // heartbeat/meetings fallback re-detects on its next tick instead of
+    // serving a stale "not connected" for up to RECALL_DETECT_TTL.
+    invalidate_detect_cache();
     Ok(RpcOutcome::new(
         resp,
         vec!["recall_calendar: connect flow started".to_string()],
@@ -117,6 +121,18 @@ pub async fn is_connected_cached(config: &Config) -> bool {
     connected
 }
 
+/// Drop the memoized connectivity probe. Called whenever the connection state
+/// is (about to be) mutated — `connect` / `disconnect` — so the next
+/// [`is_connected_cached`] call issues a fresh probe rather than serving a stale
+/// value for the remainder of [`RECALL_DETECT_TTL`]. A transient error is still
+/// cached as "not connected" (bounds probing for no-session users), but that
+/// staleness is now cleared the moment the user actually connects/disconnects.
+fn invalidate_detect_cache() {
+    *RECALL_DETECT_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+}
+
 /// Disconnect the user's Google calendar from Recall.
 pub async fn disconnect(config: &Config) -> Result<RpcOutcome<RecallCalendarDisconnect>, String> {
     tracing::debug!("[recall_calendar] rpc disconnect");
@@ -125,6 +141,9 @@ pub async fn disconnect(config: &Config) -> Result<RpcOutcome<RecallCalendarDisc
         .post::<RecallCalendarDisconnect>(DISCONNECT_PATH, &json!({}))
         .await
         .map_err(|e| format!("[recall_calendar] disconnect failed: {e:#}"))?;
+    // Just disconnected — drop the memoized probe so the fallback stops routing
+    // to Recall within one tick instead of after up to RECALL_DETECT_TTL.
+    invalidate_detect_cache();
     Ok(RpcOutcome::new(
         resp,
         vec!["recall_calendar: calendar disconnected".to_string()],
@@ -218,6 +237,23 @@ mod tests {
         // A probe 601s old is past the TTL → re-probe.
         let stale_at = now.checked_sub(Duration::from_secs(601)).unwrap();
         assert!(!recall_probe_fresh(stale_at, now, ttl));
+    }
+
+    #[test]
+    fn invalidate_detect_cache_clears_memo() {
+        // Prime the memo with a fresh "connected" result, then invalidate.
+        *RECALL_DETECT_CACHE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), true));
+        invalidate_detect_cache();
+        assert!(
+            RECALL_DETECT_CACHE
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none(),
+            "connect/disconnect must drop the memoized probe so the next \
+             is_connected_cached re-detects instead of serving a stale value"
+        );
     }
 
     #[test]
