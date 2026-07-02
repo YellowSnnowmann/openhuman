@@ -245,11 +245,16 @@ impl EventHandler for ChannelInboundSubscriber {
                     }
                 }
                 _ = edit_timer.tick() => {
-                    if streaming_state.thinking_dirty && !streaming_state.thinking_edit_disabled {
-                        flush_thinking_message(channel, &mut streaming_state).await;
-                    }
-                    if streaming_state.dirty && !streaming_state.edit_disabled {
-                        flush_streaming_edit(channel, &mut streaming_state).await;
+                    // Progressive draft/thinking bubbles require edit+delete
+                    // support; skip them on channels that lack it (Discord) so
+                    // they don't leave un-cleanable placeholder messages.
+                    if channel_supports_progressive_ui(channel) {
+                        if streaming_state.thinking_dirty && !streaming_state.thinking_edit_disabled {
+                            flush_thinking_message(channel, &mut streaming_state).await;
+                        }
+                        if streaming_state.dirty && !streaming_state.edit_disabled {
+                            flush_streaming_edit(channel, &mut streaming_state).await;
+                        }
                     }
                 }
                 _ = typing_timer.tick() => {
@@ -258,7 +263,9 @@ impl EventHandler for ChannelInboundSubscriber {
                     }
                 }
                 _ = filler_timer.tick() => {
-                    if !streaming_state.filler_disabled {
+                    // Fillers ("💭 Still working on it…") are ephemeral and
+                    // deleted on finalize — only post them where cleanup works.
+                    if channel_supports_progressive_ui(channel) && !streaming_state.filler_disabled {
                         send_filler_message(channel, &mut streaming_state).await;
                     }
                 }
@@ -296,6 +303,25 @@ const MAX_TYPING_FAILURES: u32 = 2;
 /// so the user keeps seeing activity during long agent turns. Deleted
 /// on finalization alongside the ephemeral thinking bubble.
 const FILLER_INTERVAL: tokio::time::Duration = tokio::time::Duration::from_secs(13);
+
+/// Whether a channel supports the progressive-UI placeholders — the
+/// evolving draft bubble, the rotating "💭" fillers, and the ephemeral
+/// "thinking" bubble. All three rely on the backend supporting **both**
+/// message *edit* and *delete*: edit keeps a single bubble evolving in
+/// place, delete removes it once the final reply lands. Telegram supports
+/// both. Discord's adapter supports **neither** (edits 404, delete is a
+/// hard `Delete not supported` stub), so every placeholder becomes a
+/// permanent, un-editable, un-deletable message — the channel fills with
+/// "💭 Still working on it…" bubbles. For such channels we suppress the
+/// placeholders entirely and rely on the typing indicator plus the final
+/// atomic reply, so the user sees a clean single answer.
+fn channel_supports_progressive_ui(channel: &str) -> bool {
+    // Inbound channels arrive provider-prefixed from the socket layer
+    // (e.g. `discord:<guild>`, `tg:<chat>`), so compare the provider prefix,
+    // not the whole id — mirroring `channel_is_telegram`.
+    let provider = channel.split(':').next().unwrap_or(channel);
+    provider != "discord"
+}
 
 /// Maximum consecutive filler-send failures before we stop trying.
 /// Same rationale as the thinking/typing latches.
@@ -1042,7 +1068,23 @@ fn channel_is_telegram(channel: &str) -> bool {
 
 #[cfg(test)]
 mod inbound_thread_id_tests {
-    use super::{derive_inbound_client_id, derive_inbound_thread_id};
+    use super::{
+        channel_supports_progressive_ui, derive_inbound_client_id, derive_inbound_thread_id,
+    };
+
+    #[test]
+    fn discord_suppresses_progressive_ui_other_channels_keep_it() {
+        // Discord's adapter supports neither edit nor delete, so evolving
+        // drafts / "💭" fillers / thinking bubbles would become permanent
+        // un-cleanable spam — suppress them there. Channels with edit+delete
+        // (Telegram) keep the progressive UI.
+        assert!(!channel_supports_progressive_ui("discord"));
+        // Inbound channels arrive provider-prefixed — the prefix must still match.
+        assert!(!channel_supports_progressive_ui("discord:guild-1"));
+        assert!(channel_supports_progressive_ui("telegram"));
+        assert!(channel_supports_progressive_ui("tg"));
+        assert!(channel_supports_progressive_ui("tg:12345"));
+    }
 
     #[test]
     fn socket_inbound_client_id_keys_per_sender() {
