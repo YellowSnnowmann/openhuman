@@ -49,4 +49,8 @@ export interface RewardsAchievement {
   roleId: string | null;
   discordRoleStatus: RewardsDiscordRoleStatus;
   creditAmountUsd: number | null;
+  /** Token reward advertised for this achievement (one-time or monthly amount). */
+  rewardTokens: number | null;
+  /** True when the token reward recurs monthly (subscriber tiers). */
+  rewardRecurring: boolean;
 }

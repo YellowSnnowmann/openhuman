@@ -41,6 +41,8 @@ describe('normalizeRewardsSnapshot', () => {
           roleId: 'role-streak-7',
           discordRoleStatus: 'assigned',
           creditAmountUsd: null,
+          rewardTokens: 500000,
+          rewardRecurring: true,
         },
       ],
     });
@@ -50,6 +52,8 @@ describe('normalizeRewardsSnapshot', () => {
     expect(snapshot.summary.plan).toBe('PRO');
     expect(snapshot.metrics.currentStreakDays).toBe(7);
     expect(snapshot.achievements[0].discordRoleStatus).toBe('assigned');
+    expect(snapshot.achievements[0].rewardTokens).toBe(500000);
+    expect(snapshot.achievements[0].rewardRecurring).toBe(true);
   });
 
   it('falls back safely for malformed payloads', () => {
@@ -67,6 +71,9 @@ describe('normalizeRewardsSnapshot', () => {
     expect(snapshot.summary.unlockedCount).toBe(2);
     expect(snapshot.achievements[0].discordRoleStatus).toBe('unavailable');
     expect(snapshot.achievements[0].creditAmountUsd).toBeNull();
+    // Missing reward fields default safely.
+    expect(snapshot.achievements[0].rewardTokens).toBeNull();
+    expect(snapshot.achievements[0].rewardRecurring).toBe(false);
   });
 });
 

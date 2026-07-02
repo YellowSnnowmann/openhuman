@@ -66,6 +66,7 @@ const INTENTIONAL_ENGLISH = new Set([
   "memorySources.globPatternPlaceholder",
   "modelCouncil.editCouncilAria",
   "modelCouncil.jurorLabel",
+  "rewards.community.discordDetails", // "Discord" — brand/product name, same in every locale
   "nav.agentWorld",
   "memorySources.searchQueryPlaceholder",
   "migration.vendor.hermes",

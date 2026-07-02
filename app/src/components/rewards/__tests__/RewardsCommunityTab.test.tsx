@@ -57,6 +57,8 @@ function buildSnapshot(): RewardsSnapshot {
         roleId: 'discord-role-1',
         discordRoleStatus: 'assigned',
         creditAmountUsd: null,
+        rewardTokens: 500000,
+        rewardRecurring: false,
       },
       {
         id: 'role-2',
@@ -68,6 +70,8 @@ function buildSnapshot(): RewardsSnapshot {
         roleId: 'discord-role-2',
         discordRoleStatus: 'not_assigned',
         creditAmountUsd: null,
+        rewardTokens: 2000000,
+        rewardRecurring: false,
       },
     ],
   };
@@ -305,5 +309,166 @@ describe('RewardsCommunityTab — Discord role assignment', () => {
     expect(screen.queryByTestId('rewards-role-status-role-1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('rewards-claim-roles-banner')).not.toBeInTheDocument();
     expect(screen.queryByTestId('rewards-roles-assigned')).not.toBeInTheDocument();
+  });
+});
+
+describe('RewardsCommunityTab — progress badges, progress labels, and stat split', () => {
+  it('renders one progress badge per achievement (no 8-item cap)', async () => {
+    const snapshot = buildSnapshot();
+    // 10 achievements > the old hard cap of 8: every one must get a badge.
+    snapshot.achievements = Array.from({ length: 10 }, (_, i) => ({
+      id: `ach-${i}`,
+      title: `Achievement ${i}`,
+      description: `Desc ${i}`,
+      actionLabel: 'View',
+      unlocked: i < 3,
+      progressLabel: i < 3 ? 'Unlocked' : `${i} / 10 active days`,
+      roleId: null,
+      discordRoleStatus: 'not_configured',
+      creditAmountUsd: null,
+      rewardTokens: null,
+      rewardRecurring: false,
+    }));
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={snapshot} />
+      </MemoryRouter>
+    );
+
+    for (let i = 0; i < 10; i++) {
+      expect(screen.getByTestId(`rewards-achievement-badge-ach-${i}`)).toBeInTheDocument();
+    }
+  });
+
+  it('shows the progress label on locked achievements only', async () => {
+    // buildSnapshot: role-1 unlocked (progressLabel "1/1"), role-2 locked ("0/1").
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={buildSnapshot()} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('rewards-achievement-progress-role-2')).toHaveTextContent('0/1');
+    // Unlocked achievements don't show a progress hint.
+    expect(screen.queryByTestId('rewards-achievement-progress-role-1')).not.toBeInTheDocument();
+  });
+
+  it('separates Discord status from product-activity metrics into two cards', async () => {
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={buildSnapshot()} />
+      </MemoryRouter>
+    );
+
+    const discordCard = screen.getByTestId('rewards-discord-stats');
+    const activityCard = screen.getByTestId('rewards-activity-stats');
+    // Discord identity lives in the Discord card…
+    expect(discordCard).toContainElement(screen.getByTestId('rewards-discord-username'));
+    // …and streaks/tokens live in the activity card, no longer mixed in.
+    expect(activityCard).toContainElement(screen.getByTestId('rewards-current-streak'));
+    expect(activityCard).toContainElement(screen.getByTestId('rewards-longest-streak'));
+  });
+
+  it('labels the streak in days and surfaces the longest streak', async () => {
+    // buildSnapshot: currentStreakDays 3, longestStreakDays 5.
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={buildSnapshot()} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('rewards-current-streak')).toHaveTextContent('3 days');
+    expect(screen.getByTestId('rewards-longest-streak')).toHaveTextContent('5 days');
+  });
+
+  it('shows the token reward pill with a compact amount', async () => {
+    // buildSnapshot: role-1 rewardTokens 500000, role-2 rewardTokens 2000000.
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={buildSnapshot()} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('rewards-achievement-reward-role-1')).toHaveTextContent(
+      '+500K tokens'
+    );
+    expect(screen.getByTestId('rewards-achievement-reward-role-2')).toHaveTextContent('+2M tokens');
+  });
+
+  it('shows a per-month reward pill for recurring subscriber rewards', async () => {
+    const snapshot = buildSnapshot();
+    snapshot.achievements = [
+      {
+        id: 'sub-1',
+        title: 'Soft Launch',
+        description: 'Monthly subscriber.',
+        actionLabel: 'View',
+        unlocked: true,
+        progressLabel: 'Unlocked',
+        roleId: null,
+        discordRoleStatus: 'not_configured',
+        creditAmountUsd: null,
+        rewardTokens: 5000000,
+        rewardRecurring: true,
+      },
+    ];
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={snapshot} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('rewards-achievement-reward-sub-1')).toHaveTextContent(
+      '+5M tokens/mo'
+    );
+  });
+
+  it('counts only assignable (unlocked + role-configured) achievements in the roles ratio', async () => {
+    const snapshot = buildSnapshot();
+    // Two unlocked achievements, but only one has a configured Discord role. The
+    // role-less one can never be assigned, so it must not inflate the denominator.
+    snapshot.achievements = [
+      {
+        id: 'role-a',
+        title: 'Has role',
+        description: 'Unlocked with a configured Discord role, assigned.',
+        actionLabel: 'View',
+        unlocked: true,
+        progressLabel: 'Unlocked',
+        roleId: 'discord-role-a',
+        discordRoleStatus: 'assigned',
+        creditAmountUsd: null,
+        rewardTokens: null,
+        rewardRecurring: false,
+      },
+      {
+        id: 'role-b',
+        title: 'No role',
+        description: 'Unlocked but no Discord role configured.',
+        actionLabel: 'View',
+        unlocked: true,
+        progressLabel: 'Unlocked',
+        roleId: null,
+        discordRoleStatus: 'not_configured',
+        creditAmountUsd: null,
+        rewardTokens: null,
+        rewardRecurring: false,
+      },
+    ];
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={snapshot} />
+      </MemoryRouter>
+    );
+
+    // 2 unlocked, 1 assignable, 1 assigned → "1 of 1", never "1 of 2".
+    expect(screen.getByTestId('rewards-roles-assigned')).toHaveTextContent('1 of 1 roles assigned');
   });
 });

@@ -18,6 +18,13 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US').format(Math.max(0, Math.trunc(value)));
 }
 
+// Compact token amounts for reward badges: 500000 -> "500K", 2000000 -> "2M".
+function formatTokens(value: number): string {
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(
+    Math.max(0, Math.trunc(value))
+  );
+}
+
 function roleAccentTone(index: number) {
   const tones = [
     {
@@ -102,17 +109,28 @@ export default function RewardsCommunityTab({
   const total = snapshot?.summary.totalCount ?? rewardRoles.length;
   const inviteUrl = snapshot?.discord.inviteUrl ?? DISCORD_INVITE_URL;
   const progressPercent = total > 0 ? Math.round((unlocked / total) * 100) : 0;
-  const achievementSlots =
-    rewardRoles.length > 0 ? rewardRoles.slice(0, 8) : new Array(4).fill(null);
+  // Render one progress circle per achievement so the row always matches the
+  // "{unlocked} of {total} achievements" count. Previously capped at 8, which
+  // silently hid the remaining badges (11 achievements → only 8 circles).
+  const achievementSlots: (RewardsAchievement | null)[] =
+    rewardRoles.length > 0 ? rewardRoles : new Array<null>(4).fill(null);
   const ringCircumference = 2 * Math.PI * 24;
   const ringOffset = ringCircumference - (progressPercent / 100) * ringCircumference;
   const discordLinked = snapshot?.discord.linked ?? false;
   const discordUsername = snapshot?.discord.username ?? null;
   const membershipStatus = snapshot?.discord.membershipStatus ?? null;
-  const assignedRoleCount = snapshot?.summary.assignedDiscordRoleCount ?? 0;
+  // "Roles assigned" is a ratio over *assignable* achievements — the ones both unlocked
+  // and backed by a configured Discord role. Locked achievements (no role yet) and
+  // unlocked achievements with no configured role can never be assigned, so counting
+  // them would misreport the ratio (e.g. "3 of 4" when the 4th can never be granted).
+  const assignableRoles = rewardRoles.filter(role => role.unlocked && Boolean(role.roleId));
+  const assignableRoleCount = assignableRoles.length;
+  const assignedRoleCount = assignableRoles.filter(
+    role => role.discordRoleStatus === 'assigned'
+  ).length;
   // A connected member who unlocked a role-bearing achievement but has not joined the
   // server yet cannot receive the role — surface an actionable prompt to join.
-  const hasUnlockedConfiguredRole = rewardRoles.some(role => role.unlocked && Boolean(role.roleId));
+  const hasUnlockedConfiguredRole = assignableRoles.length > 0;
   const showClaimBanner =
     discordLinked && membershipStatus === 'not_in_guild' && hasUnlockedConfiguredRole;
 
@@ -327,6 +345,9 @@ export default function RewardsCommunityTab({
             {achievementSlots.map((role, index) => (
               <div
                 key={role?.id ?? `placeholder-${index}`}
+                title={role?.title ?? undefined}
+                aria-label={role?.title ?? undefined}
+                data-testid={role ? `rewards-achievement-badge-${role.id}` : undefined}
                 className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full border-2 ${
                   role?.unlocked
                     ? 'border-primary-200 dark:border-primary-500/30 bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-300'
@@ -426,6 +447,23 @@ export default function RewardsCommunityTab({
                         <p className="mt-1 text-xs leading-relaxed text-content-secondary">
                           {role.description}
                         </p>
+                        {!role.unlocked && role.progressLabel ? (
+                          <p
+                            data-testid={`rewards-achievement-progress-${role.id}`}
+                            className="mt-1.5 text-[11px] font-semibold text-primary-600 dark:text-primary-300">
+                            {role.progressLabel}
+                          </p>
+                        ) : null}
+                        {role.rewardTokens ? (
+                          <p
+                            data-testid={`rewards-achievement-reward-${role.id}`}
+                            className="mt-1.5 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {(role.rewardRecurring
+                              ? t('rewards.community.rewardTokensMonthly')
+                              : t('rewards.community.rewardTokens')
+                            ).replace('{tokens}', formatTokens(role.rewardTokens))}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 text-primary-700 dark:text-primary-300">
@@ -471,7 +509,14 @@ export default function RewardsCommunityTab({
           )}
         </section>
 
-        <section className="rounded-[1.25rem] bg-[#f2f4f6] dark:bg-surface-muted/60 p-4 text-sm text-content-secondary">
+        {/* Discord-specific status — kept separate from product activity metrics
+            so the two are no longer conflated in a single list. */}
+        <section
+          data-testid="rewards-discord-stats"
+          className="rounded-[1.25rem] bg-[#f2f4f6] dark:bg-surface-muted/60 p-4 text-sm text-content-secondary">
+          <h2 className="mb-3 text-sm font-bold text-content">
+            {t('rewards.community.discordDetails')}
+          </h2>
           <div className="flex items-center justify-between gap-3">
             <span>{t('rewards.community.discordServer')}</span>
             <span className="font-semibold text-content">
@@ -500,17 +545,39 @@ export default function RewardsCommunityTab({
               <span data-testid="rewards-roles-assigned" className="font-semibold text-content">
                 {t('rewards.community.roleAssignmentCount')
                   .replace('{assigned}', String(assignedRoleCount))
-                  .replace('{unlocked}', String(unlocked))}
+                  .replace('{unlocked}', String(assignableRoleCount))}
               </span>
             </div>
           ) : null}
-          <div className="mt-3 flex items-center justify-between gap-3">
+        </section>
+
+        {/* Product-usage metrics — the activity streak counts consecutive days the
+            user actually used OpenHuman (token-processing days), not a check-in. */}
+        <section
+          data-testid="rewards-activity-stats"
+          className="rounded-[1.25rem] bg-[#f2f4f6] dark:bg-surface-muted/60 p-4 text-sm text-content-secondary">
+          <h2 className="text-sm font-bold text-content">{t('rewards.community.activityTitle')}</h2>
+          <p className="mb-3 mt-0.5 text-xs leading-relaxed text-content-muted">
+            {t('rewards.community.activityStreakHint')}
+          </p>
+          <div className="flex items-center justify-between gap-3">
             <span>{t('rewards.community.currentStreak')}</span>
-            <span className="font-semibold text-content">
+            <span data-testid="rewards-current-streak" className="font-semibold text-content">
               {snapshot
                 ? t('rewards.community.streakDays').replace(
                     '{n}',
                     String(snapshot.metrics.currentStreakDays)
+                  )
+                : t('rewards.community.unknown')}
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span>{t('rewards.community.longestStreak')}</span>
+            <span data-testid="rewards-longest-streak" className="font-semibold text-content">
+              {snapshot
+                ? t('rewards.community.streakDays').replace(
+                    '{n}',
+                    String(snapshot.metrics.longestStreakDays)
                   )
                 : t('rewards.community.unknown')}
             </span>

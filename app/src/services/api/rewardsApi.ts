@@ -81,6 +81,7 @@ export function normalizeRewardsApiError(error: unknown): RewardsApiError {
 function normalizeAchievement(value: unknown): RewardsAchievement {
   const raw = asRecord(value) ?? {};
   const creditAmountUsd = asFiniteNumberOrNull(raw.creditAmountUsd);
+  const rewardTokens = asFiniteNumberOrNull(raw.rewardTokens);
 
   return {
     id: typeof raw.id === 'string' ? raw.id : '',
@@ -100,6 +101,8 @@ function normalizeAchievement(value: unknown): RewardsAchievement {
         ? raw.discordRoleStatus
         : 'unavailable',
     creditAmountUsd: creditAmountUsd == null ? null : asNumber(creditAmountUsd),
+    rewardTokens: rewardTokens == null ? null : asNumber(rewardTokens),
+    rewardRecurring: raw.rewardRecurring === true,
   };
 }
 

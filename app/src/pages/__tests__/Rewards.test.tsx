@@ -86,6 +86,8 @@ describe('Rewards page', () => {
           roleId: 'role-streak-7',
           discordRoleStatus: 'assigned',
           creditAmountUsd: null,
+          rewardTokens: 500000,
+          rewardRecurring: false,
         },
       ],
     });
@@ -160,6 +162,8 @@ describe('Rewards page', () => {
             roleId: 'role-streak-7',
             discordRoleStatus: 'assigned',
             creditAmountUsd: null,
+            rewardTokens: 500000,
+            rewardRecurring: false,
           },
         ],
       });
