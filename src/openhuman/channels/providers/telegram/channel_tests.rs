@@ -314,6 +314,70 @@ fn telegram_extract_bind_code_rejects_invalid_forms() {
 }
 
 #[test]
+fn telegram_is_start_command_accepts_valid_forms() {
+    assert!(TelegramChannel::is_start_command("/start"));
+    // Addressed to a specific bot in a group.
+    assert!(TelegramChannel::is_start_command("/start@openhuman_bot"));
+    // Deep-link / payload after the command (still a /start).
+    assert!(TelegramChannel::is_start_command("/start deadbeef"));
+    // Leading whitespace is tolerated (split_whitespace skips it).
+    assert!(TelegramChannel::is_start_command("  /start"));
+}
+
+#[test]
+fn telegram_is_start_command_rejects_non_start() {
+    assert!(!TelegramChannel::is_start_command("/bind 123"));
+    assert!(!TelegramChannel::is_start_command("start"));
+    assert!(!TelegramChannel::is_start_command("hello"));
+    assert!(!TelegramChannel::is_start_command(""));
+    // Must be the whole command token, not a prefix.
+    assert!(!TelegramChannel::is_start_command("/started"));
+}
+
+#[test]
+fn telegram_bindable_identity_prefers_numeric_id() {
+    // Numeric id is immutable, so it wins over a mutable username.
+    assert_eq!(
+        TelegramChannel::bindable_identity("alice", Some("123456789")),
+        Some("123456789".to_string())
+    );
+}
+
+#[test]
+fn telegram_bindable_identity_falls_back_to_username() {
+    assert_eq!(
+        TelegramChannel::bindable_identity("alice", None),
+        Some("alice".to_string())
+    );
+    // An empty id string is ignored, not used as the identity.
+    assert_eq!(
+        TelegramChannel::bindable_identity("alice", Some("")),
+        Some("alice".to_string())
+    );
+}
+
+#[test]
+fn telegram_bindable_identity_none_when_unidentified() {
+    assert_eq!(TelegramChannel::bindable_identity("unknown", None), None);
+    assert_eq!(TelegramChannel::bindable_identity("", None), None);
+}
+
+#[test]
+fn telegram_allowlist_is_empty_tracks_runtime_state() {
+    // Fresh pairing-mode channel starts empty ...
+    let ch = TelegramChannel::new("t".into(), vec![], false);
+    assert!(ch.allowlist_is_empty());
+    // ... and flips to non-empty once the first sender is approved at runtime,
+    // which is what closes the `/start` first-run onboarding window.
+    ch.add_allowed_identity_runtime("123456789");
+    assert!(!ch.allowlist_is_empty());
+
+    // A channel constructed with an explicit allowlist is never "empty".
+    let configured = TelegramChannel::new("t".into(), vec!["alice".into()], false);
+    assert!(!configured.allowlist_is_empty());
+}
+
+#[test]
 fn parse_attachment_markers_extracts_multiple_types() {
     let message = "Here are files [IMAGE:/tmp/a.png] and [DOCUMENT:https://example.com/a.pdf]";
     let (cleaned, attachments) = parse_attachment_markers(message);
