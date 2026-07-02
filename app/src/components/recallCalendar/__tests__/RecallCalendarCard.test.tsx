@@ -104,4 +104,16 @@ describe('RecallCalendarCard', () => {
     renderWithProviders(<RecallCalendarCard />);
     expect(screen.getByText('Something broke')).toBeInTheDocument();
   });
+
+  it('disables the connect button and shows a spinner while busy', () => {
+    setHook({ status: { enabled: true, connected: false }, busy: true });
+    renderWithProviders(<RecallCalendarCard />);
+    expect(screen.getByTestId('recall-calendar-connect')).toBeDisabled();
+  });
+
+  it('disables the disconnect button while busy', () => {
+    setHook({ status: { enabled: true, connected: true, email: 'me@example.com' }, busy: true });
+    renderWithProviders(<RecallCalendarCard />);
+    expect(screen.getByTestId('recall-calendar-disconnect')).toBeDisabled();
+  });
 });

@@ -1,6 +1,3 @@
-use std::sync::Mutex;
-use std::time::Instant;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::StreamExt;
@@ -366,56 +363,6 @@ fn build_recall_pending(
     extract_calendar_events(&data, "googlecalendar", "recall", now, end_window)
 }
 
-/// How long a Recall connectivity probe is trusted before the heartbeat planner
-/// re-checks. Bounds the live `status` RPC on the hot path to at most once per
-/// window for users who have not flipped `calendar_provider` to Recall —
-/// otherwise a connected (or absent) Recall calendar is re-detected on *every*
-/// tick, a recurring external round-trip for all logged-in non-Recall users
-/// (#4391 review). The settings UI still flips the provider immediately on
-/// connect; this only rate-limits the mount-independent fallback.
-const RECALL_DETECT_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
-
-/// Process-wide memo of the last Recall probe: `(taken_at, connected)`.
-static RECALL_DETECT_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
-
-/// True when a probe taken at `at` is still within `ttl` as of `now`. Pure so
-/// the TTL boundary is unit-testable without controlling the wall clock.
-fn recall_probe_fresh(at: Instant, now: Instant, ttl: std::time::Duration) -> bool {
-    now.saturating_duration_since(at) < ttl
-}
-
-/// Detect whether a Recall calendar is connected, memoized for
-/// [`RECALL_DETECT_TTL`]. A probe error (no backend session / unavailable) is
-/// treated — and cached — as "not connected", so a Recall-less user stops
-/// issuing a `status` RPC on every heartbeat tick.
-async fn recall_connected_detect(config: &Config) -> bool {
-    let now = Instant::now();
-    {
-        let guard = RECALL_DETECT_CACHE
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some((at, connected)) = *guard {
-            if recall_probe_fresh(at, now, RECALL_DETECT_TTL) {
-                return connected;
-            }
-        }
-    }
-    let connected = match crate::openhuman::recall_calendar::ops::is_connected(config).await {
-        Ok(connected) => connected,
-        Err(error) => {
-            tracing::debug!(
-                error = %error,
-                "[heartbeat:planner] recall status unavailable — keeping configured provider"
-            );
-            false
-        }
-    };
-    *RECALL_DETECT_CACHE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = Some((now, connected));
-    connected
-}
-
 pub(crate) async fn collect_calendar_meetings(
     config: &Config,
     now: DateTime<Utc>,
@@ -439,7 +386,7 @@ pub(crate) async fn collect_calendar_meetings(
     let recall_connected = if recall_selected {
         true
     } else {
-        recall_connected_detect(config).await
+        crate::openhuman::recall_calendar::ops::is_connected_cached(config).await
     };
     if recall_connected {
         return collect_recall_calendar_meetings(config, now).await;
@@ -829,20 +776,6 @@ mod tests {
     use chrono::TimeZone;
 
     use super::*;
-
-    #[test]
-    fn recall_probe_freshness_respects_ttl() {
-        let ttl = std::time::Duration::from_secs(600);
-        let now = Instant::now();
-        // A probe 60s old is inside a 600s TTL → reuse the cached result.
-        let fresh_at = now.checked_sub(std::time::Duration::from_secs(60)).unwrap();
-        assert!(recall_probe_fresh(fresh_at, now, ttl));
-        // A probe 601s old is past the TTL → re-probe.
-        let stale_at = now
-            .checked_sub(std::time::Duration::from_secs(601))
-            .unwrap();
-        assert!(!recall_probe_fresh(stale_at, now, ttl));
-    }
 
     #[test]
     fn build_recall_pending_maps_meetings() {

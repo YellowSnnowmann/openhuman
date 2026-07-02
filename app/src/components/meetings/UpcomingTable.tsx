@@ -21,11 +21,7 @@ import {
   setEventPolicy,
   type UpcomingMeeting,
 } from '../../services/meetCallService';
-import {
-  selectBackendMeetMeetingId,
-  selectBackendMeetStatus,
-  selectBackendMeetUrl,
-} from '../../store/backendMeetSlice';
+import { selectBackendMeetStatus, selectBackendMeetUrl } from '../../store/backendMeetSlice';
 import { useAppSelector } from '../../store/hooks';
 import {
   selectCustomPrimaryColor,
@@ -365,15 +361,13 @@ export function UpcomingTable({
   const customSecondaryColor = useAppSelector(selectCustomSecondaryColor);
 
   // Live in-call state — lets a row detect that its meeting is already joined
-  // and suppress the "Join now" button. The backend echoes the join back keyed
-  // by the same id we pass as correlationId (calendar_event_id), and also by
-  // meet_url as a fallback match.
+  // and suppress the "Join now" button. correlationId is a fresh per-join UUID
+  // (#4338), so the backendMeet slice's meetingId never equals
+  // calendar_event_id — match the joined meet_url instead.
   const backendMeetStatus = useAppSelector(selectBackendMeetStatus);
-  const backendMeetMeetingId = useAppSelector(selectBackendMeetMeetingId);
   const backendMeetUrl = useAppSelector(selectBackendMeetUrl);
   const isMeetingJoined = (m: UpcomingMeeting): boolean => {
     if (backendMeetStatus !== 'active' && backendMeetStatus !== 'joining') return false;
-    if (backendMeetMeetingId && backendMeetMeetingId === m.calendar_event_id) return true;
     return Boolean(backendMeetUrl && m.meet_url && backendMeetUrl === m.meet_url);
   };
 

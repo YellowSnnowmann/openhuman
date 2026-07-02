@@ -7,6 +7,8 @@
 //! handling). This mirrors the Composio domain's backend-proxied design.
 
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -61,6 +63,58 @@ pub async fn status(config: &Config) -> Result<RpcOutcome<RecallCalendarStatus>,
 pub async fn is_connected(config: &Config) -> Result<bool, String> {
     let outcome = status(config).await?;
     Ok(outcome.value.enabled && outcome.value.connected)
+}
+
+/// How long a Recall connectivity probe is trusted before it is re-checked.
+/// Bounds the live `status` RPC on the hot path to at most once per window for
+/// users who have not flipped `calendar_provider` to Recall — otherwise a
+/// connected (or absent) Recall calendar is re-detected on *every* heartbeat
+/// tick and *every* meetings-page fetch, a recurring external round-trip for
+/// all logged-in non-Recall users (#4391 review). The settings UI still flips
+/// the provider immediately on connect; this only rate-limits the
+/// mount-independent fallback shared by both call sites.
+const RECALL_DETECT_TTL: Duration = Duration::from_secs(30 * 60);
+
+/// Process-wide memo of the last Recall probe: `(taken_at, connected)`.
+static RECALL_DETECT_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
+
+/// True when a probe taken at `at` is still within `ttl` as of `now`. Pure so
+/// the TTL boundary is unit-testable without controlling the wall clock.
+fn recall_probe_fresh(at: Instant, now: Instant, ttl: Duration) -> bool {
+    now.saturating_duration_since(at) < ttl
+}
+
+/// Detect whether a Recall calendar is connected, memoized for
+/// [`RECALL_DETECT_TTL`] and shared by every mount-independent caller (heartbeat
+/// planner + meetings-page fetch). A probe error (no backend session /
+/// unavailable) is treated — and cached — as "not connected", so a Recall-less
+/// user stops issuing a `status` RPC on every hot-path invocation.
+pub async fn is_connected_cached(config: &Config) -> bool {
+    let now = Instant::now();
+    {
+        let guard = RECALL_DETECT_CACHE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((at, connected)) = *guard {
+            if recall_probe_fresh(at, now, RECALL_DETECT_TTL) {
+                return connected;
+            }
+        }
+    }
+    let connected = match is_connected(config).await {
+        Ok(connected) => connected,
+        Err(error) => {
+            tracing::debug!(
+                error = %error,
+                "[recall_calendar] status unavailable — treating as not connected"
+            );
+            false
+        }
+    };
+    *RECALL_DETECT_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some((now, connected));
+    connected
 }
 
 /// Disconnect the user's Google calendar from Recall.
@@ -152,6 +206,18 @@ mod tests {
             platform: Some("google_meet".to_string()),
             bot_id: None,
         }
+    }
+
+    #[test]
+    fn recall_probe_freshness_respects_ttl() {
+        let ttl = Duration::from_secs(600);
+        let now = Instant::now();
+        // A probe 60s old is inside a 600s TTL → reuse the cached result.
+        let fresh_at = now.checked_sub(Duration::from_secs(60)).unwrap();
+        assert!(recall_probe_fresh(fresh_at, now, ttl));
+        // A probe 601s old is past the TTL → re-probe.
+        let stale_at = now.checked_sub(Duration::from_secs(601)).unwrap();
+        assert!(!recall_probe_fresh(stale_at, now, ttl));
     }
 
     #[test]

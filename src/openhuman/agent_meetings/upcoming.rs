@@ -115,16 +115,7 @@ pub(crate) async fn fetch_upcoming_meetings(
     let recall_connected = if recall_selected {
         true
     } else {
-        match crate::openhuman::recall_calendar::ops::is_connected(config).await {
-            Ok(connected) => connected,
-            Err(e) => {
-                tracing::debug!(
-                    error = %e,
-                    "[meet:upcoming] recall status unavailable — keeping configured provider"
-                );
-                false
-            }
-        }
+        crate::openhuman::recall_calendar::ops::is_connected_cached(config).await
     };
     if recall_connected {
         return fetch_recall_upcoming(config, now, end_window, limit, join_policy).await;

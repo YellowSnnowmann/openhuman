@@ -409,17 +409,7 @@ describe('UpcomingTable', () => {
     };
   }
 
-  it('shows the Live pill (not a Join button) when active with a matching meetingId', async () => {
-    listMock.mockResolvedValueOnce([makeMeeting({ calendar_event_id: 'evt-1' })]);
-    renderWithProviders(<UpcomingTable />, {
-      preloadedState: activeMeetState({ meetingId: 'evt-1' }),
-    });
-    await waitFor(() => expect(screen.getByText('Weekly Sync')).toBeInTheDocument());
-    expect(screen.getByText('Live')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^join$/i })).not.toBeInTheDocument();
-  });
-
-  it('shows the Live pill when active with a matching meet_url (no meetingId match)', async () => {
+  it('shows the Live pill (not a Join button) when active with a matching meet_url', async () => {
     listMock.mockResolvedValueOnce([
       makeMeeting({ calendar_event_id: 'evt-x', meet_url: 'https://meet.google.com/live-match' }),
     ]);
@@ -431,12 +421,18 @@ describe('UpcomingTable', () => {
     });
     await waitFor(() => expect(screen.getByText('Weekly Sync')).toBeInTheDocument());
     expect(screen.getByText('Live')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^join$/i })).not.toBeInTheDocument();
   });
 
   it('shows the Live pill when the backend status is joining (not only active)', async () => {
-    listMock.mockResolvedValueOnce([makeMeeting({ calendar_event_id: 'evt-1' })]);
+    listMock.mockResolvedValueOnce([
+      makeMeeting({ calendar_event_id: 'evt-1', meet_url: 'https://meet.google.com/live-match' }),
+    ]);
     renderWithProviders(<UpcomingTable />, {
-      preloadedState: activeMeetState({ status: 'joining', meetingId: 'evt-1' }),
+      preloadedState: activeMeetState({
+        status: 'joining',
+        meetUrl: 'https://meet.google.com/live-match',
+      }),
     });
     await waitFor(() => expect(screen.getByText('Weekly Sync')).toBeInTheDocument());
     expect(screen.getByText('Live')).toBeInTheDocument();

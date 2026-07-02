@@ -71,9 +71,12 @@ export function useRecallCalendar(): UseRecallCalendar {
 
   useEffect(() => {
     void refresh();
+    // Once the server reports the integration disabled (stable per session),
+    // stop live polling — the initial refresh above still learns `enabled`.
+    if (status && !status.enabled) return;
     const id = setInterval(() => void refresh(), POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [refresh, status?.enabled]);
 
   const beginConnect = useCallback(async () => {
     setBusy(true);

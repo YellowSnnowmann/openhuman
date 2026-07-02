@@ -65,4 +65,47 @@ describe('useRecallCalendar', () => {
     });
     await waitFor(() => expect(result.current.error).toBeNull());
   });
+
+  test('beginConnect surfaces an error when connect() rejects', async () => {
+    vi.mocked(recallCalendarApi.status).mockResolvedValue({ enabled: false, connected: false });
+    vi.mocked(recallCalendarApi.connect).mockRejectedValue(new Error('connect boom'));
+
+    const { result } = renderHook(() => useRecallCalendar());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.beginConnect();
+    });
+
+    expect(result.current.error).toContain('connect boom');
+    expect(result.current.busy).toBe(false);
+  });
+
+  test('disconnect surfaces an error when disconnect() rejects', async () => {
+    vi.mocked(recallCalendarApi.status).mockResolvedValue({ enabled: false, connected: false });
+    vi.mocked(recallCalendarApi.disconnect).mockRejectedValue(new Error('disconnect boom'));
+
+    const { result } = renderHook(() => useRecallCalendar());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.disconnect();
+    });
+
+    expect(result.current.error).toContain('disconnect boom');
+    expect(result.current.busy).toBe(false);
+  });
+
+  test('records a provider-switch error when the config flip fails', async () => {
+    vi.mocked(recallCalendarApi.status).mockResolvedValue({
+      enabled: true,
+      connected: true,
+      email: 'user@example.com',
+    });
+    vi.mocked(openhumanUpdateMeetSettings).mockRejectedValue(new Error('flip boom'));
+
+    const { result } = renderHook(() => useRecallCalendar());
+
+    await waitFor(() => expect(result.current.error).toMatch(/^calendar provider switch failed:/));
+  });
 });
