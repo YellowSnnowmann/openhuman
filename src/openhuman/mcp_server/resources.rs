@@ -283,18 +283,6 @@ const RESOURCE_CATALOG: &[PromptResource] = &[
         description: "Sandboxed worker that runs installed skill packages.",
         content: include_str!("../skill_runtime/agent/skill_executor/prompt.md"),
     },
-    PromptResource {
-        uri: "openhuman://prompts/agents/frontend_agent",
-        name: "frontend_agent",
-        description: "Quick-tier front end of the tiny.place orchestration wake graph that triages master DMs into an immediate channel reply or macro-instructions for the reasoning core.",
-        content: include_str!("../orchestration/frontend_agent/prompt.md"),
-    },
-    PromptResource {
-        uri: "openhuman://prompts/agents/reasoning_agent",
-        name: "reasoning_agent",
-        description: "Deep-thinking reasoning core of the tiny.place orchestration wake graph that applies the subconscious steering directive and spawns execution sub-agents.",
-        content: include_str!("../orchestration/reasoning_agent/prompt.md"),
-    },
 ];
 
 /// Returns the `resources/list` result payload listing every catalog entry.
