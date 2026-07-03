@@ -2231,3 +2231,58 @@ fn approval_debounce_evicts_entries_past_window() {
         "[telegram][approval] the new entry must be inserted"
     );
 }
+
+#[tokio::test]
+async fn start_onboarding_is_private_only_and_consumes_the_code() {
+    // Aim outbound sends at a dead local port so the approve/hint `self.send()`
+    // fast-fails (connection refused) instead of reaching api.telegram.org — the
+    // onboarding *decision* (runtime allowlist + one-time code) is asserted
+    // regardless of the send outcome.
+    let mut ch = TelegramChannel::new("fake-token".into(), vec![], false);
+    ch.set_api_base_for_tests("http://127.0.0.1:1");
+    assert!(ch.allowlist_is_empty());
+    assert!(
+        ch.pairing_code_active(),
+        "fresh pairing-mode channel arms a code"
+    );
+
+    // A PRIVATE `/start` onboards the first sender AND consumes the code, so it
+    // can't later be replayed via `/bind`.
+    let private_start = serde_json::json!({
+        "message": {
+            "chat": { "id": 111, "type": "private" },
+            "from": { "id": 222, "username": "operator" },
+            "text": "/start"
+        }
+    });
+    ch.handle_unauthorized_message(&private_start).await;
+    assert!(
+        !ch.allowlist_is_empty(),
+        "private /start onboards the operator"
+    );
+    assert!(
+        !ch.pairing_code_active(),
+        "the one-time code is consumed on /start onboarding"
+    );
+
+    // A GROUP `/start` must NOT onboard — otherwise any member could claim
+    // operator ownership. It falls through to the normal approval prompt.
+    let mut group_ch = TelegramChannel::new("fake-token".into(), vec![], false);
+    group_ch.set_api_base_for_tests("http://127.0.0.1:1");
+    let group_start = serde_json::json!({
+        "message": {
+            "chat": { "id": -100, "type": "supergroup" },
+            "from": { "id": 333, "username": "member" },
+            "text": "/start"
+        }
+    });
+    group_ch.handle_unauthorized_message(&group_start).await;
+    assert!(
+        group_ch.allowlist_is_empty(),
+        "a group /start must not onboard anyone"
+    );
+    assert!(
+        group_ch.pairing_code_active(),
+        "a group /start leaves the one-time code intact"
+    );
+}

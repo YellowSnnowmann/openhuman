@@ -123,6 +123,14 @@ impl TelegramChannel {
         format!("{}/bot{}/{method}", self.api_base, self.bot_token)
     }
 
+    /// Point outbound Telegram API calls at `base` (test-only seam). Used to
+    /// aim `send()` at a dead local port so onboarding tests exercise the
+    /// decision logic without reaching api.telegram.org.
+    #[cfg(test)]
+    pub(crate) fn set_api_base_for_tests(&mut self, base: impl Into<String>) {
+        self.api_base = base.into();
+    }
+
     pub(crate) fn pairing_code_active(&self) -> bool {
         self.pairing
             .as_ref()

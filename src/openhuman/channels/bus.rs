@@ -312,15 +312,18 @@ const FILLER_INTERVAL: tokio::time::Duration = tokio::time::Duration::from_secs(
 /// both. Discord's adapter supports **neither** (edits 404, delete is a
 /// hard `Delete not supported` stub), so every placeholder becomes a
 /// permanent, un-editable, un-deletable message — the channel fills with
-/// "💭 Still working on it…" bubbles. For such channels we suppress the
-/// placeholders entirely and rely on the typing indicator plus the final
-/// atomic reply, so the user sees a clean single answer.
+/// "💭 Still working on it…" bubbles.
+///
+/// This is an **allowlist**, not a denylist: only channels confirmed to
+/// support edit+delete opt in. A new/unknown adapter therefore fails *safe*
+/// (placeholders suppressed) rather than silently re-introducing the spam bug
+/// this gate was added to fix.
 fn channel_supports_progressive_ui(channel: &str) -> bool {
     // Inbound channels arrive provider-prefixed from the socket layer
     // (e.g. `discord:<guild>`, `tg:<chat>`), so compare the provider prefix,
     // not the whole id — mirroring `channel_is_telegram`.
     let provider = channel.split(':').next().unwrap_or(channel);
-    provider != "discord"
+    matches!(provider, "telegram" | "tg")
 }
 
 /// Maximum consecutive filler-send failures before we stop trying.
@@ -1073,17 +1076,19 @@ mod inbound_thread_id_tests {
     };
 
     #[test]
-    fn discord_suppresses_progressive_ui_other_channels_keep_it() {
-        // Discord's adapter supports neither edit nor delete, so evolving
-        // drafts / "💭" fillers / thinking bubbles would become permanent
-        // un-cleanable spam — suppress them there. Channels with edit+delete
-        // (Telegram) keep the progressive UI.
-        assert!(!channel_supports_progressive_ui("discord"));
-        // Inbound channels arrive provider-prefixed — the prefix must still match.
-        assert!(!channel_supports_progressive_ui("discord:guild-1"));
+    fn progressive_ui_is_an_allowlist_failing_safe_for_unknown_channels() {
+        // Only edit+delete-capable providers opt in. Telegram supports both;
+        // everything else (Discord's stub delete / 404 edits, and any new or
+        // unknown adapter) is suppressed so the "💭" spam can't reappear.
         assert!(channel_supports_progressive_ui("telegram"));
         assert!(channel_supports_progressive_ui("tg"));
+        // Inbound channels arrive provider-prefixed — the prefix must still match.
         assert!(channel_supports_progressive_ui("tg:12345"));
+        assert!(!channel_supports_progressive_ui("discord"));
+        assert!(!channel_supports_progressive_ui("discord:guild-1"));
+        // Unknown/new adapters fail safe (allowlist, not denylist).
+        assert!(!channel_supports_progressive_ui("slack"));
+        assert!(!channel_supports_progressive_ui("whatsapp:123"));
     }
 
     #[test]

@@ -328,8 +328,22 @@ impl TelegramChannel {
         // onboarding to the genuine first sender — once the operator is bound the
         // list is non-empty, so a later stranger's `/start` falls through to the
         // normal approval prompt instead of being auto-approved.
+        // SECURITY (first-sender-wins TOFU): unlike `/bind <code>` — which
+        // requires the stdout secret and goes through `try_pair`'s lockout —
+        // `/start` onboarding trusts the first sender with no secret and no
+        // rate-limit. Anyone who learns the bot's `@username` before the operator
+        // sends the first message could claim ownership. The private-chat guard
+        // below removes the group attack surface (the common hijack); the residual
+        // window is a stale, world-reachable un-paired bot. Bounding onboarding to
+        // a startup time-window is a reasonable future hardening (see openhuman#4381).
         if self.pairing.is_some()
             && self.allowlist_is_empty()
+            // Private chats only: operator setup for a self-bot-token is a DM
+            // action. Onboarding the first `/start` sender in a *group* would let
+            // any member claim operator ownership (the un-paired bot may be added
+            // to a group mid-setup), so a group `/start` falls through to the
+            // normal approval prompt instead.
+            && !Self::is_group_message(message)
             && text.map(Self::is_start_command).unwrap_or(false)
         {
             match Self::bindable_identity(&normalized_username, normalized_sender_id.as_deref()) {
@@ -442,7 +456,11 @@ impl TelegramChannel {
         // operator unlocks the bot by sending `/start` (or `/bind <code>` if they
         // have the code from the app); there is no "approve in the web UI" action for
         // the self-bot-token path, so we must not point the user at one (openhuman#4381).
-        if self.pairing_code_active() {
+        //
+        // Only advertise the `/start` onboarding hint in a private chat — in a group
+        // it would invite any member to claim operator ownership, matching the
+        // private-only onboarding gate above.
+        if self.pairing_code_active() && !Self::is_group_message(message) {
             tracing::debug!(
                 chat_id,
                 sender = sender_key,

@@ -164,6 +164,16 @@ fn read_cached_integrations(
         );
         return None;
     }
+    // Surface a *very* stale fallback so an unusually long backend outage is
+    // observable rather than silently pinning the agent to an ancient snapshot.
+    if allow_expired && age > 5 * CACHE_TTL {
+        tracing::warn!(
+            key = %key,
+            age_ms = age.as_millis() as u64,
+            ttl_ms = CACHE_TTL.as_millis() as u64,
+            "[composio][integrations_cache] serving a heavily-stale integrations snapshot on transient-failure fallback (backend outage?)"
+        );
+    }
     tracing::trace!(
         key = %key,
         entries = cached.entries.len(),
