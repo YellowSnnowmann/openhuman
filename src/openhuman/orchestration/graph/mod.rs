@@ -381,10 +381,15 @@ pub async fn run_orchestration_graph(
     let threshold = config.orchestration.effective_evict_threshold();
     let thread_id = format!("orchestration:{}", state.session_id);
     let label = thread_id.clone();
-    let checkpoint_db = config.workspace_dir.join("graph_checkpoints.db");
+    // `SqlRunLedgerCheckpointer` was retired in favor of the crate's own
+    // `SqliteCheckpointer` (see `agent_orchestration/delegation.rs`); mirrors
+    // that swap here with a dedicated `orchestration_graph_checkpoints.db`.
+    let checkpoint_db = config
+        .workspace_dir
+        .join("orchestration_graph_checkpoints.db");
     let checkpointer = Arc::new(
         SqliteCheckpointer::<OrchestrationState>::open(&checkpoint_db)
-            .map_err(|e| anyhow::anyhow!("open orchestration checkpoint store: {e}"))?,
+            .map_err(|e| anyhow::anyhow!("open durable orchestration checkpoint store: {e}"))?,
     );
 
     tracing::debug!(
