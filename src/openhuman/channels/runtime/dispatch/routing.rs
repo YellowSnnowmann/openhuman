@@ -10,7 +10,7 @@ use crate::openhuman::agent::harness::definition::{
     AgentDefinition, AgentDefinitionRegistry, ToolScope,
 };
 use crate::openhuman::composio::{
-    cached_active_integrations, fetch_connected_integrations_status,
+    cached_active_integrations_including_expired, fetch_connected_integrations_status,
     FetchConnectedIntegrationsStatus,
 };
 use crate::openhuman::config::Config;
@@ -142,7 +142,13 @@ pub(super) async fn resolve_target_agent(channel: &str) -> AgentScoping {
                 "[dispatch::routing] Composio unavailable/timed out — using cached integration snapshot instead of an empty set (keeps delegate_to_integrations_agent live)"
             );
         }
-        let connected = connected_with_fallback(fetched, cached_active_integrations(&config));
+        // Use the expiry-tolerant read for the fallback: a transient blip that
+        // lands just after the 60s cache TTL must still preserve the last-known
+        // integrations rather than collapse tool-calling to an empty set.
+        let connected = connected_with_fallback(
+            fetched,
+            cached_active_integrations_including_expired(&config),
+        );
         tracing::debug!(
             channel = %channel,
             target_agent = target_id,

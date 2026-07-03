@@ -340,6 +340,13 @@ impl TelegramChannel {
                         "[telegram][approval] /start onboarding: pairing first sender as operator"
                     );
                     self.approve_and_persist_sender(&identity, &chat_id).await;
+                    // Finish the one-time pairing flow: the operator is bound
+                    // via /start rather than /bind <code>, so consume the code
+                    // here too — otherwise the stdout code stays live and a
+                    // later sender who obtains it could still /bind themselves.
+                    if let Some(pairing) = self.pairing.as_ref() {
+                        pairing.invalidate_code();
+                    }
                 }
                 None => {
                     let _ = self
