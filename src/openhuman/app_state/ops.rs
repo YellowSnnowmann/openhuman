@@ -67,6 +67,11 @@ static SNAPSHOT_REQ_COUNTER: AtomicU64 = AtomicU64::new(0);
 struct CachedRuntimeSnapshot {
     snapshot: RuntimeSnapshot,
     fetched_at: Instant,
+    /// Config identity (`workspace_dir`) the snapshot was built for. The cache
+    /// holds one entry process-wide, so a snapshot built for one config must
+    /// never be served to another — otherwise a different user/workspace (or an
+    /// E2E test with an injected service mock) reads a stale, foreign runtime.
+    config_key: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -756,9 +761,14 @@ pub fn peek_cached_current_user_identity() -> Option<crate::openhuman::agent::pr
 /// Return the cached runtime snapshot when it is still within
 /// `RUNTIME_SNAPSHOT_TTL`, else `None`. Kept as a small helper so both the
 /// fast-path read and the post-lock double-check share identical freshness logic.
-fn fresh_cached_runtime_snapshot(req_id: u64) -> Option<RuntimeSnapshot> {
+fn fresh_cached_runtime_snapshot(config: &Config, req_id: u64) -> Option<RuntimeSnapshot> {
     let cache = RUNTIME_SNAPSHOT_CACHE.lock();
     let entry = cache.as_ref()?;
+    // A snapshot built for a different config identity is a miss: rebuild against
+    // this config rather than serve another workspace's runtime.
+    if entry.config_key != config.workspace_dir {
+        return None;
+    }
     let age = entry.fetched_at.elapsed();
     if age < RUNTIME_SNAPSHOT_TTL {
         debug!(
@@ -774,7 +784,7 @@ fn fresh_cached_runtime_snapshot(req_id: u64) -> Option<RuntimeSnapshot> {
 async fn build_runtime_snapshot(config: &Config, req_id: u64) -> RuntimeSnapshot {
     // Fast path: a fresh cached snapshot serves every poller without touching the
     // sub-op fan-out.
-    if let Some(snapshot) = fresh_cached_runtime_snapshot(req_id) {
+    if let Some(snapshot) = fresh_cached_runtime_snapshot(config, req_id) {
         return snapshot;
     }
 
@@ -783,7 +793,7 @@ async fn build_runtime_snapshot(config: &Config, req_id: u64) -> RuntimeSnapshot
     // double-check) and return it instead of launching a duplicate build —
     // collapsing an N-way stampede into one build per TTL window.
     let _rebuild_guard = RUNTIME_SNAPSHOT_REBUILD.lock().await;
-    if let Some(snapshot) = fresh_cached_runtime_snapshot(req_id) {
+    if let Some(snapshot) = fresh_cached_runtime_snapshot(config, req_id) {
         debug!(
             "{LOG_PREFIX} build_runtime_snapshot: coalesced onto concurrent rebuild req_id={req_id}"
         );
@@ -912,6 +922,7 @@ async fn build_runtime_snapshot(config: &Config, req_id: u64) -> RuntimeSnapshot
     *RUNTIME_SNAPSHOT_CACHE.lock() = Some(CachedRuntimeSnapshot {
         snapshot: snapshot.clone(),
         fetched_at: Instant::now(),
+        config_key: config.workspace_dir.clone(),
     });
 
     snapshot
