@@ -3640,6 +3640,11 @@ const messages: TranslationMap = {
   'rewards.community.achievementsUnlocked': '{unlocked} dari {total} pencapaian terbuka',
   'rewards.community.activityStreakHint': 'Hari berturut-turut kamu aktif di OpenHuman.',
   'rewards.community.activityTitle': 'Aktivitas kamu',
+  'rewards.community.claimCredited': '{amount} ditambahkan ke saldo kamu',
+  'rewards.community.claimError': 'Tidak dapat mengklaim. Silakan coba lagi.',
+  'rewards.community.claimTokens': 'Klaim {tokens} token',
+  'rewards.community.claimed': 'Diklaim',
+  'rewards.community.claiming': 'Mengklaim...',
   'rewards.community.connectDiscord': 'Hubungkan Discord',
   'rewards.community.connectDiscordError':
     'Tidak dapat memulai koneksi Discord. Silakan coba lagi.',

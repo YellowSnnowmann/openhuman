@@ -3632,6 +3632,11 @@ const messages: TranslationMap = {
   'rewards.community.achievementsUnlocked': '{total} में से {unlocked} उपलब्धियाँ अनलॉक हुईं',
   'rewards.community.activityStreakHint': 'OpenHuman पर लगातार सक्रिय रहने के दिन।',
   'rewards.community.activityTitle': 'आपकी गतिविधि',
+  'rewards.community.claimCredited': 'आपके बैलेंस में {amount} जोड़े गए',
+  'rewards.community.claimError': 'दावा नहीं किया जा सका। कृपया फिर से प्रयास करें।',
+  'rewards.community.claimTokens': '{tokens} टोकन का दावा करें',
+  'rewards.community.claimed': 'दावा किया गया',
+  'rewards.community.claiming': 'दावा किया जा रहा है…',
   'rewards.community.connectDiscord': 'Discord कनेक्ट करें',
   'rewards.community.connectDiscordError':
     'Discord कनेक्शन शुरू नहीं हो सका। कृपया फिर से प्रयास करें।',

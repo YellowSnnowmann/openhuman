@@ -3660,6 +3660,11 @@ const messages: TranslationMap = {
   'rewards.community.achievementsUnlocked': 'Открыто достижений: {unlocked} из {total}',
   'rewards.community.activityStreakHint': 'Дней подряд с активностью в OpenHuman.',
   'rewards.community.activityTitle': 'Ваша активность',
+  'rewards.community.claimCredited': '{amount} зачислено на ваш баланс',
+  'rewards.community.claimError': 'Не удалось получить. Попробуйте ещё раз.',
+  'rewards.community.claimTokens': 'Получить {tokens} токенов',
+  'rewards.community.claimed': 'Получено',
+  'rewards.community.claiming': 'Получение…',
   'rewards.community.connectDiscord': 'Подключить Discord',
   'rewards.community.connectDiscordError':
     'Не удалось начать подключение к Discord. Повторите попытку.',

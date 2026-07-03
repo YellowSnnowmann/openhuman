@@ -3719,6 +3719,11 @@ const messages: TranslationMap = {
   'rewards.community.activityStreakHint':
     'Aufeinanderfolgende Tage, an denen du auf OpenHuman aktiv warst.',
   'rewards.community.activityTitle': 'Deine Aktivität',
+  'rewards.community.claimCredited': '{amount} deinem Guthaben gutgeschrieben',
+  'rewards.community.claimError': 'Einlösen fehlgeschlagen. Bitte versuche es erneut.',
+  'rewards.community.claimTokens': '{tokens} Tokens einlösen',
+  'rewards.community.claimed': 'Eingelöst',
+  'rewards.community.claiming': 'Wird eingelöst…',
   'rewards.community.connectDiscord': 'Verbinde Discord',
   'rewards.community.connectDiscordError':
     'Discord-Verbindung konnte nicht gestartet werden. Bitte versuche es erneut.',

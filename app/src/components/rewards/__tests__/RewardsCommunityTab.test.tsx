@@ -9,16 +9,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RewardsSnapshot } from '../../../types/rewards';
 
-const { openUrl, callCoreRpc, setOAuthReturnRoute, disconnectDiscord } = vi.hoisted(() => ({
-  openUrl: vi.fn(),
-  callCoreRpc: vi.fn(),
-  setOAuthReturnRoute: vi.fn(),
-  disconnectDiscord: vi.fn(),
-}));
+const { openUrl, callCoreRpc, setOAuthReturnRoute, disconnectDiscord, claimReward } = vi.hoisted(
+  () => ({
+    openUrl: vi.fn(),
+    callCoreRpc: vi.fn(),
+    setOAuthReturnRoute: vi.fn(),
+    disconnectDiscord: vi.fn(),
+    claimReward: vi.fn(),
+  })
+);
 
 vi.mock('../../../utils/openUrl', () => ({ openUrl }));
 vi.mock('../../../services/coreRpcClient', () => ({ callCoreRpc }));
-vi.mock('../../../services/api/rewardsApi', () => ({ rewardsApi: { disconnectDiscord } }));
+vi.mock('../../../services/api/rewardsApi', () => ({
+  rewardsApi: { disconnectDiscord, claimReward },
+}));
 vi.mock('../../../utils/oauthReturnRoute', () => ({ setOAuthReturnRoute }));
 
 function buildSnapshot(): RewardsSnapshot {
@@ -309,6 +314,189 @@ describe('RewardsCommunityTab — Discord role assignment', () => {
     expect(screen.queryByTestId('rewards-role-status-role-1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('rewards-claim-roles-banner')).not.toBeInTheDocument();
     expect(screen.queryByTestId('rewards-roles-assigned')).not.toBeInTheDocument();
+  });
+});
+
+describe('RewardsCommunityTab — Claim reward', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function claimableSnapshot(): RewardsSnapshot {
+    const snapshot = buildSnapshot();
+    // role-1: unlocked + claimable (not yet claimed). role-2 stays locked.
+    snapshot.achievements[0] = { ...snapshot.achievements[0], claimable: true, claimed: false };
+    return snapshot;
+  }
+
+  function claimedSnapshot(): RewardsSnapshot {
+    const snapshot = buildSnapshot();
+    // Server truth after a claim: no longer claimable, now claimed.
+    snapshot.achievements[0] = { ...snapshot.achievements[0], claimable: false, claimed: true };
+    return snapshot;
+  }
+
+  const claimResult = (over: Record<string, unknown> = {}) => ({
+    reward: 'role-1',
+    recurring: false,
+    period: null,
+    tokens: 500000,
+    amountUsd: 1.25,
+    alreadyClaimed: false,
+    claimedAt: '2026-07-03T00:00:00.000Z',
+    newPromoBalanceUsd: 5.25,
+    ...over,
+  });
+
+  it('shows a Claim button for a claimable reward and hides it for locked ones', async () => {
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={claimableSnapshot()} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('rewards-claim-role-1')).toHaveTextContent('Claim 500K tokens');
+    // Locked role-2 is neither claimable nor claimed -> no claim footer.
+    expect(screen.queryByTestId('rewards-claim-role-2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rewards-claimed-role-2')).not.toBeInTheDocument();
+  });
+
+  it('claims a reward, triggers a silent refresh, and shows the credited amount once the server confirms', async () => {
+    claimReward.mockResolvedValueOnce(claimResult());
+    const onSilentRefresh = vi.fn().mockResolvedValue(undefined);
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    const { rerender } = render(
+      <MemoryRouter>
+        <RewardsCommunityTab
+          error={null}
+          isLoading={false}
+          onSilentRefresh={onSilentRefresh}
+          snapshot={claimableSnapshot()}
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTestId('rewards-claim-role-1'));
+
+    await waitFor(() => expect(claimReward).toHaveBeenCalledWith('role-1'));
+    // The claim reconciles server truth via a silent refresh (no full-page reload).
+    await waitFor(() => expect(onSilentRefresh).toHaveBeenCalledTimes(1));
+
+    // Simulate the refetched snapshot arriving (server marks it claimed).
+    rerender(
+      <MemoryRouter>
+        <RewardsCommunityTab
+          error={null}
+          isLoading={false}
+          onSilentRefresh={onSilentRefresh}
+          snapshot={claimedSnapshot()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('rewards-claimed-role-1')).toBeInTheDocument();
+    expect(screen.getByTestId('rewards-claim-credited-role-1')).toHaveTextContent(
+      '$1.25 credited to your balance'
+    );
+    expect(screen.queryByTestId('rewards-claim-role-1')).not.toBeInTheDocument();
+  });
+
+  it('does not show a fresh-credit note on an idempotent re-claim', async () => {
+    claimReward.mockResolvedValueOnce(claimResult({ alreadyClaimed: true }));
+    const onSilentRefresh = vi.fn().mockResolvedValue(undefined);
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    const { rerender } = render(
+      <MemoryRouter>
+        <RewardsCommunityTab
+          error={null}
+          isLoading={false}
+          onSilentRefresh={onSilentRefresh}
+          snapshot={claimableSnapshot()}
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTestId('rewards-claim-role-1'));
+    await waitFor(() => expect(onSilentRefresh).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <MemoryRouter>
+        <RewardsCommunityTab
+          error={null}
+          isLoading={false}
+          onSilentRefresh={onSilentRefresh}
+          snapshot={claimedSnapshot()}
+        />
+      </MemoryRouter>
+    );
+
+    // Claimed pill shows, but no "credited" note — nothing new was credited.
+    expect(screen.getByTestId('rewards-claimed-role-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('rewards-claim-credited-role-1')).not.toBeInTheDocument();
+  });
+
+  it('disables the button and shows a claiming label while the claim is in flight', async () => {
+    let resolveClaim: (value: unknown) => void = () => {};
+    claimReward.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveClaim = resolve;
+        })
+    );
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={claimableSnapshot()} />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTestId('rewards-claim-role-1'));
+
+    // In-flight: the button is disabled and shows the claiming label (guards double-submit).
+    await waitFor(() => {
+      const button = screen.getByTestId('rewards-claim-role-1');
+      expect(button).toBeDisabled();
+      expect(button).toHaveTextContent('Claiming');
+    });
+
+    resolveClaim(claimResult());
+  });
+
+  it('renders a Claimed pill (no button) for an already-claimed reward', async () => {
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={claimedSnapshot()} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('rewards-claimed-role-1')).toHaveTextContent('Claimed');
+    expect(screen.queryByTestId('rewards-claim-role-1')).not.toBeInTheDocument();
+    // No in-session claim -> no credited note on a server-claimed card.
+    expect(screen.queryByTestId('rewards-claim-credited-role-1')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the backend error message when a claim fails and keeps the button', async () => {
+    claimReward.mockRejectedValueOnce({ success: false, error: 'Reward not unlocked yet' });
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab error={null} isLoading={false} snapshot={claimableSnapshot()} />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByTestId('rewards-claim-role-1'));
+
+    // The actionable backend message is shown, not a generic string.
+    await waitFor(() =>
+      expect(screen.getByTestId('rewards-claim-error-role-1')).toHaveTextContent(
+        'Reward not unlocked yet'
+      )
+    );
+    // Claim did not succeed -> the button is still there to retry.
+    expect(screen.getByTestId('rewards-claim-role-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('rewards-claimed-role-1')).not.toBeInTheDocument();
   });
 });
 

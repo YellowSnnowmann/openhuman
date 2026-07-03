@@ -25,6 +25,28 @@ function formatTokens(value: number): string {
   );
 }
 
+// Locale-aware USD so the money glyph matches the surrounding translated sentence.
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(
+    Math.max(0, value)
+  );
+}
+
+// Prefer the backend's actionable claim-error message (e.g. "not unlocked yet",
+// "no active paid subscription"); fall back to the generic localized string.
+function claimErrorMessage(err: unknown, fallback: string): string {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'error' in err &&
+    typeof (err as { error?: unknown }).error === 'string'
+  ) {
+    return (err as { error: string }).error;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
 function roleAccentTone(index: number) {
   const tones = [
     {
@@ -89,6 +111,8 @@ interface RewardsCommunityTabProps {
   error: string | null;
   isLoading: boolean;
   onRetry?: () => void;
+  /** Reconcile the snapshot after a claim without the full-page loading state. */
+  onSilentRefresh?: () => Promise<void> | void;
   snapshot: RewardsSnapshot | null;
 }
 
@@ -96,6 +120,7 @@ export default function RewardsCommunityTab({
   error,
   isLoading,
   onRetry,
+  onSilentRefresh,
   snapshot,
 }: RewardsCommunityTabProps) {
   const { t } = useT();
@@ -103,6 +128,12 @@ export default function RewardsCommunityTab({
   const [disconnectState, setDisconnectState] = useState<'idle' | 'disconnecting' | 'error'>(
     'idle'
   );
+  // Reward claim state, keyed by achievement id. Claimed/claimable are read from
+  // the server snapshot (single source of truth); these hold only the in-flight id,
+  // a transient "credited" note for a fresh grant, and per-card error text.
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimedFeedback, setClaimedFeedback] = useState<Record<string, string>>({});
+  const [claimErrors, setClaimErrors] = useState<Record<string, string>>({});
   const rewardRoles: RewardsAchievement[] = snapshot?.achievements ?? [];
   const unlocked =
     snapshot?.summary.unlockedCount ?? rewardRoles.filter(role => role.unlocked).length;
@@ -176,6 +207,51 @@ export default function RewardsCommunityTab({
       setDisconnectState('error');
     }
   }, [onRetry]);
+
+  const handleClaim = useCallback(
+    async (role: RewardsAchievement) => {
+      log('claim requested reward=%s', role.id);
+      setClaimingId(role.id);
+      setClaimErrors(prev => {
+        if (!(role.id in prev)) return prev;
+        const next = { ...prev };
+        delete next[role.id];
+        return next;
+      });
+      try {
+        const result = await rewardsApi.claimReward(role.id);
+        log(
+          'claim ok reward=%s amountUsd=%d alreadyClaimed=%s',
+          role.id,
+          result.amountUsd,
+          result.alreadyClaimed
+        );
+        // Only a fresh grant moves new money — an idempotent re-claim must NOT
+        // imply "$X credited", so gate the credited note on !alreadyClaimed.
+        if (!result.alreadyClaimed) {
+          setClaimedFeedback(prev => ({ ...prev, [role.id]: formatUsd(result.amountUsd) }));
+        }
+        // Reconcile with server truth (claimed / claimable / claimableCount and any
+        // balance surface) without the full-page loading flicker. The button stays
+        // "Claiming…" until this lands, then the server snapshot flips it to Claimed.
+        await onSilentRefresh?.();
+      } catch (err) {
+        log(
+          'claim failed reward=%s error=%s',
+          role.id,
+          err instanceof Error ? err.message : String(err)
+        );
+        setClaimErrors(prev => ({
+          ...prev,
+          [role.id]: claimErrorMessage(err, t('rewards.community.claimError')),
+        }));
+      } finally {
+        setClaimingId(null);
+      }
+    },
+    [onSilentRefresh, t]
+  );
+
   return (
     <>
       <section className="relative overflow-hidden rounded-[1.25rem] bg-gradient-to-br from-[#004ad0] to-[#2b64f1] p-6 text-white shadow-[0_20px_40px_rgba(25,28,30,0.08)]">
@@ -426,6 +502,13 @@ export default function RewardsCommunityTab({
                         : null
                   : null;
 
+              // Claimed/claimable come from the server snapshot (single source of
+              // truth); the local overlay only holds the transient credited note.
+              const claimed = role.claimed === true;
+              const feedback = claimedFeedback[role.id];
+              const claimError = claimErrors[role.id];
+              const showClaimFooter = role.claimable === true || claimed;
+
               return (
                 <div
                   key={role.id}
@@ -492,6 +575,60 @@ export default function RewardsCommunityTab({
                         className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${roleStatus.classes}`}>
                         {roleStatus.label}
                       </span>
+                    </div>
+                  ) : null}
+                  {showClaimFooter ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3">
+                      {claimed ? (
+                        <>
+                          <span
+                            data-testid={`rewards-claimed-${role.id}`}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            <svg
+                              className="h-3.5 w-3.5"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden="true">
+                              <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                            </svg>
+                            {t('rewards.community.claimed')}
+                          </span>
+                          {feedback ? (
+                            <span
+                              role="status"
+                              data-testid={`rewards-claim-credited-${role.id}`}
+                              className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+                              {t('rewards.community.claimCredited').replace('{amount}', feedback)}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            data-testid={`rewards-claim-${role.id}`}
+                            disabled={claimingId === role.id}
+                            onClick={() => {
+                              void handleClaim(role);
+                            }}>
+                            {claimingId === role.id
+                              ? t('rewards.community.claiming')
+                              : t('rewards.community.claimTokens').replace(
+                                  '{tokens}',
+                                  formatTokens(role.rewardTokens ?? 0)
+                                )}
+                          </Button>
+                          {claimError ? (
+                            <span
+                              role="alert"
+                              data-testid={`rewards-claim-error-${role.id}`}
+                              className="text-xs font-semibold text-coral-600 dark:text-coral-300">
+                              {claimError}
+                            </span>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                   ) : null}
                 </div>

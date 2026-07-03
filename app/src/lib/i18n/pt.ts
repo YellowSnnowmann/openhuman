@@ -3692,6 +3692,11 @@ const messages: TranslationMap = {
   'rewards.community.activityStreakHint':
     'Dias consecutivos em que você esteve ativo no OpenHuman.',
   'rewards.community.activityTitle': 'Sua atividade',
+  'rewards.community.claimCredited': '{amount} creditados no seu saldo',
+  'rewards.community.claimError': 'Não foi possível resgatar. Tente novamente.',
+  'rewards.community.claimTokens': 'Resgatar {tokens} tokens',
+  'rewards.community.claimed': 'Resgatado',
+  'rewards.community.claiming': 'Resgatando…',
   'rewards.community.connectDiscord': 'Conectar Discord',
   'rewards.community.connectDiscordError':
     'Não foi possível iniciar a conexão com o Discord. Tente novamente.',

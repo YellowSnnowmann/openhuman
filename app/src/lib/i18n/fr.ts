@@ -3709,6 +3709,11 @@ const messages: TranslationMap = {
   'rewards.community.achievementsUnlocked': '{unlocked} sur {total} succès débloqués',
   'rewards.community.activityStreakHint': 'Jours consécutifs d’activité sur OpenHuman.',
   'rewards.community.activityTitle': 'Votre activité',
+  'rewards.community.claimCredited': '{amount} crédités sur votre solde',
+  'rewards.community.claimError': 'Impossible de réclamer. Veuillez réessayer.',
+  'rewards.community.claimTokens': 'Réclamer {tokens} tokens',
+  'rewards.community.claimed': 'Réclamé',
+  'rewards.community.claiming': 'Réclamation…',
   'rewards.community.connectDiscord': 'Connecter Discord',
   'rewards.community.connectDiscordError':
     'Impossible de démarrer la connexion à Discord. Veuillez réessayer.',
