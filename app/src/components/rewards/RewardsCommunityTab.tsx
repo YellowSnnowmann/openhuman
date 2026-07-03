@@ -131,7 +131,10 @@ export default function RewardsCommunityTab({
   // Reward claim state, keyed by achievement id. Claimed/claimable are read from
   // the server snapshot (single source of truth); these hold only the in-flight id,
   // a transient "credited" note for a fresh grant, and per-card error text.
-  const [claimingId, setClaimingId] = useState<string | null>(null);
+  // Track in-flight claims as a Set of ids so concurrent claims on different
+  // achievements each disable their own button independently (a single scalar
+  // would let a second claim re-enable the first's button mid-flight).
+  const [claimingIds, setClaimingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [claimedFeedback, setClaimedFeedback] = useState<Record<string, string>>({});
   const [claimErrors, setClaimErrors] = useState<Record<string, string>>({});
   const rewardRoles: RewardsAchievement[] = snapshot?.achievements ?? [];
@@ -211,7 +214,7 @@ export default function RewardsCommunityTab({
   const handleClaim = useCallback(
     async (role: RewardsAchievement) => {
       log('claim requested reward=%s', role.id);
-      setClaimingId(role.id);
+      setClaimingIds(prev => new Set(prev).add(role.id));
       setClaimErrors(prev => {
         if (!(role.id in prev)) return prev;
         const next = { ...prev };
@@ -246,7 +249,13 @@ export default function RewardsCommunityTab({
           [role.id]: claimErrorMessage(err, t('rewards.community.claimError')),
         }));
       } finally {
-        setClaimingId(null);
+        // Only clear the id that just settled — leave any other in-flight claim's
+        // button disabled.
+        setClaimingIds(prev => {
+          const next = new Set(prev);
+          next.delete(role.id);
+          return next;
+        });
       }
     },
     [onSilentRefresh, t]
@@ -608,11 +617,11 @@ export default function RewardsCommunityTab({
                             variant="primary"
                             size="sm"
                             data-testid={`rewards-claim-${role.id}`}
-                            disabled={claimingId === role.id}
+                            disabled={claimingIds.has(role.id)}
                             onClick={() => {
                               void handleClaim(role);
                             }}>
-                            {claimingId === role.id
+                            {claimingIds.has(role.id)
                               ? t('rewards.community.claiming')
                               : t('rewards.community.claimTokens').replace(
                                   '{tokens}',

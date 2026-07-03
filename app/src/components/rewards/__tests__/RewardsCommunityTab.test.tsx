@@ -463,6 +463,52 @@ describe('RewardsCommunityTab — Claim reward', () => {
     resolveClaim(claimResult());
   });
 
+  it('tracks in-flight claims per achievement (one pending claim does not re-enable another)', async () => {
+    const snapshot = claimableSnapshot();
+    // role-2 is also claimable now.
+    snapshot.achievements[1] = {
+      ...snapshot.achievements[1],
+      claimable: true,
+      claimed: false,
+      rewardTokens: 2000000,
+    };
+    let resolveRole1: (value: unknown) => void = () => {};
+    claimReward
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveRole1 = resolve;
+          })
+      )
+      .mockResolvedValueOnce(claimResult({ reward: 'role-2', tokens: 2000000 }));
+    const onSilentRefresh = vi.fn().mockResolvedValue(undefined);
+    const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
+    render(
+      <MemoryRouter>
+        <RewardsCommunityTab
+          error={null}
+          isLoading={false}
+          onSilentRefresh={onSilentRefresh}
+          snapshot={snapshot}
+        />
+      </MemoryRouter>
+    );
+
+    // role-1 claim stays pending.
+    fireEvent.click(screen.getByTestId('rewards-claim-role-1'));
+    await waitFor(() => expect(screen.getByTestId('rewards-claim-role-1')).toBeDisabled());
+
+    // A second claim on role-2 settles fully.
+    fireEvent.click(screen.getByTestId('rewards-claim-role-2'));
+    await waitFor(() => expect(claimReward).toHaveBeenCalledWith('role-2'));
+
+    // role-1 must remain disabled while its own request is still in flight — a single
+    // shared scalar would have re-enabled it when role-2's claim settled.
+    await waitFor(() => expect(screen.getByTestId('rewards-claim-role-1')).toBeDisabled());
+
+    resolveRole1(claimResult());
+  });
+
   it('renders a Claimed pill (no button) for an already-claimed reward', async () => {
     const { default: RewardsCommunityTab } = await import('../RewardsCommunityTab');
     render(
