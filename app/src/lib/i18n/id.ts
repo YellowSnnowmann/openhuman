@@ -3,6 +3,9 @@ import type { TranslationMap } from './types';
 // Indonesian (Bahasa Indonesia) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  'skills.recallCalendar.title': 'Google Kalender',
+  'skills.recallCalendar.description':
+    'Bergabung otomatis ke panggilan Google Meet melalui Recall.ai',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'Vault berada di host core.',
   'crossHostVault.message':
@@ -218,6 +221,11 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.pairing.unlinked': 'Belum tertaut',
   'tinyplaceOrchestration.pairing.incoming': 'Masuk',
   'tinyplaceOrchestration.pairing.outgoing': 'Keluar',
+  'tinyplaceOrchestration.master.you': 'Anda',
+  'tinyplaceOrchestration.composer.placeholder': 'Pesan ke OpenHuman…',
+  'tinyplaceOrchestration.composer.send': 'Kirim',
+  'tinyplaceOrchestration.composer.sendFailed': 'Gagal mengirim pesan',
+  'tinyplaceOrchestration.steering.label': 'Pengarahan',
   'brain.empty': 'Otak Anda masih kosong — hubungkan sumber untuk mulai membangun memori.',
   'brain.error': 'Tidak dapat memuat otak Anda. Silakan coba lagi.',
   'common.cancel': 'Batal',
@@ -5258,6 +5266,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.leavingButton': 'Keluar\u2026',
   'skills.meetingBots.respondToParticipant': 'Nama Anda di Rapat Ini',
   'skills.meetingBots.respondToParticipantHint': 'mis. Budi (nama tampilan Anda di panggilan)',
+  'skills.meetingBots.replyName.label': 'Nama Anda di rapat',
+  'skills.meetingBots.replyName.description':
+    'Nama yang didengarkan dan dibalas oleh bot. Masukkan nama Anda seperti yang tampil di panggilan — berlaku untuk setiap rapat yang diikutinya.',
+  'skills.meetingBots.replyName.placeholder': 'mis. Alex Kim',
   'skills.meetingBots.respondToParticipantDesc':
     'Masukkan nama tampilan Anda yang tepat dari rapat. Bot hanya merespons ketika Anda menyebut namanya (frasa bangun).',
   'skills.meetingBots.wakePhrase': 'Frasa Bangun',

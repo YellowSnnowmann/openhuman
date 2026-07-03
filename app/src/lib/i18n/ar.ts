@@ -3,6 +3,8 @@ import type { TranslationMap } from './types';
 // Arabic (العربية) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  'skills.recallCalendar.title': 'تقويم Google',
+  'skills.recallCalendar.description': 'الانضمام تلقائيًا إلى مكالمات Google Meet عبر Recall.ai',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'الخزنة موجودة على مضيف النواة.',
   'crossHostVault.message':
@@ -216,6 +218,11 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.pairing.unlinked': 'غير مرتبط',
   'tinyplaceOrchestration.pairing.incoming': 'واردة',
   'tinyplaceOrchestration.pairing.outgoing': 'صادرة',
+  'tinyplaceOrchestration.master.you': 'أنت',
+  'tinyplaceOrchestration.composer.placeholder': 'راسل OpenHuman…',
+  'tinyplaceOrchestration.composer.send': 'إرسال',
+  'tinyplaceOrchestration.composer.sendFailed': 'فشل إرسال الرسالة',
+  'tinyplaceOrchestration.steering.label': 'التوجيه',
   'brain.empty': 'دماغك فارغ في الوقت الحالي — قم بربط مصدر لبدء بناء الذاكرة.',
   'brain.error': 'تعذّر تحميل دماغك. يرجى المحاولة مرة أخرى.',
   'common.cancel': 'إلغاء',
@@ -5134,6 +5141,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.leavingButton': 'جارٍ المغادرة…',
   'skills.meetingBots.respondToParticipant': 'اسمك في هذا الاجتماع',
   'skills.meetingBots.respondToParticipantHint': 'مثال: أحمد (اسمك في المكالمة)',
+  'skills.meetingBots.replyName.label': 'اسمك في الاجتماعات',
+  'skills.meetingBots.replyName.description':
+    'الاسم الذي يستمع إليه المساعد ويرد عليه. أدخل اسمك كما يظهر في المكالمة — يُطبَّق على كل اجتماع ينضم إليه.',
+  'skills.meetingBots.replyName.placeholder': 'مثال: أليكس كيم',
   'skills.meetingBots.respondToParticipantDesc':
     'أدخل اسمك الظاهر بالضبط في الاجتماع. لن يستجيب البوت إلا عندما تنطق باسمه (عبارة التنشيط).',
   'skills.meetingBots.wakePhrase': 'عبارة التنشيط',

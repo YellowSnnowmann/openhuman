@@ -3,6 +3,9 @@ import type { TranslationMap } from './types';
 // Spanish (Español) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  'skills.recallCalendar.title': 'Google Calendar',
+  'skills.recallCalendar.description':
+    'Unirse automáticamente a las llamadas de Google Meet con Recall.ai',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'El vault está en el host del core.',
   'crossHostVault.message':
@@ -220,6 +223,11 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.pairing.unlinked': 'Sin vincular',
   'tinyplaceOrchestration.pairing.incoming': 'Entrantes',
   'tinyplaceOrchestration.pairing.outgoing': 'Salientes',
+  'tinyplaceOrchestration.master.you': 'Tú',
+  'tinyplaceOrchestration.composer.placeholder': 'Mensaje a OpenHuman…',
+  'tinyplaceOrchestration.composer.send': 'Enviar',
+  'tinyplaceOrchestration.composer.sendFailed': 'No se pudo enviar el mensaje',
+  'tinyplaceOrchestration.steering.label': 'Dirección',
   'brain.empty':
     'Tu cerebro está vacío por ahora: conecta una fuente para empezar a construir tu memoria.',
   'brain.error': 'No se pudo cargar tu cerebro. Inténtalo de nuevo.',
@@ -5337,6 +5345,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.leavingButton': 'Saliendo…',
   'skills.meetingBots.respondToParticipant': 'Tu nombre en esta reunión',
   'skills.meetingBots.respondToParticipantHint': 'p. ej. Ana (tu nombre visible en la llamada)',
+  'skills.meetingBots.replyName.label': 'Tu nombre en las reuniones',
+  'skills.meetingBots.replyName.description':
+    'El nombre que el bot escucha y al que responde. Escribe tu nombre tal como aparece en la llamada: se aplica a cada reunión a la que se une.',
+  'skills.meetingBots.replyName.placeholder': 'p. ej., Alex Kim',
   'skills.meetingBots.respondToParticipantDesc':
     'Introduce tu nombre de visualización exacto de la reunión. El bot solo responde cuando dices su nombre (frase de activación).',
   'skills.meetingBots.wakePhrase': 'Frase de activación',

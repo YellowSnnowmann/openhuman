@@ -3,6 +3,8 @@ import type { TranslationMap } from './types';
 // Korean (한국어) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  'skills.recallCalendar.title': 'Google 캘린더',
+  'skills.recallCalendar.description': 'Recall.ai를 통해 Google Meet 통화에 자동 참여',
   // Cross-host vault (#4278)
   'crossHostVault.title': '보관소가 코어 호스트에 있습니다.',
   'crossHostVault.message':
@@ -219,6 +221,11 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.pairing.unlinked': '미연결',
   'tinyplaceOrchestration.pairing.incoming': '수신',
   'tinyplaceOrchestration.pairing.outgoing': '발신',
+  'tinyplaceOrchestration.master.you': '나',
+  'tinyplaceOrchestration.composer.placeholder': 'OpenHuman에 메시지…',
+  'tinyplaceOrchestration.composer.send': '보내기',
+  'tinyplaceOrchestration.composer.sendFailed': '메시지를 보내지 못했습니다',
+  'tinyplaceOrchestration.steering.label': '조종',
   'brain.empty': '아직 브레인이 비어 있습니다 — 소스를 연결하여 메모리를 만들어 보세요.',
   'brain.error': '브레인을 불러올 수 없습니다. 다시 시도해 주세요.',
   'common.cancel': '취소',
@@ -5190,6 +5197,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.leavingButton': '나가는 중…',
   'skills.meetingBots.respondToParticipant': '이 회의에서 내 이름',
   'skills.meetingBots.respondToParticipantHint': '예: 김철수 (통화에서 표시되는 이름)',
+  'skills.meetingBots.replyName.label': '회의에서 사용할 이름',
+  'skills.meetingBots.replyName.description':
+    '봇이 듣고 응답하는 이름입니다. 통화에 표시되는 이름을 입력하세요 — 참여하는 모든 회의에 적용됩니다.',
+  'skills.meetingBots.replyName.placeholder': '예: Alex Kim',
   'skills.meetingBots.respondToParticipantDesc':
     '회의에서 사용하는 정확한 표시 이름을 입력하세요. 봇은 이름(웨이크 구문)을 말할 때만 응답합니다.',
   'skills.meetingBots.wakePhrase': '웨이크 구문',

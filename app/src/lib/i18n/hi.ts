@@ -3,6 +3,8 @@ import type { TranslationMap } from './types';
 // Hindi (हिन्दी) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  'skills.recallCalendar.title': 'Google Calendar',
+  'skills.recallCalendar.description': 'Recall.ai के ज़रिए Google Meet कॉल में अपने-आप शामिल हों',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'वॉल्ट कोर होस्ट पर है।',
   'crossHostVault.message':
@@ -219,6 +221,11 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.pairing.unlinked': 'लिंक नहीं',
   'tinyplaceOrchestration.pairing.incoming': 'आने वाले',
   'tinyplaceOrchestration.pairing.outgoing': 'जाने वाले',
+  'tinyplaceOrchestration.master.you': 'आप',
+  'tinyplaceOrchestration.composer.placeholder': 'OpenHuman को संदेश भेजें…',
+  'tinyplaceOrchestration.composer.send': 'भेजें',
+  'tinyplaceOrchestration.composer.sendFailed': 'संदेश भेजने में विफल',
+  'tinyplaceOrchestration.steering.label': 'मार्गदर्शन',
   'brain.empty': 'आपका ब्रेन अभी खाली है — मेमोरी बनाना शुरू करने के लिए कोई स्रोत कनेक्ट करें।',
   'brain.error': 'आपका ब्रेन लोड नहीं हो सका। कृपया फिर से प्रयास करें।',
   'common.cancel': 'रद्द करें',
@@ -5244,6 +5251,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.leavingButton': 'छोड़ रहे हैं…',
   'skills.meetingBots.respondToParticipant': 'इस मीटिंग में आपका नाम',
   'skills.meetingBots.respondToParticipantHint': 'जैसे: अनीता (कॉल में आपका प्रदर्शन नाम)',
+  'skills.meetingBots.replyName.label': 'मीटिंग में आपका नाम',
+  'skills.meetingBots.replyName.description':
+    'वह नाम जिसे बॉट सुनता है और जवाब देता है। कॉल में दिखने वाला अपना नाम दर्ज करें — यह हर मीटिंग पर लागू होता है जिसमें वह शामिल होता है।',
+  'skills.meetingBots.replyName.placeholder': 'जैसे, एलेक्स किम',
   'skills.meetingBots.respondToParticipantDesc':
     'मीटिंग में अपना सटीक डिस्प्ले नाम दर्ज करें। बॉट केवल तभी जवाब देता है जब आप उसका नाम बोलते हैं (वेक फ्रेज़)।',
   'skills.meetingBots.wakePhrase': 'वेक फ्रेज़',

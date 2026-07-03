@@ -3,6 +3,9 @@ import type { TranslationMap } from './types';
 // French (Français) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  'skills.recallCalendar.title': 'Google Agenda',
+  'skills.recallCalendar.description':
+    'Rejoindre automatiquement les appels Google Meet via Recall.ai',
   // Cross-host vault (#4278)
   'crossHostVault.title': "Le coffre se trouve sur l'hôte du cœur.",
   'crossHostVault.message':
@@ -220,6 +223,11 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.pairing.unlinked': 'Non liée',
   'tinyplaceOrchestration.pairing.incoming': 'Entrantes',
   'tinyplaceOrchestration.pairing.outgoing': 'Sortantes',
+  'tinyplaceOrchestration.master.you': 'Vous',
+  'tinyplaceOrchestration.composer.placeholder': 'Message à OpenHuman…',
+  'tinyplaceOrchestration.composer.send': 'Envoyer',
+  'tinyplaceOrchestration.composer.sendFailed': 'Échec de l’envoi du message',
+  'tinyplaceOrchestration.steering.label': 'Pilotage',
   'brain.empty':
     'Votre cerveau est vide pour l’instant — connectez une source pour commencer à constituer votre mémoire.',
   'brain.error': 'Impossible de charger votre cerveau. Veuillez réessayer.',
@@ -5358,6 +5366,10 @@ const messages: TranslationMap = {
   'skills.meetingBots.leavingButton': 'Sortie en cours…',
   'skills.meetingBots.respondToParticipant': 'Votre nom dans cette réunion',
   'skills.meetingBots.respondToParticipantHint': 'ex. Alice (votre nom affiché dans l\u2019appel)',
+  'skills.meetingBots.replyName.label': 'Votre nom dans les réunions',
+  'skills.meetingBots.replyName.description':
+    "Le nom que le bot écoute et auquel il répond. Saisissez votre nom tel qu'il apparaît dans l'appel — appliqué à chaque réunion qu'il rejoint.",
+  'skills.meetingBots.replyName.placeholder': 'p. ex. Alex Kim',
   'skills.meetingBots.respondToParticipantDesc':
     'Saisissez votre nom d\u2019affichage exact dans la réunion. Le bot ne répond que lorsque vous prononcez son nom (phrase de réveil).',
   'skills.meetingBots.wakePhrase': 'Phrase de réveil',
