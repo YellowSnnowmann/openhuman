@@ -5227,6 +5227,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': 'اختر لون التميمة المستخدم في جميع أنحاء التطبيق',
   'settings.mascot.noCharacters': 'لا توجد شخصيات OpenHuman متاحة بعد',
   'settings.mascot.noColorVariants': 'لا توجد ألوان متاحة',
+  'settings.mascot.secondaryHeading': 'ثنائي الاجتماع (تميمة ثانية)',
+  'settings.mascot.secondaryDesc':
+    'أضِف تميمة ثانية للاجتماعات. عند تعيين اثنتين تظهران معًا وتتناوبان في الحديث. اتركها بلا لتميمة واحدة.',
+  'settings.mascot.secondaryNone': 'بلا (تميمة واحدة)',
+  'settings.mascot.perMascotVoiceHeading': 'أصوات لكل تميمة',
+  'settings.mascot.primaryVoiceLabel': 'صوت التميمة الأولى',
+  'settings.mascot.secondaryVoiceLabel': 'صوت التميمة الثانية',
   'settings.mascot.voice.current': 'الحالي',
   'settings.mascot.voice.customDesc':
     'ابحث عن معرّفات الصوت في api.elevenlabs.io/v1/voices أو لوحة تحكم ElevenLabs الخاصة بك. يُخزَّن المعرّف فقط — يبقى مفتاح API الخاص بك على الخادم.',

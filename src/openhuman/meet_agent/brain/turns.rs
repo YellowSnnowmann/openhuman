@@ -96,7 +96,13 @@ pub async fn run_turn(request_id: &str) -> Result<bool, String> {
     let synthesized = if reply_text.trim().is_empty() {
         Vec::new()
     } else {
-        match tts(&reply_text).await {
+        // Pick this reply's speaker voice. For two-mascot calls this
+        // alternates voice + active slot once per spoken reply; a
+        // single-mascot call gets `None` (backend default voice) and the
+        // slot stays 0. Advanced only when we actually speak so declined
+        // turns don't rotate the speaker out of sync.
+        let voice_id = registry().with_session(request_id, |s| s.advance_speaker())?;
+        match tts(&reply_text, voice_id.as_deref()).await {
             Ok(samples) => samples,
             Err(err) => {
                 log::warn!("[meet-agent] TTS failed request_id={request_id} err={err}");
@@ -229,8 +235,14 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     // can hear you" sounds redundant. The 50-char threshold is a
     // rough proxy; real second-brain questions ("am I free Friday
     // afternoon for a 30 min slot") are almost always longer.
+    // One speaker per caption turn: pick the voice/slot now so the
+    // pre-roll ack and the final reply come from the SAME mascot, and the
+    // active slot advances exactly once per turn. `None` for single-mascot
+    // calls (backend default voice, slot 0).
+    let turn_voice = registry().with_session(request_id, |s| s.advance_speaker())?;
+
     if !was_bare_wake && prompt.chars().count() > PREROLL_SKIP_PROMPT_CHARS {
-        if let Ok(ack_pcm) = tts(PREROLL_ACK_PHRASE).await {
+        if let Ok(ack_pcm) = tts(PREROLL_ACK_PHRASE, turn_voice.as_deref()).await {
             let _ = registry().with_session(request_id, |s| {
                 s.enqueue_outbound_pcm(&ack_pcm, false);
             });
@@ -279,7 +291,7 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     let synthesized = if reply_text.trim().is_empty() {
         Vec::new()
     } else {
-        match tts(&reply_text).await {
+        match tts(&reply_text, turn_voice.as_deref()).await {
             Ok(samples) => samples,
             Err(err) => {
                 log::warn!(

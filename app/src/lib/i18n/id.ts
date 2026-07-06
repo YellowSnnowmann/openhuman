@@ -5361,6 +5361,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': 'Pilih warna maskot yang digunakan di seluruh aplikasi',
   'settings.mascot.noCharacters': 'Belum ada karakter OpenHuman yang tersedia',
   'settings.mascot.noColorVariants': 'Tidak ada varian warna',
+  'settings.mascot.secondaryHeading': 'Duo rapat (maskot kedua)',
+  'settings.mascot.secondaryDesc':
+    'Tambahkan maskot kedua untuk rapat. Bila dua diatur, keduanya muncul bersama dan berbicara bergantian. Biarkan Tidak ada untuk satu maskot saja.',
+  'settings.mascot.secondaryNone': 'Tidak ada (maskot tunggal)',
+  'settings.mascot.perMascotVoiceHeading': 'Suara per maskot',
+  'settings.mascot.primaryVoiceLabel': 'Suara maskot pertama',
+  'settings.mascot.secondaryVoiceLabel': 'Suara maskot kedua',
   'settings.mascot.voice.current': 'saat ini',
   'settings.mascot.voice.customDesc':
     'Temukan ID suara di api.elevenlabs.io/v1/voices atau dasbor ElevenLabs Anda. Hanya ID yang disimpan — kunci API Anda tetap di backend.',

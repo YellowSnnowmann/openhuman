@@ -27,6 +27,14 @@ export type MeetJoinCallInput = {
    * (no wakes fire) which is the safe default during the rollout.
    */
   ownerDisplayName?: string;
+  /**
+   * ElevenLabs voice id for the primary mascot (issue #4277). When two
+   * mascots are enabled the core alternates the speaking voice per reply.
+   * Omit for single-mascot calls (core keeps its default voice).
+   */
+  primaryVoiceId?: string;
+  /** Voice id for the secondary mascot; present only in two-mascot calls. */
+  secondaryVoiceId?: string;
 };
 
 export type MeetJoinCallResult = {
@@ -86,6 +94,10 @@ export async function joinMeetCall(input: MeetJoinCallInput): Promise<MeetJoinCa
         // hand it to the wake-word gate. See feat/mascot-meet-flowA
         // Plan C — owner-only privacy lock.
         owner_display_name: ownerDisplayName,
+        // Per-mascot voices for speaker alternation (issue #4277). Absent
+        // → core keeps its single default voice (unchanged behavior).
+        primary_voice_id: input.primaryVoiceId?.trim() || undefined,
+        secondary_voice_id: input.secondaryVoiceId?.trim() || undefined,
       },
     });
   } catch (err) {
@@ -264,6 +276,18 @@ export type BackendMeetJoinInput = {
   systemPrompt?: string;
   mascotId?: string;
   riveColors?: { primaryColor?: string; secondaryColor?: string };
+  /**
+   * Dual-mascot config (issue #4277). Up to 2 slots; slot 0 = primary,
+   * slot 1 = secondary. When two are present the backend bot renders both
+   * mascots and alternates who speaks each reply (each with its own
+   * `voiceId`). Omit / single element = legacy single-mascot behavior via
+   * `mascotId`.
+   */
+  mascots?: Array<{
+    mascotId: string;
+    riveColors?: { primaryColor?: string; secondaryColor?: string };
+    voiceId?: string;
+  }>;
   /** Only respond to messages from this participant name (empty = respond to all). */
   respondToParticipant?: string;
   /** Wake phrase the participant must say before the bot responds (empty = no wake phrase). */
@@ -310,6 +334,22 @@ export async function joinMeetViaBackendBot(
         const secondary = input.riveColors.secondaryColor?.trim() || undefined;
         if (!primary && !secondary) return undefined;
         return { primary_color: primary, secondary_color: secondary };
+      })(),
+      // Dual-mascot slots (issue #4277), mapped to the backend's snake_case
+      // wire shape. Absent → backend falls back to `mascot_id` above.
+      mascots: (() => {
+        const slots = input.mascots?.filter(m => m.mascotId?.trim());
+        if (!slots || slots.length === 0) return undefined;
+        return slots.map(m => ({
+          mascot_id: m.mascotId.trim(),
+          voice_id: m.voiceId?.trim() || undefined,
+          rive_colors: (() => {
+            const primary = m.riveColors?.primaryColor?.trim() || undefined;
+            const secondary = m.riveColors?.secondaryColor?.trim() || undefined;
+            if (!primary && !secondary) return undefined;
+            return { primary_color: primary, secondary_color: secondary };
+          })(),
+        }));
       })(),
     },
   });

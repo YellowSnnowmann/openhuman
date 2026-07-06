@@ -761,6 +761,35 @@ fn build_join_payload(
                 }),
             );
         }
+        // Dual-mascot payload (issue #4277). Emitted only when the caller
+        // supplied a `mascots` array; the backend bot renders both slots,
+        // alternates the speaker per reply, and uses each slot's voice.
+        // Absent → the backend falls back to the single `mascotId` above,
+        // so one-mascot callers are unchanged.
+        if let Some(mascots) = &req.mascots {
+            let slots: Vec<Value> = mascots
+                .iter()
+                .map(|m| {
+                    let mut slot = json!({ "mascotId": m.mascot_id });
+                    if let Some(obj) = slot.as_object_mut() {
+                        if let Some(colors) = &m.rive_colors {
+                            obj.insert(
+                                "riveColors".to_string(),
+                                json!({
+                                    "primaryColor": colors.primary_color,
+                                    "secondaryColor": colors.secondary_color,
+                                }),
+                            );
+                        }
+                        if let Some(vid) = &m.voice_id {
+                            obj.insert("voiceId".to_string(), json!(vid));
+                        }
+                    }
+                    slot
+                })
+                .collect();
+            map.insert("mascots".to_string(), json!(slots));
+        }
         if let Some(respond_to) = &req.respond_to_participant {
             map.insert("respondToParticipant".to_string(), json!(respond_to));
         }

@@ -5442,6 +5442,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': 'Elige el color de la mascota usado en toda la app',
   'settings.mascot.noCharacters': 'Aún no hay personajes de OpenHuman disponibles',
   'settings.mascot.noColorVariants': 'Sin variantes de color',
+  'settings.mascot.secondaryHeading': 'Dúo de reunión (segunda mascota)',
+  'settings.mascot.secondaryDesc':
+    'Añade una segunda mascota para las reuniones. Al fijar dos, aparecen juntas y hablan por turnos. Déjalo en Ninguna para una sola mascota.',
+  'settings.mascot.secondaryNone': 'Ninguna (una sola mascota)',
+  'settings.mascot.perMascotVoiceHeading': 'Voces por mascota',
+  'settings.mascot.primaryVoiceLabel': 'Voz de la primera mascota',
+  'settings.mascot.secondaryVoiceLabel': 'Voz de la segunda mascota',
   'settings.mascot.voice.current': 'actual',
   'settings.mascot.voice.customDesc':
     'Encuentra los ID de voz en api.elevenlabs.io/v1/voices o en tu panel de ElevenLabs. Solo se almacena el ID — tu clave de API permanece en el backend.',

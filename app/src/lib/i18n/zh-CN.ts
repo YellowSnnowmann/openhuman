@@ -5063,6 +5063,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': '选择应用内使用的吉祥物颜色',
   'settings.mascot.noCharacters': '暂无可用的 OpenHuman 角色',
   'settings.mascot.noColorVariants': '无颜色变体',
+  'settings.mascot.secondaryHeading': '会议搭档（第二个吉祥物）',
+  'settings.mascot.secondaryDesc':
+    '为会议添加第二个吉祥物。设置两个后，它们会一起出现并轮流说话。若只用一个吉祥物，请保持为无。',
+  'settings.mascot.secondaryNone': '无（单个吉祥物）',
+  'settings.mascot.perMascotVoiceHeading': '每个吉祥物的语音',
+  'settings.mascot.primaryVoiceLabel': '第一个吉祥物的语音',
+  'settings.mascot.secondaryVoiceLabel': '第二个吉祥物的语音',
   'settings.mascot.voice.current': '当前',
   'settings.mascot.voice.customDesc':
     '在 api.elevenlabs.io/v1/voices 或您的 ElevenLabs 仪表板中查找语音 ID。仅存储 ID — 您的 API 密钥保留在后端。',

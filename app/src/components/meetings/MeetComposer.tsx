@@ -25,7 +25,9 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   selectCustomPrimaryColor,
   selectCustomSecondaryColor,
+  selectDualMascotEnabled,
   selectMascotColor,
+  selectMeetingMascotVoicePair,
   selectSelectedMascotId,
 } from '../../store/mascotSlice';
 import { selectPersonaDescription, selectPersonaDisplayName } from '../../store/personaSlice';
@@ -76,6 +78,12 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
   const mascotColor = useAppSelector(selectMascotColor);
   const customPrimaryColor = useAppSelector(selectCustomPrimaryColor);
   const customSecondaryColor = useAppSelector(selectCustomSecondaryColor);
+  // Dual-mascot config (issue #4277): when a distinct second mascot is enabled
+  // we send both slots (each with its own voice) so the backend bot renders
+  // two mascots and alternates who speaks. Single-mascot keeps the legacy
+  // `mascotId` path below untouched.
+  const dualMascotEnabled = useAppSelector(selectDualMascotEnabled);
+  const mascotVoicePair = useAppSelector(selectMeetingMascotVoicePair);
 
   // ── Meet slice ───────────────────────────────────────────────────────────
   const meetStatus = useAppSelector(selectBackendMeetStatus);
@@ -129,6 +137,27 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
     mascotColor === 'custom'
       ? { primaryColor: customPrimaryColor, secondaryColor: customSecondaryColor }
       : undefined;
+  // Two-mascot slots for the backend bot (issue #4277). Slot 0 keeps the same
+  // resolved id/color the single path uses (falling back to `mascotId` when the
+  // primary is on the default mascot); slot 1 is the secondary. Only built when
+  // a distinct second mascot is enabled — otherwise we leave `mascots`
+  // undefined so the single `mascotId` path is unchanged. Per-mascot colors are
+  // out of scope; both slots reuse the existing `riveColors`.
+  const mascots =
+    dualMascotEnabled && mascotVoicePair.secondary
+      ? [
+          {
+            mascotId: mascotVoicePair.primary.mascotId ?? mascotId ?? '',
+            voiceId: mascotVoicePair.primary.voiceId,
+            riveColors,
+          },
+          {
+            mascotId: mascotVoicePair.secondary.mascotId ?? '',
+            voiceId: mascotVoicePair.secondary.voiceId,
+            riveColors,
+          },
+        ]
+      : undefined;
   const wakePhrase = listenOnly ? undefined : `Hey ${agentName}`;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -159,6 +188,8 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
         systemPrompt,
         mascotId,
         riveColors,
+        // Dual-mascot slots (issue #4277); undefined for single-mascot calls.
+        mascots,
         correlationId: meetingId,
         respondToParticipant: displayedRespondTo.trim() || undefined,
         wakePhrase,

@@ -5397,6 +5397,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': 'Выберите цвет маскота, используемый во всем приложении',
   'settings.mascot.noCharacters': 'Персонажи OpenHuman пока недоступны',
   'settings.mascot.noColorVariants': 'Нет цветовых вариантов',
+  'settings.mascot.secondaryHeading': 'Дуэт для встреч (второй маскот)',
+  'settings.mascot.secondaryDesc':
+    'Добавьте второго маскота для встреч. Когда заданы двое, они появляются вместе и говорят по очереди. Оставьте Нет для одного маскота.',
+  'settings.mascot.secondaryNone': 'Нет (один маскот)',
+  'settings.mascot.perMascotVoiceHeading': 'Голоса для каждого маскота',
+  'settings.mascot.primaryVoiceLabel': 'Голос первого маскота',
+  'settings.mascot.secondaryVoiceLabel': 'Голос второго маскота',
   'settings.mascot.voice.current': 'текущий',
   'settings.mascot.voice.customDesc':
     'Идентификаторы голосов можно найти на api.elevenlabs.io/v1/voices или в вашей панели ElevenLabs. Сохраняется только идентификатор — ваш API-ключ остаётся на бэкенде.',

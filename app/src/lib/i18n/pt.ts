@@ -5432,6 +5432,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': 'Escolha a cor do mascote usada em todo o app',
   'settings.mascot.noCharacters': 'Nenhum personagem do OpenHuman disponível ainda',
   'settings.mascot.noColorVariants': 'Sem variantes de cor',
+  'settings.mascot.secondaryHeading': 'Dupla de reunião (segundo mascote)',
+  'settings.mascot.secondaryDesc':
+    'Adicione um segundo mascote para as reuniões. Com dois definidos, eles aparecem juntos e falam em turnos. Deixe como Nenhum para um único mascote.',
+  'settings.mascot.secondaryNone': 'Nenhum (mascote único)',
+  'settings.mascot.perMascotVoiceHeading': 'Vozes por mascote',
+  'settings.mascot.primaryVoiceLabel': 'Voz do primeiro mascote',
+  'settings.mascot.secondaryVoiceLabel': 'Voz do segundo mascote',
   'settings.mascot.voice.current': 'atual',
   'settings.mascot.voice.customDesc':
     'Encontre IDs de voz em api.elevenlabs.io/v1/voices ou no seu painel da ElevenLabs. Apenas o ID é armazenado — sua chave de API permanece no backend.',

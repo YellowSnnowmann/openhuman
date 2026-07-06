@@ -6028,6 +6028,13 @@ const en: TranslationMap = {
   'settings.mascot.menuDesc': 'Pick the mascot color used across the app',
   'settings.mascot.noCharacters': 'No OpenHuman characters are available yet',
   'settings.mascot.noColorVariants': 'No color variants',
+  'settings.mascot.secondaryHeading': 'Meeting duo (second mascot)',
+  'settings.mascot.secondaryDesc':
+    'Add a second mascot for meetings. When two are set they appear together and take turns speaking. Leave as None for a single mascot.',
+  'settings.mascot.secondaryNone': 'None (single mascot)',
+  'settings.mascot.perMascotVoiceHeading': 'Per-mascot voices',
+  'settings.mascot.primaryVoiceLabel': 'First mascot voice',
+  'settings.mascot.secondaryVoiceLabel': 'Second mascot voice',
   'settings.mascot.voice.current': 'current',
   'settings.mascot.voice.customDesc':
     'Find voice ids at api.elevenlabs.io/v1/voices or your ElevenLabs dashboard. Only the id is stored — your API key stays on the backend.',

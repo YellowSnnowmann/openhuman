@@ -5487,6 +5487,13 @@ const messages: TranslationMap = {
     'Wähle die Maskottchenfarbe aus, die in der gesamten App verwendet wird',
   'settings.mascot.noCharacters': 'Es sind noch keine OpenHuman Zeichen verfügbar',
   'settings.mascot.noColorVariants': 'Keine Farbvarianten',
+  'settings.mascot.secondaryHeading': 'Meeting-Duo (zweites Maskottchen)',
+  'settings.mascot.secondaryDesc':
+    'Füge ein zweites Maskottchen für Meetings hinzu. Sind zwei gesetzt, erscheinen sie gemeinsam und sprechen abwechselnd. Für ein einzelnes Maskottchen auf Keines lassen.',
+  'settings.mascot.secondaryNone': 'Keines (einzelnes Maskottchen)',
+  'settings.mascot.perMascotVoiceHeading': 'Stimmen pro Maskottchen',
+  'settings.mascot.primaryVoiceLabel': 'Stimme des ersten Maskottchens',
+  'settings.mascot.secondaryVoiceLabel': 'Stimme des zweiten Maskottchens',
   'settings.mascot.voice.current': 'aktuell',
   'settings.mascot.voice.customDesc':
     'Sprach-IDs findest du unter api.elevenlabs.io/v1/voices oder in deinem ElevenLabs-Dashboard. Es wird nur die ID gespeichert – dein API-Schlüssel bleibt im Backend.',

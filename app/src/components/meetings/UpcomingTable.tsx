@@ -26,7 +26,9 @@ import { useAppSelector } from '../../store/hooks';
 import {
   selectCustomPrimaryColor,
   selectCustomSecondaryColor,
+  selectDualMascotEnabled,
   selectMascotColor,
+  selectMeetingMascotVoicePair,
   selectSelectedMascotId,
 } from '../../store/mascotSlice';
 import { selectPersonaDescription, selectPersonaDisplayName } from '../../store/personaSlice';
@@ -359,6 +361,11 @@ export function UpcomingTable({
   const mascotColor = useAppSelector(selectMascotColor);
   const customPrimaryColor = useAppSelector(selectCustomPrimaryColor);
   const customSecondaryColor = useAppSelector(selectCustomSecondaryColor);
+  // Dual-mascot config (issue #4277) — see MeetComposer for the rationale;
+  // both join sites resolve the two-mascot slots the same way so a "Join now"
+  // and a manual join behave identically.
+  const dualMascotEnabled = useAppSelector(selectDualMascotEnabled);
+  const mascotVoicePair = useAppSelector(selectMeetingMascotVoicePair);
 
   // Live in-call state — lets a row detect that its meeting is already joined
   // and suppress the "Join now" button. correlationId is a fresh per-join UUID
@@ -376,6 +383,26 @@ export function UpcomingTable({
   const riveColors =
     mascotColor === 'custom'
       ? { primaryColor: customPrimaryColor, secondaryColor: customSecondaryColor }
+      : undefined;
+  // Two-mascot slots (issue #4277). Only built when a distinct second mascot is
+  // enabled; otherwise `mascots` stays undefined and the single `mascotId` path
+  // is untouched. Slot 0 falls back to the resolved `mascotId` when the primary
+  // is on the default mascot. Per-mascot colors are out of scope — both reuse
+  // `riveColors`.
+  const mascots =
+    dualMascotEnabled && mascotVoicePair.secondary
+      ? [
+          {
+            mascotId: mascotVoicePair.primary.mascotId ?? mascotId ?? '',
+            voiceId: mascotVoicePair.primary.voiceId,
+            riveColors,
+          },
+          {
+            mascotId: mascotVoicePair.secondary.mascotId ?? '',
+            voiceId: mascotVoicePair.secondary.voiceId,
+            riveColors,
+          },
+        ]
       : undefined;
 
   const handleJoin = async (meeting: UpcomingMeeting) => {
@@ -415,6 +442,8 @@ export function UpcomingTable({
         agentName,
         systemPrompt: personaDescription || undefined,
         mascotId: mascotId || undefined,
+        // Dual-mascot slots (issue #4277); undefined for single-mascot calls.
+        mascots,
         respondToParticipant: anchor || undefined,
         wakePhrase,
         listenOnly: !anchor,

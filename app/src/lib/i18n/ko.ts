@@ -5283,6 +5283,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': '앱 전체에서 사용되는 마스코트 색상 선택',
   'settings.mascot.noCharacters': '아직 사용할 수 있는 OpenHuman 캐릭터가 없습니다',
   'settings.mascot.noColorVariants': '색상 변형 없음',
+  'settings.mascot.secondaryHeading': '회의 듀오 (두 번째 마스코트)',
+  'settings.mascot.secondaryDesc':
+    '회의에 두 번째 마스코트를 추가하세요. 둘을 설정하면 함께 나타나 번갈아 말합니다. 마스코트를 하나만 쓰려면 없음으로 두세요.',
+  'settings.mascot.secondaryNone': '없음 (단일 마스코트)',
+  'settings.mascot.perMascotVoiceHeading': '마스코트별 음성',
+  'settings.mascot.primaryVoiceLabel': '첫 번째 마스코트 음성',
+  'settings.mascot.secondaryVoiceLabel': '두 번째 마스코트 음성',
   'settings.mascot.voice.current': '현재',
   'settings.mascot.voice.customDesc':
     'api.elevenlabs.io/v1/voices 또는 ElevenLabs 대시보드에서 음성 ID를 찾으세요. ID만 저장되며 API 키는 백엔드에 유지됩니다.',

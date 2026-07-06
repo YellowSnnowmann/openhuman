@@ -5344,6 +5344,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': 'ऐप में उपयोग होने वाला मास्कॉट रंग चुनें',
   'settings.mascot.noCharacters': 'अभी तक कोई OpenHuman कैरेक्टर उपलब्ध नहीं है',
   'settings.mascot.noColorVariants': 'कोई कलर वेरिएंट नहीं',
+  'settings.mascot.secondaryHeading': 'मीटिंग जोड़ी (दूसरा मैस्कट)',
+  'settings.mascot.secondaryDesc':
+    'मीटिंग के लिए एक दूसरा मैस्कट जोड़ें। दो सेट होने पर वे साथ दिखते हैं और बारी-बारी से बोलते हैं। एक ही मैस्कट के लिए कोई नहीं पर छोड़ें।',
+  'settings.mascot.secondaryNone': 'कोई नहीं (एकल मैस्कट)',
+  'settings.mascot.perMascotVoiceHeading': 'प्रति-मैस्कट आवाज़ें',
+  'settings.mascot.primaryVoiceLabel': 'पहले मैस्कट की आवाज़',
+  'settings.mascot.secondaryVoiceLabel': 'दूसरे मैस्कट की आवाज़',
   'settings.mascot.voice.current': 'वर्तमान',
   'settings.mascot.voice.customDesc':
     'वॉइस आईडी api.elevenlabs.io/v1/voices या अपने ElevenLabs डैशबोर्ड पर खोजें। केवल आईडी संग्रहीत होती है — आपकी API कुंजी बैकएंड पर रहती है।',
