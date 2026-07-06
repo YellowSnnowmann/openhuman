@@ -203,6 +203,10 @@ pub struct MeetAgentSession {
     /// two-mascot calls alternate which voice speaks (and which mascot
     /// the frontend lip-syncs). Meaningless when `voices.len() <= 1`.
     active_voice_ix: usize,
+    /// False until the first [`Self::advance_speaker`] of a two-mascot call.
+    /// Keeps the first reply on the primary (slot 0) — so an idle session also
+    /// reports slot 0 — while every subsequent reply rotates the speaker.
+    speaker_primed: bool,
 }
 
 impl MeetAgentSession {
@@ -240,6 +244,7 @@ impl MeetAgentSession {
             allowlist: HashSet::new(),
             voices: Vec::new(),
             active_voice_ix: 0,
+            speaker_primed: false,
         }
     }
 
@@ -325,8 +330,9 @@ impl MeetAgentSession {
     ///   * none present  → `advance_speaker` yields `None` and the
     ///     reply-speech backend keeps picking its own default voice
     ///     (exact previous behavior).
-    /// The index is primed so the *first* [`Self::advance_speaker`] lands
-    /// on slot 0.
+    /// The active slot starts at 0 so an idle session reports the primary
+    /// mascot; [`Self::advance_speaker`] keeps the first reply there and
+    /// rotates thereafter.
     pub fn set_voices(&mut self, primary: Option<String>, secondary: Option<String>) {
         let mut voices = Vec::new();
         for id in [primary, secondary].into_iter().flatten() {
@@ -335,7 +341,8 @@ impl MeetAgentSession {
                 voices.push(trimmed.to_string());
             }
         }
-        self.active_voice_ix = voices.len().saturating_sub(1);
+        self.active_voice_ix = 0;
+        self.speaker_primed = false;
         self.voices = voices;
     }
 
@@ -349,7 +356,13 @@ impl MeetAgentSession {
             0 => None,
             1 => Some(self.voices[0].clone()),
             n => {
-                self.active_voice_ix = (self.active_voice_ix + 1) % n;
+                // First reply stays on the primary (slot 0); each later reply
+                // rotates. This keeps an idle session on slot 0 too.
+                if self.speaker_primed {
+                    self.active_voice_ix = (self.active_voice_ix + 1) % n;
+                } else {
+                    self.speaker_primed = true;
+                }
                 Some(self.voices[self.active_voice_ix].clone())
             }
         }
