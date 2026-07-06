@@ -423,7 +423,7 @@ export const selectSecondaryMascotId = (state: { mascot: MascotState }): string 
   state.mascot.secondaryMascotId;
 
 export const selectMascotVoices = (state: { mascot: MascotState }): Record<string, string> =>
-  state.mascot.mascotVoices;
+  state.mascot.mascotVoices ?? {};
 
 /**
  * Explicit per-mascot voice override for `mascotId`, or `null` when none
@@ -433,7 +433,7 @@ export const selectMascotVoices = (state: { mascot: MascotState }): Record<strin
 export const selectMascotVoiceFor =
   (mascotId: string | null) =>
   (state: { mascot: MascotState }): string | null =>
-    mascotId ? (state.mascot.mascotVoices[mascotId] ?? null) : null;
+    mascotId ? (state.mascot.mascotVoices?.[mascotId] ?? null) : null;
 
 /**
  * True when a distinct second mascot is enabled — the single gate the
@@ -521,7 +521,10 @@ export const selectMeetingMascotVoicePair = (state: {
   locale?: { current: Locale };
 }): MeetingMascotVoicePair => {
   const effective = selectEffectiveMascotVoiceId(state);
-  const { selectedMascotId, secondaryMascotId, mascotVoices } = state.mascot;
+  const { selectedMascotId, secondaryMascotId } = state.mascot;
+  // Tolerate a partial / pre-migration mascot slice (e.g. a legacy persisted
+  // blob or a test's preloadedState) that predates `mascotVoices`.
+  const mascotVoices = state.mascot.mascotVoices ?? {};
   const primary: MeetingMascotSlot = {
     mascotId: selectedMascotId,
     voiceId: (selectedMascotId && mascotVoices[selectedMascotId]) || effective,

@@ -435,5 +435,18 @@ describe('mascotSlice', () => {
       expect(pair.primary.voiceId).toBe('v-effective');
       expect(pair.secondary?.voiceId).toBe('v-effective');
     });
+
+    it('tolerates a legacy mascot state missing mascotVoices without throwing', () => {
+      // A pre-migration persisted blob or a partial preloadedState can omit
+      // `mascotVoices`; the meeting selectors must default it, not crash on
+      // `mascotVoices[selectedMascotId]`.
+      const legacy = {
+        mascot: { selectedMascotId: 'yellow', secondaryMascotId: null },
+      } as unknown as Parameters<typeof selectMeetingMascotVoicePair>[0];
+      expect(() => selectMeetingMascotVoicePair(legacy)).not.toThrow();
+      expect(selectMeetingMascotVoicePair(legacy).primary.mascotId).toBe('yellow');
+      expect(selectMascotVoiceFor('yellow')(legacy)).toBeNull();
+      expect(selectMascotVoices(legacy)).toEqual({});
+    });
   });
 });
