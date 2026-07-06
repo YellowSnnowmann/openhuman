@@ -14,8 +14,20 @@ import { composioLogoUrl } from '../composio/toolkitMeta';
  * Mascot ids the meeting-bot backend recognizes. Newer manifest-only mascot
  * ids (e.g. "river-guide") aren't supported there, so the bot falls back to the
  * legacy mascot color for them.
+ *
+ * "toshi" and "tiny-mascot" are the tinyhumansai/mascots manifest ids that the
+ * Recall meeting-bot backend now ships as real mascot assets, so they pass
+ * through unchanged instead of being collapsed to a color.
  */
-const MEETING_BOT_MASCOT_IDS = new Set(['yellow', 'blue', 'burgundy', 'black', 'navy']);
+const MEETING_BOT_MASCOT_IDS = new Set([
+  'yellow',
+  'blue',
+  'burgundy',
+  'black',
+  'navy',
+  'toshi',
+  'tiny-mascot',
+]);
 
 /**
  * Resolve the mascot id to send to the meeting bot: the selected mascot id when

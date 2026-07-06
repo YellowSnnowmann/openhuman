@@ -257,8 +257,16 @@ describe('resolveMeetingBotMascotId', () => {
     expect(resolveMeetingBotMascotId('navy', 'yellow')).toBe('navy');
   });
 
-  it('falls back to the legacy mascot color for a manifest-only mascot id', () => {
-    expect(resolveMeetingBotMascotId('river-guide', 'yellow')).toBe('yellow');
+  it('keeps the "toshi" manifest mascot id the backend now ships as an asset', () => {
+    expect(resolveMeetingBotMascotId('toshi', 'yellow')).toBe('toshi');
+  });
+
+  it('keeps the "tiny-mascot" manifest mascot id the backend now ships as an asset', () => {
+    expect(resolveMeetingBotMascotId('tiny-mascot', 'navy')).toBe('tiny-mascot');
+  });
+
+  it('falls back to the legacy mascot color for a manifest-only mascot id the backend still lacks', () => {
+    expect(resolveMeetingBotMascotId('jarvis', 'yellow')).toBe('yellow');
   });
 
   it('uses the mascot color when no mascot id is selected', () => {
