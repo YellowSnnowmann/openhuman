@@ -3678,6 +3678,10 @@ pub fn run() {
                             // wake gate will fail-closed (no wakes fire) which
                             // is the safe posture for an automated harness.
                             owner_display_name: String::new(),
+                            // No mascot config on the dev-auto path → single
+                            // default voice (issue #4277).
+                            primary_voice_id: None,
+                            secondary_voice_id: None,
                         };
                         match meet_call::meet_call_open_window(app_handle.clone(), state, args)
                             .await
