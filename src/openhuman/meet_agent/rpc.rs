@@ -348,6 +348,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn poll_speech_reports_active_mascot_slot() {
+        // poll_speech surfaces `active_mascot_slot` (the mascot currently
+        // speaking, read from session state via `active_slot()`) on every
+        // reply so the shell can drive per-mascot lip-sync. This exercises
+        // that emit on an idle session — no LLM/brain turn needed, since
+        // `active_slot()` reads session state directly and defaults to 0.
+        let mut start = Map::new();
+        start.insert("request_id".into(), json!("rpc-active-slot"));
+        start.insert("sample_rate_hz".into(), json!(16_000));
+        start.insert("primary_voice_id".into(), json!("voice-primary"));
+        start.insert("secondary_voice_id".into(), json!("voice-secondary"));
+        handle_start_session(start).await.unwrap();
+
+        let mut poll = Map::new();
+        poll.insert("request_id".into(), json!("rpc-active-slot"));
+        let out = handle_poll_speech(poll).await.unwrap();
+        assert_eq!(out.get("ok"), Some(&json!(true)));
+        assert_eq!(
+            out.get("active_mascot_slot"),
+            Some(&json!(0)),
+            "idle session starts on the primary mascot (slot 0)"
+        );
+
+        let mut stop = Map::new();
+        stop.insert("request_id".into(), json!("rpc-active-slot"));
+        handle_stop_session(stop).await.unwrap();
+    }
+
+    #[tokio::test]
     #[ignore = "flaky on CI; see PR #2588 follow-up"]
     async fn push_then_poll_returns_audio_after_brain_turn() {
         let mut start = Map::new();

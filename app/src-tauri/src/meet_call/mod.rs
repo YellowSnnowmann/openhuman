@@ -565,6 +565,35 @@ mod tests {
     }
 
     #[test]
+    fn open_window_args_deserializes_voice_ids() {
+        use serde_json::json;
+
+        // Both voice ids present → parse into Some(...). Proves the
+        // #4277 per-mascot voice fields ride through the command payload.
+        let args: OpenWindowArgs = serde_json::from_value(json!({
+            "request_id": "r",
+            "meet_url": "u",
+            "display_name": "d",
+            "primary_voice_id": "va",
+            "secondary_voice_id": "vb",
+        }))
+        .unwrap();
+        assert_eq!(args.primary_voice_id.as_deref(), Some("va"));
+        assert_eq!(args.secondary_voice_id.as_deref(), Some("vb"));
+
+        // Both omitted → #[serde(default)] yields None (single-mascot
+        // callers and older shells that don't forward voices still parse).
+        let args: OpenWindowArgs = serde_json::from_value(json!({
+            "request_id": "r",
+            "meet_url": "u",
+            "display_name": "d",
+        }))
+        .unwrap();
+        assert_eq!(args.primary_voice_id, None);
+        assert_eq!(args.secondary_voice_id, None);
+    }
+
+    #[test]
     fn meet_call_state_default_is_empty() {
         let state = MeetCallState::default();
         assert!(state.inner.lock().unwrap().is_empty());

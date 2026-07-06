@@ -42,13 +42,7 @@ export const MASCOT_INSET = 0.06;
  */
 export function drawMascotInCell(
   ctx: {
-    drawImage: (
-      image: CanvasImageSource,
-      dx: number,
-      dy: number,
-      dw: number,
-      dh: number
-    ) => void;
+    drawImage: (image: CanvasImageSource, dx: number, dy: number, dw: number, dh: number) => void;
   },
   sourceCanvas: CanvasImageSource,
   cellX: number,

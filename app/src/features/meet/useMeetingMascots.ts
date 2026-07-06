@@ -83,10 +83,7 @@ function activeSpeakerFace(speaking: boolean): MascotFace {
  *     is the distinct pose that reads as "the other mascot is paying
  *     attention").
  */
-function dualSlotFace(
-  slot: ActiveMascotSlot,
-  input: UseMeetingMascotsInput
-): MascotFace {
+function dualSlotFace(slot: ActiveMascotSlot, input: UseMeetingMascotsInput): MascotFace {
   if (input.phase === 'greeting' || input.phase === 'signoff') return 'waving';
   if (slot === input.activeMascotSlot) return activeSpeakerFace(input.speaking);
   return 'thinking';
@@ -108,10 +105,7 @@ export function computeMeetingMascotsRenderState(
     // primary follows speaking → speaking/idle, no secondary slot.
     return {
       dualEnabled: false,
-      primary: {
-        mascotId: primaryMascotId,
-        face: input.speaking ? 'speaking' : 'idle',
-      },
+      primary: { mascotId: primaryMascotId, face: input.speaking ? 'speaking' : 'idle' },
       secondary: null,
     };
   }

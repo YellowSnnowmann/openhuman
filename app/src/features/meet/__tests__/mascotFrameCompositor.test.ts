@@ -12,15 +12,7 @@ import {
 /** A drawImage-only ctx stub that records the last destination rect. */
 function makeCtx() {
   const drawImage =
-    vi.fn<
-      (
-        image: CanvasImageSource,
-        dx: number,
-        dy: number,
-        dw: number,
-        dh: number
-      ) => void
-    >();
+    vi.fn<(image: CanvasImageSource, dx: number, dy: number, dw: number, dh: number) => void>();
   return { drawImage };
 }
 
@@ -39,7 +31,17 @@ describe('drawMascotInCell — containment (AC#6)', () => {
     // Cell = full single frame; source is taller than wide.
     const srcW = 100;
     const srcH = 400;
-    const rect = drawMascotInCell(ctx, {} as CanvasImageSource, 0, 0, FRAME_W, FRAME_H, MASCOT_INSET, srcW, srcH);
+    const rect = drawMascotInCell(
+      ctx,
+      {} as CanvasImageSource,
+      0,
+      0,
+      FRAME_W,
+      FRAME_H,
+      MASCOT_INSET,
+      srcW,
+      srcH
+    );
 
     const fitW = FRAME_W * (1 - 2 * MASCOT_INSET); // 281.6
     const fitH = FRAME_H * (1 - 2 * MASCOT_INSET); // 211.2
@@ -67,7 +69,17 @@ describe('drawMascotInCell — containment (AC#6)', () => {
     const ctx = makeCtx();
     const srcW = 400;
     const srcH = 100;
-    const rect = drawMascotInCell(ctx, {} as CanvasImageSource, 0, 0, FRAME_W, FRAME_H, MASCOT_INSET, srcW, srcH);
+    const rect = drawMascotInCell(
+      ctx,
+      {} as CanvasImageSource,
+      0,
+      0,
+      FRAME_W,
+      FRAME_H,
+      MASCOT_INSET,
+      srcW,
+      srcH
+    );
 
     const fitW = FRAME_W * (1 - 2 * MASCOT_INSET);
     const fitH = FRAME_H * (1 - 2 * MASCOT_INSET);
@@ -92,7 +104,17 @@ describe('drawMascotInCell — containment (AC#6)', () => {
     const srcH = 200;
 
     const leftCtx = makeCtx();
-    const left = drawMascotInCell(leftCtx, {} as CanvasImageSource, 0, 0, half, FRAME_H, MASCOT_INSET, srcW, srcH);
+    const left = drawMascotInCell(
+      leftCtx,
+      {} as CanvasImageSource,
+      0,
+      0,
+      half,
+      FRAME_H,
+      MASCOT_INSET,
+      srcW,
+      srcH
+    );
     const rightCtx = makeCtx();
     const right = drawMascotInCell(
       rightCtx,
@@ -121,7 +143,17 @@ describe('drawMascotInCell — containment (AC#6)', () => {
 
   it('never divides by zero for a not-yet-laid-out (0×0) source', () => {
     const ctx = makeCtx();
-    const rect = drawMascotInCell(ctx, {} as CanvasImageSource, 0, 0, FRAME_W, FRAME_H, MASCOT_INSET, 0, 0);
+    const rect = drawMascotInCell(
+      ctx,
+      {} as CanvasImageSource,
+      0,
+      0,
+      FRAME_W,
+      FRAME_H,
+      MASCOT_INSET,
+      0,
+      0
+    );
     // With the 1px guard the rect is finite and contained, not NaN.
     expect(Number.isFinite(rect.dw)).toBe(true);
     expect(Number.isFinite(rect.dh)).toBe(true);

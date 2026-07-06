@@ -11,10 +11,7 @@ import {
 } from '../../../store/mascotSlice';
 import Button from '../../ui/Button';
 import { SettingsSelect, SettingsTextField } from '../controls';
-import {
-  ELEVENLABS_VOICE_PRESETS,
-  isCuratedVoicePreset,
-} from './elevenlabsVoicePresets';
+import { ELEVENLABS_VOICE_PRESETS, isCuratedVoicePreset } from './elevenlabsVoicePresets';
 
 interface PerMascotVoiceRowProps {
   /** Manifest mascot id this row controls the voice for. Writes land in

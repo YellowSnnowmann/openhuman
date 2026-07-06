@@ -36,9 +36,7 @@ function makeWrapper(mascot: Record<string, unknown>) {
 }
 
 function run(mascot: Record<string, unknown>, input: UseMeetingMascotsInput) {
-  const { result } = renderHook(() => useMeetingMascots(input), {
-    wrapper: makeWrapper(mascot),
-  });
+  const { result } = renderHook(() => useMeetingMascots(input), { wrapper: makeWrapper(mascot) });
   return result.current;
 }
 

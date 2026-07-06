@@ -223,11 +223,11 @@ impl SpeakingTracker {
         app: &AppHandle<R>,
         request_id: &str,
     ) {
-        let slot = slot.unwrap_or(self.active_slot);
-        let changed = self.reported != next || (next && self.active_slot != slot);
+        let (should_emit, resolved_slot) =
+            next_speaking_state(self.reported, self.active_slot, next, slot);
         self.reported = next;
-        self.active_slot = slot;
-        if !changed {
+        self.active_slot = resolved_slot;
+        if !should_emit {
             return;
         }
         let payload = serde_json::json!({
@@ -251,6 +251,27 @@ impl SpeakingTracker {
             );
         }
     }
+}
+
+/// Pure decision for [`SpeakingTracker::update`]: given the previously
+/// reported speaking flag + slot and the incoming `next`/`slot`, compute
+/// whether the Tauri event should be emitted and which slot to resolve to.
+///
+/// Extracted so the emit logic can be unit-tested without a live
+/// `AppHandle`. `slot = None` retains the previous slot (a tick with no
+/// fresh poll data). We emit when the speaking flag flips OR (while
+/// speaking) the active slot changes — the latter switches lip-sync on a
+/// back-to-back reply from the other mascot even if the hangover bridged
+/// the gap.
+fn next_speaking_state(
+    prev_reported: bool,
+    prev_slot: u8,
+    next: bool,
+    slot: Option<u8>,
+) -> (bool, u8) {
+    let resolved = slot.unwrap_or(prev_slot);
+    let should_emit = prev_reported != next || (next && prev_slot != resolved);
+    (should_emit, resolved)
 }
 
 /// No-op pump used when bridge install failed at session start. Keeps
@@ -329,4 +350,39 @@ async fn poll_and_feed(
         log::info!("[meet-audio] speak pump utterance complete request_id={request_id}");
     }
     Ok((false, active_slot))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn speaking_edge_and_slot_change_emit_logic() {
+        // idle -> speaking: a real edge, emits.
+        let (emit, slot) = next_speaking_state(false, 0, true, Some(0));
+        assert!(emit, "idle -> speaking must emit");
+        assert_eq!(slot, 0);
+
+        // speaking -> speaking, same slot: no edge, no slot change, no emit.
+        let (emit, slot) = next_speaking_state(true, 0, true, Some(0));
+        assert!(!emit, "speaking -> speaking same slot must not emit");
+        assert_eq!(slot, 0);
+
+        // speaking(slot 0) -> speaking(slot 1): mid-speech mascot switch emits
+        // and resolves to the new slot so lip-sync moves to the other mascot.
+        let (emit, slot) = next_speaking_state(true, 0, true, Some(1));
+        assert!(emit, "speaking slot change must emit");
+        assert_eq!(slot, 1, "resolved slot must be the new slot 1");
+
+        // slot = None retains the previous slot; with the same reported flag
+        // that is neither an edge nor a slot change, so no emit.
+        let (emit, slot) = next_speaking_state(true, 1, true, None);
+        assert!(!emit, "no fresh slot + same reported must not emit");
+        assert_eq!(slot, 1, "None retains the previous slot");
+
+        // speaking -> idle: a real edge, emits.
+        let (emit, slot) = next_speaking_state(true, 1, false, None);
+        assert!(emit, "speaking -> idle must emit");
+        assert_eq!(slot, 1, "None retains the previous slot on the way down");
+    }
 }
