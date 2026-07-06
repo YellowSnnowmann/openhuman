@@ -44,8 +44,10 @@ export const MAX_CUSTOM_MASCOT_GIF_URL_LEN = 2048;
  * Upper bound on how many per-mascot voice overrides we persist (issue
  * #4277). A user only ever drives two mascots in a meeting, but they may
  * try several before settling; the cap keeps the persisted map bounded
- * against a runaway writer while comfortably covering real use. Excess
- * entries are dropped oldest-key-first at the reducer boundary.
+ * against a runaway writer while comfortably covering real use. Once the
+ * cap is reached the reducer refuses NEW keys (an existing mascot can
+ * still be re-voiced); on rehydrate the first `MAX_MASCOT_VOICES` valid
+ * entries are kept and the rest dropped.
  */
 export const MAX_MASCOT_VOICES = 16;
 

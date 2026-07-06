@@ -235,13 +235,19 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     // can hear you" sounds redundant. The 50-char threshold is a
     // rough proxy; real second-brain questions ("am I free Friday
     // afternoon for a 30 min slot") are almost always longer.
-    // One speaker per caption turn: pick the voice/slot now so the
-    // pre-roll ack and the final reply come from the SAME mascot, and the
-    // active slot advances exactly once per turn. `None` for single-mascot
-    // calls (backend default voice, slot 0).
-    let turn_voice = registry().with_session(request_id, |s| s.advance_speaker())?;
+    // One speaker per caption turn: the pre-roll ack and the final reply
+    // come from the SAME mascot, and the active slot advances exactly once
+    // per turn — but ONLY when the turn actually speaks. A turn that fires
+    // no ack and then declines must not rotate the speaker (mirrors
+    // `run_turn`, which advances only on a non-empty reply). `turn_voice`
+    // stays `None` for single-mascot calls (backend default voice, slot 0).
+    let will_ack = !was_bare_wake && prompt.chars().count() > PREROLL_SKIP_PROMPT_CHARS;
+    let mut turn_voice: Option<String> = None;
+    let mut speaker_advanced = false;
 
-    if !was_bare_wake && prompt.chars().count() > PREROLL_SKIP_PROMPT_CHARS {
+    if will_ack {
+        turn_voice = registry().with_session(request_id, |s| s.advance_speaker())?;
+        speaker_advanced = true;
         if let Ok(ack_pcm) = tts(PREROLL_ACK_PHRASE, turn_voice.as_deref()).await {
             let _ = registry().with_session(request_id, |s| {
                 s.enqueue_outbound_pcm(&ack_pcm, false);
@@ -291,6 +297,12 @@ pub async fn run_caption_turn(request_id: &str) -> Result<bool, String> {
     let synthesized = if reply_text.trim().is_empty() {
         Vec::new()
     } else {
+        // If no pre-roll ack fired, this reply is the turn's first (and
+        // only) speech — advance the speaker now so a declined turn never
+        // rotated the slot, and a spoken turn rotates exactly once.
+        if !speaker_advanced {
+            turn_voice = registry().with_session(request_id, |s| s.advance_speaker())?;
+        }
         match tts(&reply_text, turn_voice.as_deref()).await {
             Ok(samples) => samples,
             Err(err) => {

@@ -95,7 +95,11 @@ pub struct RiveColors {
 /// both mascots side-by-side, alternates the speaking slot per reply, and
 /// synthesizes each slot's replies with `voice_id` (falling back to its
 /// configured default when absent).
-#[derive(Debug, Clone, Deserialize, Serialize)]
+///
+/// Deserialize-only: the RPC input arrives snake_case (`mascot_id`,
+/// `rive_colors`, `voice_id`); the outbound `bot:join` payload is built by
+/// hand in `ops.rs` (camelCase), so this struct is never serialized.
+#[derive(Debug, Clone, Deserialize)]
 pub struct BackendMascotSlot {
     /// Rive mascot id (e.g. "yellow", "toshi").
     pub mascot_id: String,

@@ -384,24 +384,20 @@ export function UpcomingTable({
     mascotColor === 'custom'
       ? { primaryColor: customPrimaryColor, secondaryColor: customSecondaryColor }
       : undefined;
-  // Two-mascot slots (issue #4277). Only built when a distinct second mascot is
-  // enabled; otherwise `mascots` stays undefined and the single `mascotId` path
-  // is untouched. Slot 0 falls back to the resolved `mascotId` when the primary
-  // is on the default mascot. Per-mascot colors are out of scope — both reuse
-  // `riveColors`.
+  // Two-mascot slots (issue #4277). Per-mascot colors are out of scope — both
+  // reuse `riveColors`. Gate on BOTH slot ids resolving to a concrete value:
+  // when the primary is on the default mascot with a custom colour,
+  // `resolveMeetingBotMascotId` (→ `mascotId`) is `undefined`; a blank slot-0 id
+  // would make the backend drop it and render the secondary ALONE (mismatch vs
+  // the on-camera primary), so we skip `mascots` and fall back to the single
+  // `mascotId` join instead of a broken duo.
+  const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
+  const secondarySlotId = mascotVoicePair.secondary?.mascotId;
   const mascots =
-    dualMascotEnabled && mascotVoicePair.secondary
+    dualMascotEnabled && mascotVoicePair.secondary && primarySlotId && secondarySlotId
       ? [
-          {
-            mascotId: mascotVoicePair.primary.mascotId ?? mascotId ?? '',
-            voiceId: mascotVoicePair.primary.voiceId,
-            riveColors,
-          },
-          {
-            mascotId: mascotVoicePair.secondary.mascotId ?? '',
-            voiceId: mascotVoicePair.secondary.voiceId,
-            riveColors,
-          },
+          { mascotId: primarySlotId, voiceId: mascotVoicePair.primary.voiceId, riveColors },
+          { mascotId: secondarySlotId, voiceId: mascotVoicePair.secondary.voiceId, riveColors },
         ]
       : undefined;
 

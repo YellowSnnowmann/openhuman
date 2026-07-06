@@ -139,23 +139,22 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
       : undefined;
   // Two-mascot slots for the backend bot (issue #4277). Slot 0 keeps the same
   // resolved id/color the single path uses (falling back to `mascotId` when the
-  // primary is on the default mascot); slot 1 is the secondary. Only built when
-  // a distinct second mascot is enabled — otherwise we leave `mascots`
-  // undefined so the single `mascotId` path is unchanged. Per-mascot colors are
-  // out of scope; both slots reuse the existing `riveColors`.
+  // primary is on the default mascot); slot 1 is the secondary. Per-mascot
+  // colors are out of scope; both slots reuse the existing `riveColors`.
+  //
+  // Gate on BOTH slot ids resolving to a concrete value: when the primary is on
+  // the default mascot with a custom colour, `resolveMeetingBotMascotId`
+  // (→ `mascotId`) is `undefined`; sending a blank slot-0 id would make the
+  // backend drop it and render the secondary ALONE (a mismatch vs the on-camera
+  // primary). In that rare combo we skip `mascots` and fall back to the single
+  // `mascotId` join instead of a broken duo.
+  const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
+  const secondarySlotId = mascotVoicePair.secondary?.mascotId;
   const mascots =
-    dualMascotEnabled && mascotVoicePair.secondary
+    dualMascotEnabled && mascotVoicePair.secondary && primarySlotId && secondarySlotId
       ? [
-          {
-            mascotId: mascotVoicePair.primary.mascotId ?? mascotId ?? '',
-            voiceId: mascotVoicePair.primary.voiceId,
-            riveColors,
-          },
-          {
-            mascotId: mascotVoicePair.secondary.mascotId ?? '',
-            voiceId: mascotVoicePair.secondary.voiceId,
-            riveColors,
-          },
+          { mascotId: primarySlotId, voiceId: mascotVoicePair.primary.voiceId, riveColors },
+          { mascotId: secondarySlotId, voiceId: mascotVoicePair.secondary.voiceId, riveColors },
         ]
       : undefined;
   const wakePhrase = listenOnly ? undefined : `Hey ${agentName}`;
