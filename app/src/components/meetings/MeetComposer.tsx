@@ -160,7 +160,8 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
   // in). The primary falls back to the persona/wake name only when its manifest
   // entry is unavailable; the secondary to its id if needed.
   const primaryName =
-    (manifest && primarySlotId ? findMascot(manifest, primarySlotId)?.name : undefined) ?? agentName;
+    (manifest && primarySlotId ? findMascot(manifest, primarySlotId)?.name : undefined) ??
+    agentName;
   const secondaryName =
     manifest && secondarySlotId ? findMascot(manifest, secondarySlotId)?.name : undefined;
   const mascots =

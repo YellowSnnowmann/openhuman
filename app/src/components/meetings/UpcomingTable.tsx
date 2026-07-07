@@ -405,7 +405,8 @@ export function UpcomingTable({
   // `mascots` array is built at component-body scope.
   const agentName = personaDisplayName.trim() || 'Tiny';
   const primaryName =
-    (manifest && primarySlotId ? findMascot(manifest, primarySlotId)?.name : undefined) ?? agentName;
+    (manifest && primarySlotId ? findMascot(manifest, primarySlotId)?.name : undefined) ??
+    agentName;
   const secondaryName =
     manifest && secondarySlotId ? findMascot(manifest, secondarySlotId)?.name : undefined;
   const mascots =

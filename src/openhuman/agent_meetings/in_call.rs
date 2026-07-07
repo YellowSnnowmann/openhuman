@@ -264,9 +264,14 @@ pub async fn handle_in_call_request(
             // In streaming mode the reply was already spoken sentence-by-
             // sentence during the turn; only the buffered path emits here.
             if !streaming {
-                if let Err(e) =
-                    emit_bot_speak_inner(&text, correlation_id.as_deref(), None, "reply", mascot_slot)
-                        .await
+                if let Err(e) = emit_bot_speak_inner(
+                    &text,
+                    correlation_id.as_deref(),
+                    None,
+                    "reply",
+                    mascot_slot,
+                )
+                .await
                 {
                     tracing::warn!("{LOG_PREFIX} bot:speak emit failed: {e}");
                 }
@@ -425,7 +430,10 @@ async fn run_orchestrator_turn(
         agent.set_on_progress(Some(tx));
         let cid_owned = correlation_id.map(String::from);
         Some(tokio::spawn(stream_sentences(
-            rx, cid_owned, ack_cancel, mascot_slot,
+            rx,
+            cid_owned,
+            ack_cancel,
+            mascot_slot,
         )))
     } else {
         None
@@ -558,7 +566,8 @@ async fn speak_stream_chunk(
         *spoke = true;
         ack_cancel.notify_one(); // first real audio — no need for the filler ack
     }
-    if let Err(e) = emit_bot_speak_inner(text, correlation_id, Some(*seq), "reply", mascot_slot).await
+    if let Err(e) =
+        emit_bot_speak_inner(text, correlation_id, Some(*seq), "reply", mascot_slot).await
     {
         tracing::debug!("{LOG_PREFIX} streamed chunk emit failed: {e}");
     }
