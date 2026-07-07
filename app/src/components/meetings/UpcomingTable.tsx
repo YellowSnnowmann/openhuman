@@ -14,7 +14,6 @@
 import debug from 'debug';
 import { useState } from 'react';
 
-import { findMascot } from '../../features/human/Mascot/manifest/manifestService';
 import { useMascotManifest } from '../../features/human/Mascot/manifest/useMascotManifest';
 import { useT } from '../../lib/i18n/I18nContext';
 import {
@@ -37,6 +36,7 @@ import { selectPersonaDescription, selectPersonaDisplayName } from '../../store/
 import Button from '../ui/Button';
 import { type JoinPolicy, JoinPolicyToggle } from './JoinPolicyToggle';
 import {
+  buildMeetingMascots,
   inferPlatformFromUrl,
   platformLabel,
   platformLogoUrl,
@@ -397,43 +397,20 @@ export function UpcomingTable({
     mascotColor === 'custom'
       ? { primaryColor: customPrimaryColor, secondaryColor: customSecondaryColor }
       : undefined;
-  // Two-mascot slots (issue #4277). Per-mascot colors are out of scope — both
-  // reuse `riveColors`. Gate on BOTH slot ids resolving to a concrete value:
-  // when the primary is on the default mascot with a custom colour,
-  // `resolveMeetingBotMascotId` (→ `mascotId`) is `undefined`; a blank slot-0 id
-  // would make the backend drop it and render the secondary ALONE (mismatch vs
-  // the on-camera primary), so we skip `mascots` and fall back to the single
-  // `mascotId` join instead of a broken duo.
-  const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
-  const secondarySlotId = mascotVoicePair.secondary?.mascotId;
-  // Slot display names for name-addressed routing — BOTH from the manifest so
-  // either mascot order works ("Hey Toshi" routes to whichever slot Toshi is
-  // in). Primary falls back to the persona/wake name only when its manifest
-  // entry is unavailable. Hoisted here (not inside handleJoin) because the
-  // `mascots` array is built at component-body scope.
+  // Bot join name — hoisted to component-body scope because both the `mascots`
+  // array here and the wake phrase inside handleJoin need it.
   const agentName = personaDisplayName.trim() || 'Tiny';
-  const primaryName =
-    (manifest && primarySlotId ? findMascot(manifest, primarySlotId)?.name : undefined) ??
-    agentName;
-  const secondaryName =
-    manifest && secondarySlotId ? findMascot(manifest, secondarySlotId)?.name : undefined;
-  const mascots =
-    dualMascotEnabled && mascotVoicePair.secondary && primarySlotId && secondarySlotId
-      ? [
-          {
-            mascotId: primarySlotId,
-            name: primaryName,
-            voiceId: mascotVoicePair.primary.voiceId,
-            riveColors,
-          },
-          {
-            mascotId: secondarySlotId,
-            name: secondaryName,
-            voiceId: mascotVoicePair.secondary.voiceId,
-            riveColors,
-          },
-        ]
-      : undefined;
+  // Two-mascot slots (issue #4277) — built via the shared helper so this
+  // scheduled-join path and the MeetComposer live-join path stay behaviorally
+  // identical.
+  const mascots = buildMeetingMascots({
+    dualMascotEnabled,
+    mascotVoicePair,
+    manifest,
+    mascotId,
+    riveColors,
+    agentName,
+  });
 
   const handleJoin = async (meeting: UpcomingMeeting) => {
     if (!meeting.meet_url) return;

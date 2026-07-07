@@ -10,10 +10,31 @@
 // Splitting it this way keeps platform-specific window code in the shell
 // while the validation rules live (and are tested) in the core.
 import { invoke } from '@tauri-apps/api/core';
+import debug from 'debug';
 
 import { isTauri } from '../utils/tauriCommands/common';
 import { apiClient } from './apiClient';
 import { callCoreRpc } from './coreRpcClient';
+
+// Shares the sibling hook's namespace (`useMeetingMascots.ts`) so the whole
+// dual-mascot flow can be traced under one prefix.
+const log = debug('meet:mascots');
+
+/**
+ * Map optional Rive colors to the backend's snake_case wire shape, trimming
+ * blanks and collapsing an all-empty pair to `undefined`. Shared by the
+ * top-level and per-slot color payloads so the two can't drift.
+ */
+function mapRiveColors(colors?: {
+  primaryColor?: string;
+  secondaryColor?: string;
+}): { primary_color?: string; secondary_color?: string } | undefined {
+  if (!colors) return undefined;
+  const primary = colors.primaryColor?.trim() || undefined;
+  const secondary = colors.secondaryColor?.trim() || undefined;
+  if (!primary && !secondary) return undefined;
+  return { primary_color: primary, secondary_color: secondary };
+}
 
 export type MeetJoinCallInput = {
   meetUrl: string;
@@ -322,6 +343,29 @@ export async function joinMeetViaBackendBot(
   const meetUrl = input.meetUrl.trim();
   if (!meetUrl) throw new Error('Please paste a meeting link.');
 
+  // Dual-mascot slots (issue #4277), mapped to the backend's snake_case wire
+  // shape. Absent → backend falls back to `mascot_id`.
+  const slots = input.mascots?.filter(m => m.mascotId?.trim());
+  const mascots =
+    slots && slots.length > 0
+      ? slots.map(m => ({
+          mascot_id: m.mascotId.trim(),
+          name: m.name?.trim() || undefined,
+          voice_id: m.voiceId?.trim() || undefined,
+          rive_colors: mapRiveColors(m.riveColors),
+        }))
+      : undefined;
+
+  // Flow/state metadata only — no participant names, voices, or the meet URL.
+  log(
+    'backend bot join corr=%s dual=%s slots=%d singleMascot=%s riveColors=%s',
+    input.correlationId?.trim() || '-',
+    Boolean(input.mascots?.length),
+    mascots?.length ?? 0,
+    Boolean(input.mascotId?.trim()),
+    Boolean(mapRiveColors(input.riveColors))
+  );
+
   const result = await callCoreRpc<CoreBackendMeetJoinResponse>({
     method: 'openhuman.agent_meetings_join',
     params: {
@@ -335,30 +379,8 @@ export async function joinMeetViaBackendBot(
       wake_phrase: input.wakePhrase?.trim() || undefined,
       correlation_id: input.correlationId?.trim() || undefined,
       listen_only: input.listenOnly ?? undefined,
-      rive_colors: (() => {
-        if (!input.riveColors) return undefined;
-        const primary = input.riveColors.primaryColor?.trim() || undefined;
-        const secondary = input.riveColors.secondaryColor?.trim() || undefined;
-        if (!primary && !secondary) return undefined;
-        return { primary_color: primary, secondary_color: secondary };
-      })(),
-      // Dual-mascot slots (issue #4277), mapped to the backend's snake_case
-      // wire shape. Absent → backend falls back to `mascot_id` above.
-      mascots: (() => {
-        const slots = input.mascots?.filter(m => m.mascotId?.trim());
-        if (!slots || slots.length === 0) return undefined;
-        return slots.map(m => ({
-          mascot_id: m.mascotId.trim(),
-          name: m.name?.trim() || undefined,
-          voice_id: m.voiceId?.trim() || undefined,
-          rive_colors: (() => {
-            const primary = m.riveColors?.primaryColor?.trim() || undefined;
-            const secondary = m.riveColors?.secondaryColor?.trim() || undefined;
-            if (!primary && !secondary) return undefined;
-            return { primary_color: primary, secondary_color: secondary };
-          })(),
-        }));
-      })(),
+      rive_colors: mapRiveColors(input.riveColors),
+      mascots,
     },
   });
 

@@ -5,9 +5,11 @@
  * previously embedded inside MeetingBotsCard so they can be unit-tested in
  * isolation and shared across the split composer components.
  */
+import { findMascot } from '../../features/human/Mascot/manifest/manifestService';
+import type { MascotManifest } from '../../features/human/Mascot/manifest/types';
 import type { MascotColor } from '../../features/human/Mascot/mascotPalette';
 import type { ComposioConnection } from '../../lib/composio/types';
-import type { MeetingPlatform } from '../../services/meetCallService';
+import type { BackendMeetJoinInput, MeetingPlatform } from '../../services/meetCallService';
 import { composioLogoUrl } from '../composio/toolkitMeta';
 
 /**
@@ -41,6 +43,63 @@ export function resolveMeetingBotMascotId(
   if (selectedMascotId && MEETING_BOT_MASCOT_IDS.has(selectedMascotId)) return selectedMascotId;
   if (mascotColor !== 'custom') return mascotColor;
   return undefined;
+}
+
+/** Voice/mascot pair the composer selects for the two speaking slots. */
+type MeetingMascotVoicePair = {
+  primary: { mascotId?: string | null; voiceId?: string };
+  secondary?: { mascotId?: string | null; voiceId?: string } | null;
+};
+
+/**
+ * Build the backend bot's dual-mascot `mascots` array (issue #4277), shared by
+ * both join sites — MeetComposer (live join) and UpcomingTable (scheduled join)
+ * — so the two paths stay behaviorally identical. They had already begun to
+ * drift, which is exactly the class of bug centralising this prevents.
+ *
+ * Slot 0 (primary) reuses the resolved single-path `mascotId` when the voice
+ * pair's primary carries no explicit mascot; slot 1 is the secondary. Slot names
+ * come from the manifest so name-addressed routing works in either order ("Hey
+ * Toshi" → whichever slot Toshi occupies); the primary falls back to `agentName`
+ * only when its manifest entry is unavailable. Per-mascot colors are out of
+ * scope — both slots reuse the single `riveColors`.
+ *
+ * Returns `undefined` (→ the single-mascot `mascotId` join) unless dual mode is
+ * on, a secondary is configured, AND both slot ids resolve to a concrete value:
+ * a blank slot-0 id would make the backend drop it and render the secondary
+ * alone, mismatching the on-camera primary.
+ */
+export function buildMeetingMascots(input: {
+  dualMascotEnabled: boolean;
+  mascotVoicePair: MeetingMascotVoicePair;
+  manifest: MascotManifest | null;
+  mascotId: string | undefined;
+  riveColors?: { primaryColor?: string; secondaryColor?: string };
+  agentName: string;
+}): BackendMeetJoinInput['mascots'] {
+  const { dualMascotEnabled, mascotVoicePair, manifest, mascotId, riveColors, agentName } = input;
+  const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
+  const secondarySlotId = mascotVoicePair.secondary?.mascotId ?? undefined;
+  if (!dualMascotEnabled || !mascotVoicePair.secondary || !primarySlotId || !secondarySlotId) {
+    return undefined;
+  }
+  const primaryName =
+    (manifest ? findMascot(manifest, primarySlotId)?.name : undefined) ?? agentName;
+  const secondaryName = manifest ? findMascot(manifest, secondarySlotId)?.name : undefined;
+  return [
+    {
+      mascotId: primarySlotId,
+      name: primaryName,
+      voiceId: mascotVoicePair.primary.voiceId,
+      riveColors,
+    },
+    {
+      mascotId: secondarySlotId,
+      name: secondaryName,
+      voiceId: mascotVoicePair.secondary.voiceId,
+      riveColors,
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------
