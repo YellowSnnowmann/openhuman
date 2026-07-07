@@ -45,7 +45,7 @@ describe('WorkflowCopilotPanel', () => {
     hookState.toolTimeline = [];
     hookState.liveResponse = '';
     hookState.error = null;
-    hookState.send = vi.fn().mockResolvedValue(true);
+    hookState.send = vi.fn().mockResolvedValue('dispatched');
     hookState.clearProposal = vi.fn();
   });
 
@@ -275,10 +275,10 @@ describe('WorkflowCopilotPanel', () => {
   });
 
   it('does not consume the seed when send no-ops (socket not connected) (#4597)', async () => {
-    // `send` returns false when the socket isn't connected — the turn never
-    // dispatched, so the seed must be preserved (not cleared) so the build can
-    // still fire once the socket connects.
-    hookState.send = vi.fn().mockResolvedValue(false);
+    // `send` resolves 'skipped' when the socket isn't connected — the turn
+    // never dispatched, so the seed must be preserved (not cleared) so the
+    // build can still fire once the socket connects.
+    hookState.send = vi.fn().mockResolvedValue('skipped');
     const onBuildSeedConsumed = vi.fn();
     render(
       <WorkflowCopilotPanel
@@ -293,8 +293,51 @@ describe('WorkflowCopilotPanel', () => {
       />
     );
     expect(hookState.send).toHaveBeenCalledTimes(1);
-    // Let the send() promise settle; the seed must NOT be consumed on a no-op.
-    await waitFor(() => expect(hookState.send).toHaveBeenCalledTimes(1));
+    // Flush the actual send() promise so the effect's `.then` runs, then assert
+    // the no-op path never consumed the seed.
+    await hookState.send.mock.results[0]?.value;
+    await waitFor(() => expect(onBuildSeedConsumed).not.toHaveBeenCalled());
+  });
+
+  it('does not consume or resend the seed when send fails (#4597)', async () => {
+    // A dispatch error resolves 'failed' (not 'skipped'): the seed is NOT
+    // consumed, and — crucially — the guard stays set so the effect does not
+    // auto-resend the turn (which would duplicate the user message and hammer
+    // the backend). The error surfaces separately for the user to retry.
+    hookState.send = vi.fn().mockResolvedValue('failed');
+    const onBuildSeedConsumed = vi.fn();
+    const { rerender } = render(
+      <WorkflowCopilotPanel
+        graph={baseGraph}
+        flowId="flow-1"
+        onProposal={vi.fn()}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        onClose={vi.fn()}
+        buildSeed={{ description: 'digest my Slack every morning' }}
+        onBuildSeedConsumed={onBuildSeedConsumed}
+      />
+    );
+    expect(hookState.send).toHaveBeenCalledTimes(1);
+    await hookState.send.mock.results[0]?.value;
+    expect(onBuildSeedConsumed).not.toHaveBeenCalled();
+
+    // A re-render with a fresh `send` identity (as happens on any state change)
+    // must NOT resend — the guard remains set for a failed dispatch.
+    hookState.send = vi.fn().mockResolvedValue('failed');
+    rerender(
+      <WorkflowCopilotPanel
+        graph={baseGraph}
+        flowId="flow-1"
+        onProposal={vi.fn()}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        onClose={vi.fn()}
+        buildSeed={{ description: 'digest my Slack every morning' }}
+        onBuildSeedConsumed={onBuildSeedConsumed}
+      />
+    );
+    expect(hookState.send).not.toHaveBeenCalled();
     expect(onBuildSeedConsumed).not.toHaveBeenCalled();
   });
 
