@@ -577,8 +577,13 @@ export default function FlowCanvasPage() {
     const next = { ...(state as Record<string, unknown>) };
     delete next.copilotBuild;
     log('build seed consumed — clearing route state');
-    navigate(location.pathname, { replace: true, state: next });
-  }, [location.state, location.pathname, navigate]);
+    // Navigate with an object (not a bare pathname) so the current search and
+    // hash are preserved — a string target would drop them.
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: next }
+    );
+  }, [location.state, location.pathname, location.search, location.hash, navigate]);
 
   useEffect(() => {
     // Guards a stale response from clobbering newer state: this effect
