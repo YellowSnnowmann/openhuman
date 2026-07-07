@@ -283,7 +283,18 @@ pub async fn handle_in_call_request(
         }
         Err(e) => {
             tracing::warn!("{LOG_PREFIX} in-call turn failed: {e}");
-            if let Err(e2) = emit_bot_speak(FAILURE_PHRASE, correlation_id.as_deref()).await {
+            // Speak the failure reply from the same mascot that was addressed
+            // (name-addressed routing, #4277 follow-up) — a terminal reply must
+            // carry `mascot_slot`, matching the success path above.
+            if let Err(e2) = emit_bot_speak_inner(
+                FAILURE_PHRASE,
+                correlation_id.as_deref(),
+                None,
+                "reply",
+                mascot_slot,
+            )
+            .await
+            {
                 tracing::debug!("{LOG_PREFIX} failure phrase emit failed: {e2}");
             }
             // The failure phrase promises a note in the thread — keep it.
