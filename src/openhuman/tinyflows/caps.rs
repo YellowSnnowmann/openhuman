@@ -656,11 +656,19 @@ pub(crate) fn resolve_node_model(request: &Value, entry_model: Option<&str>) -> 
 /// to the workload serving that tier. The session builder's `provider_role_for`
 /// only routes the `hint:<role>` form to a specialised workload, so a bare tier
 /// name (`reasoning-v1`) must be normalised to `hint:reasoning` here — otherwise
-/// it would silently fall through to the chat workload. Mirrors the per-node
-/// routing [`OpenHumanLlm::complete`] applies via
-/// [`role_for_model_tier`](crate::openhuman::inference::provider::role_for_model_tier);
-/// an unrecognised string maps to the chat workload, same as there.
+/// it would silently fall through to the chat workload.
+///
+/// A **raw/BYOK** model id (e.g. `claude-opus-4`) is instead forwarded verbatim:
+/// wrapping it in `hint:chat` would collapse the user's explicit per-node model
+/// onto the managed `chat-v1` tier (issue #4598). Left verbatim, it flows through
+/// the session builder's generic `chat` role — which inherits
+/// `config.default_model` — to `make_openhuman_backend`, which forwards non-tier
+/// ids to the backend unchanged. Mirrors the per-node routing
+/// [`OpenHumanLlm::complete`] applies via [`resolve_completion_model`].
 pub(crate) fn harness_model_default_override(node_model: &str) -> String {
+    if is_raw_passthrough_model(node_model) {
+        return node_model.to_string();
+    }
     format!("hint:{}", role_for_model_tier(node_model))
 }
 
