@@ -31,7 +31,8 @@ use crate::openhuman::config::{Config, HttpRequestConfig};
 use crate::openhuman::credentials::{HttpCredential, HttpCredentialsStore};
 use crate::openhuman::flows;
 use crate::openhuman::inference::provider::{
-    create_chat_provider, role_for_model_tier, ChatMessage, ChatRequest, UsageInfo,
+    create_chat_provider, is_raw_passthrough_model, role_for_model_tier, ChatMessage, ChatRequest,
+    UsageInfo,
 };
 use crate::openhuman::sandbox::{execute_in_sandbox, resolve_sandbox_policy};
 use crate::openhuman::security::{
@@ -367,6 +368,28 @@ pub(crate) fn parse_llm_json(text: &str) -> Option<Value> {
     matches!(parsed, Value::Object(_) | Value::Array(_)).then_some(parsed)
 }
 
+/// Select the model an `agent` node completion actually runs on.
+///
+/// `resolved_model` is what [`create_chat_provider`] returned for the node's
+/// mapped workload role. A node may instead pin a **raw/BYOK** model id
+/// (e.g. `claude-opus-4`) that [`role_for_model_tier`] collapsed to the `chat`
+/// role — in that case the pinned id, not the role default, is the model the
+/// user selected, so it is forwarded verbatim (issue #4598). Managed tiers and
+/// every `hint:*` alias fall through to `resolved_model` unchanged.
+fn resolve_completion_model(node_model: Option<&str>, resolved_model: String) -> String {
+    match node_model {
+        Some(pinned) if is_raw_passthrough_model(pinned) => {
+            tracing::debug!(
+                target: "flows",
+                raw_model = pinned,
+                "[flows] llm.complete: forwarding raw/BYOK node model verbatim (not a managed tier)"
+            );
+            pinned.to_string()
+        }
+        _ => resolved_model,
+    }
+}
+
 /// [`LlmProvider`] adapter over OpenHuman's inference stack
 /// (`src/openhuman/inference/provider/`).
 ///
@@ -450,6 +473,9 @@ impl LlmProvider for OpenHumanLlm {
 
         let (provider, model) = create_chat_provider(role, &self.config)
             .map_err(|e| EngineError::Capability(e.to_string()))?;
+        // `create_chat_provider` handed back the role's default model. If the node
+        // pinned a raw/BYOK id, forward it verbatim instead (issue #4598).
+        let model = resolve_completion_model(node_model, model);
 
         let response = provider
             .chat(
@@ -3668,6 +3694,48 @@ mod tests {
             composio_response_fields(&config, "FLOWSSCHEMAUNKNOWN_ACTION").await,
             None,
             "an action with no published output schema must be None, not Some(vec![])"
+        );
+    }
+
+    // ── resolve_completion_model raw/BYOK passthrough (issue #4598) ───────────
+    #[test]
+    fn resolve_completion_model_forwards_raw_byok_node_model_verbatim() {
+        // A raw/BYOK id maps to the `chat` role, so the role resolves to the
+        // default model — but the pinned id is what the user selected and must
+        // be the model the completion runs on.
+        assert_eq!(
+            resolve_completion_model(Some("claude-opus-4"), "chat-v1".to_string()),
+            "claude-opus-4"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("deepseek-v4-pro"), "chat-v1".to_string()),
+            "deepseek-v4-pro"
+        );
+    }
+
+    #[test]
+    fn resolve_completion_model_leaves_managed_tier_and_hint_node_models_untouched() {
+        // Managed tiers and every `hint:*` alias keep the role-resolved model.
+        assert_eq!(
+            resolve_completion_model(Some("chat-v1"), "chat-v1".to_string()),
+            "chat-v1"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("hint:reasoning"), "reasoning-v1".to_string()),
+            "reasoning-v1"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("hint:garbage"), "reasoning-v1".to_string()),
+            "reasoning-v1"
+        );
+        // No pinned model, or a whitespace-only pin, keeps the resolved default.
+        assert_eq!(
+            resolve_completion_model(None, "chat-v1".to_string()),
+            "chat-v1"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("   "), "chat-v1".to_string()),
+            "chat-v1"
         );
     }
 }
