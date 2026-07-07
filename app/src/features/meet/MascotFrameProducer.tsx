@@ -21,6 +21,7 @@ import { useMascotManifest } from '../human/Mascot/manifest/useMascotManifest';
 import {
   drawMascotInCell,
   FRAME_H,
+  FRAME_H_DUAL,
   FRAME_W,
   FRAME_W_DUAL,
   MASCOT_INSET,
@@ -213,25 +214,29 @@ const ProducerSession: FC<{ session: BusSession; phase: MeetingPhase }> = ({ ses
       : null;
 
     const frameW = dualEnabledNow ? FRAME_W_DUAL : FRAME_W;
+    // The dual frame is taller (16:9) than the single frame so the fake-camera
+    // bridge's cover-scale fills the 1280×720 canvas without cropping — see
+    // FRAME_H_DUAL in mascotFrameCompositor.ts.
+    const frameH = dualEnabledNow ? FRAME_H_DUAL : FRAME_H;
 
     inflightRef.current = true;
     try {
-      const offscreen = new OffscreenCanvas(frameW, FRAME_H);
+      const offscreen = new OffscreenCanvas(frameW, frameH);
       const ctx = offscreen.getContext('2d');
       if (!ctx) return;
 
       const grad = ctx.createRadialGradient(
         frameW / 2,
-        FRAME_H / 2,
+        frameH / 2,
         0,
         frameW / 2,
-        FRAME_H / 2,
-        Math.max(frameW, FRAME_H) * 0.7
+        frameH / 2,
+        Math.max(frameW, frameH) * 0.7
       );
       grad.addColorStop(0, '#FBF3D9');
       grad.addColorStop(1, '#EFE3B8');
       ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, frameW, FRAME_H);
+      ctx.fillRect(0, 0, frameW, frameH);
 
       if (dualEnabledNow && secondaryCanvas) {
         // Two half-cells: [0..half] primary, [half..frameW] secondary.
@@ -242,7 +247,7 @@ const ProducerSession: FC<{ session: BusSession; phase: MeetingPhase }> = ({ ses
           0,
           0,
           half,
-          FRAME_H,
+          frameH,
           MASCOT_INSET,
           primaryCanvas.width,
           primaryCanvas.height
@@ -253,7 +258,7 @@ const ProducerSession: FC<{ session: BusSession; phase: MeetingPhase }> = ({ ses
           half,
           0,
           half,
-          FRAME_H,
+          frameH,
           MASCOT_INSET,
           secondaryCanvas.width,
           secondaryCanvas.height
@@ -268,14 +273,14 @@ const ProducerSession: FC<{ session: BusSession; phase: MeetingPhase }> = ({ ses
           0,
           0,
           frameW,
-          FRAME_H,
+          frameH,
           MASCOT_INSET,
           primaryCanvas.width,
           primaryCanvas.height
         );
       }
 
-      const probe = sampleCanvasPixels(ctx, frameW, FRAME_H);
+      const probe = sampleCanvasPixels(ctx, frameW, frameH);
       const blob = await offscreen.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
       const buffer = await blob.arrayBuffer();
       const ws = wsRef.current;
@@ -290,7 +295,7 @@ const ProducerSession: FC<{ session: BusSession; phase: MeetingPhase }> = ({ ses
               canvasWidth: primaryCanvas.width,
               canvasHeight: primaryCanvas.height,
               frameWidth: frameW,
-              frameHeight: FRAME_H,
+              frameHeight: frameH,
               jpegBytes: blob.size,
               isSpeaking: isSpeakingRef.current,
               // Dual-mascot diagnostics (issue #4277): whether we drew two

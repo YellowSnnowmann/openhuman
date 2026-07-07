@@ -733,8 +733,12 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
                     value={mascot.id}
                     // Skip the primary's id — it already speaks as the first
                     // mascot, so offering it as the second is a no-op the
-                    // reducer would reject anyway.
-                    disabled={mascot.id === selectedMascotId}>
+                    // reducer would reject anyway. When the primary is still the
+                    // default (selectedMascotId is null), the effective primary
+                    // is the resolved default entry (activeEntry), so disable
+                    // that too — otherwise the same mascot could be picked for
+                    // both slots and the meeting would render two identical ones.
+                    disabled={mascot.id === (selectedMascotId ?? activeEntry?.id)}>
                     {mascot.name}
                   </option>
                 ))}

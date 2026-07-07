@@ -36,7 +36,12 @@ import {
 import { selectPersonaDescription, selectPersonaDisplayName } from '../../store/personaSlice';
 import Button from '../ui/Button';
 import { type JoinPolicy, JoinPolicyToggle } from './JoinPolicyToggle';
-import { inferPlatformFromUrl, platformLabel, platformLogoUrl } from './meetingUtils';
+import {
+  inferPlatformFromUrl,
+  platformLabel,
+  platformLogoUrl,
+  resolveMeetingBotMascotId,
+} from './meetingUtils';
 import { useUpcomingMeetings } from './useUpcomingMeetings';
 
 const log = debug('meetings:upcoming-table');
@@ -383,8 +388,11 @@ export function UpcomingTable({
     return Boolean(backendMeetUrl && m.meet_url && backendMeetUrl === m.meet_url);
   };
 
-  // Resolve bot join params the same way MeetComposer does.
-  const mascotId = selectedMascotId ?? (mascotColor === 'custom' ? undefined : mascotColor);
+  // Resolve bot join params the same way MeetComposer does — via
+  // resolveMeetingBotMascotId, so a manifest-only id the backend bot doesn't
+  // recognize is dropped here too (a raw `selectedMascotId` fallback would let
+  // it through and diverge from the MeetComposer join).
+  const mascotId = resolveMeetingBotMascotId(selectedMascotId, mascotColor);
   const riveColors =
     mascotColor === 'custom'
       ? { primaryColor: customPrimaryColor, secondaryColor: customSecondaryColor }

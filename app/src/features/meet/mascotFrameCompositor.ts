@@ -10,15 +10,23 @@
 
 /** Frame width for a single mascot (unchanged from the original producer). */
 export const FRAME_W = 320;
+/** Frame height for a single mascot (unchanged from the original producer). */
+export const FRAME_H = 240;
 /**
- * Frame width when two mascots share the frame side-by-side (issue #4277).
+ * Frame dimensions when two mascots share the frame side-by-side (issue #4277).
  * Wider than the single frame so each mascot keeps roughly the single-frame
- * cell width instead of being squeezed to half — the fake camera sends the
- * frame at its native aspect, so a 480×240 dual frame reads as two mascots
- * standing next to each other.
+ * cell width instead of being squeezed to half.
+ *
+ * 480×270 is deliberately 16:9 — the same aspect as the fake-camera capture
+ * canvas (1280×720). The Tauri camera bridge cover-scales the received frame
+ * onto that canvas (`scale = Math.max(W/bw, H/bh)` in `camera_bridge.js`), so a
+ * frame whose aspect differs from 16:9 gets its overflowing axis cropped. A
+ * 480×240 (2:1) dual frame would be scaled to 1440×720 and lose ~27 source px
+ * off each side — clipping the two mascots' outer edges. Matching 16:9 makes the
+ * cover-scale a pure fit with no crop.
  */
 export const FRAME_W_DUAL = 480;
-export const FRAME_H = 240;
+export const FRAME_H_DUAL = 270;
 /**
  * Fraction of each cell reserved as padding on every side before the mascot
  * is scaled to fit. Matches the original single-mascot inset so the framing

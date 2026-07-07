@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   drawMascotInCell,
   FRAME_H,
+  FRAME_H_DUAL,
   FRAME_W,
   FRAME_W_DUAL,
   MASCOT_INSET,
@@ -21,7 +22,15 @@ describe('mascotFrameCompositor geometry constants', () => {
     expect(FRAME_W).toBe(320);
     expect(FRAME_W_DUAL).toBe(480);
     expect(FRAME_H).toBe(240);
+    expect(FRAME_H_DUAL).toBe(270);
     expect(MASCOT_INSET).toBeCloseTo(0.06);
+  });
+
+  it('keeps the dual frame at 16:9 so the camera bridge cover-scale never crops', () => {
+    // The Tauri camera bridge cover-scales the frame onto a 1280×720 (16:9)
+    // canvas; any non-16:9 frame loses its overflowing axis. Locking the dual
+    // frame to 16:9 keeps both mascots' outer edges intact.
+    expect(FRAME_W_DUAL / FRAME_H_DUAL).toBeCloseTo(16 / 9);
   });
 });
 
