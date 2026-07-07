@@ -79,8 +79,13 @@ export interface UseWorkflowBuilderChat {
   liveResponse: string;
   /** Last send error (thread create / RPC failure), or `null`. */
   error: string | null;
-  /** Send a builder turn, creating the dedicated thread on first use. */
-  send: (params: WorkflowBuilderSendParams) => Promise<void>;
+  /**
+   * Send a builder turn, creating the dedicated thread on first use. Resolves
+   * to `true` when the turn was actually dispatched, or `false` on a no-op
+   * (socket not connected, or a turn already in flight) so callers can retry
+   * or preserve a pending seed rather than treating a no-op as sent.
+   */
+  send: (params: WorkflowBuilderSendParams) => Promise<boolean>;
   /** Clear the current proposal (e.g. after Accept/Reject) without persisting. */
   clearProposal: () => void;
 }
@@ -141,12 +146,12 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
     async ({ displayText, request }: WorkflowBuilderSendParams) => {
       if (localSending) {
         log('send: ignored — a turn is already dispatching');
-        return;
+        return false;
       }
       if (socketStatus !== 'connected') {
         log('send: blocked — socket not connected (%s)', socketStatus);
         setError('offline');
-        return;
+        return false;
       }
       setLocalSending(true);
       setError(null);
@@ -196,10 +201,12 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
         } else if (result.error) {
           setError(result.error);
         }
+        return true;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         log('send: failed err=%o', err);
         setError(msg);
+        return false;
       } finally {
         setLocalSending(false);
       }

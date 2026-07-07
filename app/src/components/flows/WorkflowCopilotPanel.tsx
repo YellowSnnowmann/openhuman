@@ -170,17 +170,28 @@ export default function WorkflowCopilotPanel({
   const buildSentRef = useRef(false);
   useEffect(() => {
     if (!buildSeed || buildSentRef.current) return;
+    // Optimistically guard re-entry while the async dispatch is in flight.
     buildSentRef.current = true;
     void send({
       displayText: buildSeed.description,
       request: flowId
         ? { mode: 'build', instruction: buildSeed.description, graph, flowId }
         : { mode: 'revise', instruction: buildSeed.description, graph, flowId },
+    }).then(dispatched => {
+      if (dispatched) {
+        // Clear the ephemeral route seed only once the turn actually
+        // dispatched, so closing and reopening the panel (which remounts it
+        // and resets `buildSentRef`) can't re-fire the same build turn
+        // (issue #4597).
+        onBuildSeedConsumed?.();
+      } else {
+        // `send` no-ops when the socket isn't connected yet: keep the seed
+        // and release the guard so the effect retries once `send` changes
+        // identity on reconnect — otherwise the prompt is lost and the blank
+        // flow never auto-builds.
+        buildSentRef.current = false;
+      }
     });
-    // Clear the ephemeral route seed now that it's been dispatched, so closing
-    // and reopening the panel (which remounts it and resets `buildSentRef`)
-    // can't re-fire the same build turn (issue #4597).
-    onBuildSeedConsumed?.();
     // `graph`/`flowId` are read once for the seed turn — later edits must not
     // re-fire it (guarded by the ref regardless).
     // eslint-disable-next-line react-hooks/exhaustive-deps

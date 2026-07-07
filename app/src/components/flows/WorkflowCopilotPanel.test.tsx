@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkflowGraph, WorkflowNode } from '../../lib/flows/types';
@@ -45,7 +45,7 @@ describe('WorkflowCopilotPanel', () => {
     hookState.toolTimeline = [];
     hookState.liveResponse = '';
     hookState.error = null;
-    hookState.send = vi.fn().mockResolvedValue(undefined);
+    hookState.send = vi.fn().mockResolvedValue(true);
     hookState.clearProposal = vi.fn();
   });
 
@@ -254,7 +254,7 @@ describe('WorkflowCopilotPanel', () => {
     expect(hookState.send).toHaveBeenCalledTimes(1);
   });
 
-  it('reports the build seed as consumed so the host can clear the route state', () => {
+  it('reports the build seed as consumed once the turn actually dispatched', async () => {
     const onBuildSeedConsumed = vi.fn();
     render(
       <WorkflowCopilotPanel
@@ -269,12 +269,36 @@ describe('WorkflowCopilotPanel', () => {
       />
     );
     expect(hookState.send).toHaveBeenCalledTimes(1);
-    // Fires exactly once, alongside the dispatched build turn, so the route
-    // seed can be stripped.
-    expect(onBuildSeedConsumed).toHaveBeenCalledTimes(1);
+    // Fires exactly once, after the dispatched build turn resolves, so the
+    // route seed can be stripped.
+    await waitFor(() => expect(onBuildSeedConsumed).toHaveBeenCalledTimes(1));
   });
 
-  it('does not re-fire the build turn when remounted after the seed is cleared (#4597)', () => {
+  it('does not consume the seed when send no-ops (socket not connected) (#4597)', async () => {
+    // `send` returns false when the socket isn't connected — the turn never
+    // dispatched, so the seed must be preserved (not cleared) so the build can
+    // still fire once the socket connects.
+    hookState.send = vi.fn().mockResolvedValue(false);
+    const onBuildSeedConsumed = vi.fn();
+    render(
+      <WorkflowCopilotPanel
+        graph={baseGraph}
+        flowId="flow-1"
+        onProposal={vi.fn()}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        onClose={vi.fn()}
+        buildSeed={{ description: 'digest my Slack every morning' }}
+        onBuildSeedConsumed={onBuildSeedConsumed}
+      />
+    );
+    expect(hookState.send).toHaveBeenCalledTimes(1);
+    // Let the send() promise settle; the seed must NOT be consumed on a no-op.
+    await waitFor(() => expect(hookState.send).toHaveBeenCalledTimes(1));
+    expect(onBuildSeedConsumed).not.toHaveBeenCalled();
+  });
+
+  it('does not re-fire the build turn when remounted after the seed is cleared (#4597)', async () => {
     const onBuildSeedConsumed = vi.fn();
     // First mount with the seed present (as the prompt-bar route lands).
     const { unmount } = render(
@@ -290,7 +314,7 @@ describe('WorkflowCopilotPanel', () => {
       />
     );
     expect(hookState.send).toHaveBeenCalledTimes(1);
-    expect(onBuildSeedConsumed).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onBuildSeedConsumed).toHaveBeenCalledTimes(1));
 
     // The host clears the route seed (buildSeed -> null) in response. Closing
     // and reopening the copilot fully remounts the panel — the per-mount
