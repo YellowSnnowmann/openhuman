@@ -78,6 +78,14 @@ interface Props {
    */
   buildSeed?: { description: string } | null;
   /**
+   * Fires once the build seed has been dispatched, so the host can clear the
+   * ephemeral route seed (`location.state.copilotBuild`). The in-mount
+   * `buildSentRef` guard only protects the current mount; closing and reopening
+   * the panel remounts it and resets that ref, so without clearing the route
+   * seed a remount would re-fire the same `build` turn (issue #4597).
+   */
+  onBuildSeedConsumed?: () => void;
+  /**
    * The workflow's persisted copilot thread id (from the per-flow cache), so
    * reopening the panel resumes the same conversation instead of starting fresh.
    */
@@ -95,6 +103,7 @@ export default function WorkflowCopilotPanel({
   onClose,
   repairSeed = null,
   buildSeed = null,
+  onBuildSeedConsumed,
   seedThreadId = null,
   onThreadIdChange,
 }: Props) {
@@ -168,6 +177,10 @@ export default function WorkflowCopilotPanel({
         ? { mode: 'build', instruction: buildSeed.description, graph, flowId }
         : { mode: 'revise', instruction: buildSeed.description, graph, flowId },
     });
+    // Clear the ephemeral route seed now that it's been dispatched, so closing
+    // and reopening the panel (which remounts it and resets `buildSentRef`)
+    // can't re-fire the same build turn (issue #4597).
+    onBuildSeedConsumed?.();
     // `graph`/`flowId` are read once for the seed turn — later edits must not
     // re-fire it (guarded by the ref regardless).
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -253,4 +253,63 @@ describe('WorkflowCopilotPanel', () => {
     );
     expect(hookState.send).toHaveBeenCalledTimes(1);
   });
+
+  it('reports the build seed as consumed so the host can clear the route state', () => {
+    const onBuildSeedConsumed = vi.fn();
+    render(
+      <WorkflowCopilotPanel
+        graph={baseGraph}
+        flowId="flow-1"
+        onProposal={vi.fn()}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        onClose={vi.fn()}
+        buildSeed={{ description: 'digest my Slack every morning' }}
+        onBuildSeedConsumed={onBuildSeedConsumed}
+      />
+    );
+    expect(hookState.send).toHaveBeenCalledTimes(1);
+    // Fires exactly once, alongside the dispatched build turn, so the route
+    // seed can be stripped.
+    expect(onBuildSeedConsumed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-fire the build turn when remounted after the seed is cleared (#4597)', () => {
+    const onBuildSeedConsumed = vi.fn();
+    // First mount with the seed present (as the prompt-bar route lands).
+    const { unmount } = render(
+      <WorkflowCopilotPanel
+        graph={baseGraph}
+        flowId="flow-1"
+        onProposal={vi.fn()}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        onClose={vi.fn()}
+        buildSeed={{ description: 'digest my Slack every morning' }}
+        onBuildSeedConsumed={onBuildSeedConsumed}
+      />
+    );
+    expect(hookState.send).toHaveBeenCalledTimes(1);
+    expect(onBuildSeedConsumed).toHaveBeenCalledTimes(1);
+
+    // The host clears the route seed (buildSeed -> null) in response. Closing
+    // and reopening the copilot fully remounts the panel — the per-mount
+    // `buildSentRef` resets to false — but with no seed there is nothing to
+    // re-fire, so the build turn must NOT be sent a second time.
+    unmount();
+    render(
+      <WorkflowCopilotPanel
+        graph={baseGraph}
+        flowId="flow-1"
+        onProposal={vi.fn()}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        onClose={vi.fn()}
+        buildSeed={null}
+        onBuildSeedConsumed={onBuildSeedConsumed}
+      />
+    );
+    expect(hookState.send).toHaveBeenCalledTimes(1);
+    expect(onBuildSeedConsumed).toHaveBeenCalledTimes(1);
+  });
 });

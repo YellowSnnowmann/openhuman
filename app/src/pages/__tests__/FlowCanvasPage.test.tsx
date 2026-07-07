@@ -5,7 +5,7 @@
  * and the Phase 3d host wiring: Save persists via `flows_update`, and the
  * unsaved-changes guard intercepts the Back button while dirty.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -326,6 +326,32 @@ describe('FlowCanvasPage copilot build seed (prompt-bar instant create)', () => 
     await waitFor(() => expect(screen.getByTestId('stub-copilot-panel')).toBeInTheDocument());
     expect(copilotPanelProps.current?.buildSeed).toEqual({ description: 'digest it' });
     expect(copilotPanelProps.current?.flowId).toBe('test-id');
+  });
+
+  it('clears the build seed from route state once the copilot reports it consumed (#4597)', async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          { pathname: '/flows/test-id', state: { copilotBuild: { description: 'digest it' } } },
+        ]}>
+        <Routes>
+          <Route path="/flows/:id" element={<FlowCanvasPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() =>
+      expect(copilotPanelProps.current?.buildSeed).toEqual({ description: 'digest it' })
+    );
+
+    // The panel dispatched the build turn and reports it consumed; the host must
+    // strip `copilotBuild` from `location.state` so a later remount (close +
+    // reopen) has no seed left to re-fire.
+    act(() => {
+      (copilotPanelProps.current?.onBuildSeedConsumed as () => void)();
+    });
+
+    await waitFor(() => expect(copilotPanelProps.current?.buildSeed).toBeNull());
   });
 
   it('keeps the copilot closed without a seed', async () => {
