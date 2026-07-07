@@ -293,6 +293,7 @@ describe('joinMeetViaBackendBot', () => {
       mascots: [
         {
           mascotId: ' tiny-mascot ',
+          name: ' Tiny ',
           voiceId: ' voice-a ',
           riveColors: { primaryColor: '#111', secondaryColor: '#222' },
         },
@@ -305,10 +306,13 @@ describe('joinMeetViaBackendBot', () => {
     expect(params.mascots).toEqual([
       {
         mascot_id: 'tiny-mascot',
+        // Name-addressed routing (#4277 follow-up): trimmed + forwarded.
+        name: 'Tiny',
         voice_id: 'voice-a',
         rive_colors: { primary_color: '#111', secondary_color: '#222' },
       },
-      { mascot_id: 'toshi', voice_id: 'voice-b', rive_colors: undefined },
+      // Slot 1 supplies no name → `name` omitted (undefined).
+      { mascot_id: 'toshi', name: undefined, voice_id: 'voice-b', rive_colors: undefined },
     ]);
   });
 

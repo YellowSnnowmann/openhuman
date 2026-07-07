@@ -772,6 +772,9 @@ fn build_join_payload(
                 .map(|m| {
                     let mut slot = json!({ "mascotId": m.mascot_id });
                     if let Some(obj) = slot.as_object_mut() {
+                        if let Some(name) = &m.name {
+                            obj.insert("name".to_string(), json!(name));
+                        }
                         if let Some(colors) = &m.rive_colors {
                             obj.insert(
                                 "riveColors".to_string(),
@@ -1885,6 +1888,7 @@ mod tests {
             "mascots": [
                 {
                     "mascot_id": "tiny-mascot",
+                    "name": "Tiny",
                     "voice_id": "voice-a",
                     "rive_colors": { "primary_color": "#111", "secondary_color": "#222" }
                 },
@@ -1901,11 +1905,16 @@ mod tests {
         let mascots = payload["mascots"].as_array().expect("mascots array");
         assert_eq!(mascots.len(), 2);
         assert_eq!(mascots[0]["mascotId"], "tiny-mascot");
+        // Name-addressed routing (#4277 follow-up): the display name is
+        // forwarded so the bot can route "Hey Tiny …" to slot 0.
+        assert_eq!(mascots[0]["name"], "Tiny");
         assert_eq!(mascots[0]["voiceId"], "voice-a");
         assert_eq!(mascots[0]["riveColors"]["primaryColor"], "#111");
         assert_eq!(mascots[0]["riveColors"]["secondaryColor"], "#222");
         assert_eq!(mascots[1]["mascotId"], "toshi");
         assert_eq!(mascots[1]["voiceId"], "voice-b");
+        // No name supplied for slot 1 → no `name` key.
+        assert!(mascots[1].get("name").is_none());
         // No colors supplied for slot 1 → no `riveColors` key.
         assert!(mascots[1].get("riveColors").is_none());
     }

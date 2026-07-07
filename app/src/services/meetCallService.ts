@@ -285,6 +285,13 @@ export type BackendMeetJoinInput = {
    */
   mascots?: Array<{
     mascotId: string;
+    /**
+     * Human-facing mascot name (from the manifest, e.g. "Toshi"). Enables
+     * name-addressed routing (#4277 follow-up): a participant who says
+     * "Hey Toshi …" is answered by this slot instead of the mechanical
+     * alternation. Omit → that slot is not name-addressable.
+     */
+    name?: string;
     riveColors?: { primaryColor?: string; secondaryColor?: string };
     voiceId?: string;
   }>;
@@ -342,6 +349,7 @@ export async function joinMeetViaBackendBot(
         if (!slots || slots.length === 0) return undefined;
         return slots.map(m => ({
           mascot_id: m.mascotId.trim(),
+          name: m.name?.trim() || undefined,
           voice_id: m.voiceId?.trim() || undefined,
           rive_colors: (() => {
             const primary = m.riveColors?.primaryColor?.trim() || undefined;

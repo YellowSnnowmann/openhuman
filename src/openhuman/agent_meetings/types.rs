@@ -103,6 +103,12 @@ pub struct RiveColors {
 pub struct BackendMascotSlot {
     /// Rive mascot id (e.g. "yellow", "toshi").
     pub mascot_id: String,
+    /// Optional human-facing mascot name (e.g. "Toshi", "Tiny"), taken from the
+    /// manifest. Drives name-addressed routing (#4277 follow-up): a participant
+    /// who says "Hey Toshi …" is routed to this slot instead of the mechanical
+    /// alternation. Absent → that slot is not name-addressable.
+    #[serde(default)]
+    pub name: Option<String>,
     /// Optional per-mascot color palette overrides.
     #[serde(default)]
     pub rive_colors: Option<RiveColors>,

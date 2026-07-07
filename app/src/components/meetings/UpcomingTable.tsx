@@ -14,6 +14,8 @@
 import debug from 'debug';
 import { useState } from 'react';
 
+import { findMascot } from '../../features/human/Mascot/manifest/manifestService';
+import { useMascotManifest } from '../../features/human/Mascot/manifest/useMascotManifest';
 import { useT } from '../../lib/i18n/I18nContext';
 import {
   joinMeetViaBackendBot,
@@ -366,6 +368,9 @@ export function UpcomingTable({
   // and a manual join behave identically.
   const dualMascotEnabled = useAppSelector(selectDualMascotEnabled);
   const mascotVoicePair = useAppSelector(selectMeetingMascotVoicePair);
+  // Manifest drives name-addressed routing (#4277 follow-up): tag each dual slot
+  // with its display name so "Hey Toshi …" routes to that mascot.
+  const { manifest } = useMascotManifest();
 
   // Live in-call state — lets a row detect that its meeting is already joined
   // and suppress the "Join now" button. correlationId is a fresh per-join UUID
@@ -393,11 +398,27 @@ export function UpcomingTable({
   // `mascotId` join instead of a broken duo.
   const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
   const secondarySlotId = mascotVoicePair.secondary?.mascotId;
+  // Slot display names for name-addressed routing: primary = the bot's persona
+  // (wake) name; secondary = its manifest name. Hoisted here (not inside
+  // handleJoin) because the `mascots` array is built at component-body scope.
+  const agentName = personaDisplayName.trim() || 'Tiny';
+  const secondaryName =
+    manifest && secondarySlotId ? findMascot(manifest, secondarySlotId)?.name : undefined;
   const mascots =
     dualMascotEnabled && mascotVoicePair.secondary && primarySlotId && secondarySlotId
       ? [
-          { mascotId: primarySlotId, voiceId: mascotVoicePair.primary.voiceId, riveColors },
-          { mascotId: secondarySlotId, voiceId: mascotVoicePair.secondary.voiceId, riveColors },
+          {
+            mascotId: primarySlotId,
+            name: agentName,
+            voiceId: mascotVoicePair.primary.voiceId,
+            riveColors,
+          },
+          {
+            mascotId: secondarySlotId,
+            name: secondaryName,
+            voiceId: mascotVoicePair.secondary.voiceId,
+            riveColors,
+          },
         ]
       : undefined;
 
@@ -411,9 +432,8 @@ export function UpcomingTable({
     const anchor = replyDisplayName.trim();
     // Reply mode gates the bot behind a wake phrase so it only reacts when
     // addressed ("Hey Alex, …"), never to every caption from the anchor —
-    // mirroring MeetComposer. The bot joins as `agentName`, so the phrase must
-    // match it. Listen-only joins (no anchor) send no wake phrase.
-    const agentName = personaDisplayName.trim() || 'Tiny';
+    // mirroring MeetComposer. The bot joins as `agentName` (hoisted above), so
+    // the phrase must match it. Listen-only joins (no anchor) send no wake phrase.
     const wakePhrase = anchor ? `Hey ${agentName}` : undefined;
     // Mint a fresh correlation id per join. It becomes the call record's
     // `request_id` (recent-calls list key + per-call detail filename), so it

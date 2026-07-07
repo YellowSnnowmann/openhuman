@@ -1203,6 +1203,10 @@ pub enum DomainEvent {
         command_text: String,
         recent_transcript: Vec<BackendMeetTurn>,
         timestamp_ms: u64,
+        /// Dual-mascot name addressing (#4277 follow-up): slot (0 = primary,
+        /// 1 = secondary) whose mascot name was addressed, or `None` when no
+        /// specific mascot was named. Forwarded to `bot:speak` as `mascotSlot`.
+        mascot_slot: Option<u8>,
     },
     /// Core asked the backend bot to speak into the call (`bot:speak`).
     /// Published for observability after the Socket.IO emit succeeds.

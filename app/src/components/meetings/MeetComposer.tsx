@@ -9,6 +9,8 @@
 import debug from 'debug';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 
+import { findMascot } from '../../features/human/Mascot/manifest/manifestService';
+import { useMascotManifest } from '../../features/human/Mascot/manifest/useMascotManifest';
 import { useComposioIntegrations } from '../../lib/composio/hooks';
 import { useT } from '../../lib/i18n/I18nContext';
 import {
@@ -84,6 +86,9 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
   // `mascotId` path below untouched.
   const dualMascotEnabled = useAppSelector(selectDualMascotEnabled);
   const mascotVoicePair = useAppSelector(selectMeetingMascotVoicePair);
+  // Manifest drives name-addressed routing (#4277 follow-up): each dual slot is
+  // tagged with its display name so "Hey Toshi …" routes to that mascot.
+  const { manifest } = useMascotManifest();
 
   // ── Meet slice ───────────────────────────────────────────────────────────
   const meetStatus = useAppSelector(selectBackendMeetStatus);
@@ -150,11 +155,25 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
   // `mascotId` join instead of a broken duo.
   const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
   const secondarySlotId = mascotVoicePair.secondary?.mascotId;
+  // Slot display names for name-addressed routing. The primary is addressed by
+  // the bot's persona name (the wake name); the secondary by its manifest name.
+  const secondaryName =
+    manifest && secondarySlotId ? findMascot(manifest, secondarySlotId)?.name : undefined;
   const mascots =
     dualMascotEnabled && mascotVoicePair.secondary && primarySlotId && secondarySlotId
       ? [
-          { mascotId: primarySlotId, voiceId: mascotVoicePair.primary.voiceId, riveColors },
-          { mascotId: secondarySlotId, voiceId: mascotVoicePair.secondary.voiceId, riveColors },
+          {
+            mascotId: primarySlotId,
+            name: agentName,
+            voiceId: mascotVoicePair.primary.voiceId,
+            riveColors,
+          },
+          {
+            mascotId: secondarySlotId,
+            name: secondaryName,
+            voiceId: mascotVoicePair.secondary.voiceId,
+            riveColors,
+          },
         ]
       : undefined;
   const wakePhrase = listenOnly ? undefined : `Hey ${agentName}`;
