@@ -904,10 +904,23 @@ pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
         return Err("[agent_meetings] socket not connected to backend".to_string());
     }
 
+    // Name-addressing (#4277 follow-up) trace: the mascot ids + names forwarded
+    // to the backend. A `None` name on a slot means the backend can't route
+    // that mascot by name ("Hey Toshi").
+    let mascot_trace: Vec<(String, Option<String>)> = req
+        .mascots
+        .as_ref()
+        .map(|ms| {
+            ms.iter()
+                .map(|m| (m.mascot_id.clone(), m.name.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
     tracing::info!(
         meet_url_host = %normalized_url.host_str().unwrap_or(""),
         platform = %platform,
         display_name_len = display_name.len(),
+        mascots = ?mascot_trace,
         "[agent_meetings] emitting bot:join"
     );
 

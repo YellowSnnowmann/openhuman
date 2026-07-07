@@ -398,10 +398,14 @@ export function UpcomingTable({
   // `mascotId` join instead of a broken duo.
   const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
   const secondarySlotId = mascotVoicePair.secondary?.mascotId;
-  // Slot display names for name-addressed routing: primary = the bot's persona
-  // (wake) name; secondary = its manifest name. Hoisted here (not inside
-  // handleJoin) because the `mascots` array is built at component-body scope.
+  // Slot display names for name-addressed routing — BOTH from the manifest so
+  // either mascot order works ("Hey Toshi" routes to whichever slot Toshi is
+  // in). Primary falls back to the persona/wake name only when its manifest
+  // entry is unavailable. Hoisted here (not inside handleJoin) because the
+  // `mascots` array is built at component-body scope.
   const agentName = personaDisplayName.trim() || 'Tiny';
+  const primaryName =
+    (manifest && primarySlotId ? findMascot(manifest, primarySlotId)?.name : undefined) ?? agentName;
   const secondaryName =
     manifest && secondarySlotId ? findMascot(manifest, secondarySlotId)?.name : undefined;
   const mascots =
@@ -409,7 +413,7 @@ export function UpcomingTable({
       ? [
           {
             mascotId: primarySlotId,
-            name: agentName,
+            name: primaryName,
             voiceId: mascotVoicePair.primary.voiceId,
             riveColors,
           },
@@ -451,6 +455,13 @@ export function UpcomingTable({
       correlationId
     );
     setJoiningId(meeting.calendar_event_id);
+    // Name-addressing (#4277 follow-up) trace: mascot ids + names sent to the
+    // backend. Empty `name` on a slot ⇒ name addressing can't route to it.
+    log(
+      '[upcoming] join mascots=%o wakePhrase=%s',
+      mascots?.map(m => ({ mascotId: m.mascotId, name: m.name })),
+      wakePhrase
+    );
     try {
       await joinMeetViaBackendBot({
         meetUrl: meeting.meet_url,

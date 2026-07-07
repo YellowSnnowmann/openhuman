@@ -155,8 +155,12 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
   // `mascotId` join instead of a broken duo.
   const primarySlotId = mascotVoicePair.primary.mascotId ?? mascotId;
   const secondarySlotId = mascotVoicePair.secondary?.mascotId;
-  // Slot display names for name-addressed routing. The primary is addressed by
-  // the bot's persona name (the wake name); the secondary by its manifest name.
+  // Slot display names for name-addressed routing — BOTH from the manifest so
+  // either mascot order works ("Hey Toshi" routes to whichever slot Toshi is
+  // in). The primary falls back to the persona/wake name only when its manifest
+  // entry is unavailable; the secondary to its id if needed.
+  const primaryName =
+    (manifest && primarySlotId ? findMascot(manifest, primarySlotId)?.name : undefined) ?? agentName;
   const secondaryName =
     manifest && secondarySlotId ? findMascot(manifest, secondarySlotId)?.name : undefined;
   const mascots =
@@ -164,7 +168,7 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
       ? [
           {
             mascotId: primarySlotId,
-            name: agentName,
+            name: primaryName,
             voiceId: mascotVoicePair.primary.voiceId,
             riveColors,
           },
@@ -189,6 +193,14 @@ export function MeetComposer({ onToast, hasSubmittedRef }: MeetComposerProps) {
       platform,
       !listenOnly,
       meetingId
+    );
+    // Name-addressing (#4277 follow-up) trace: the exact mascot ids + names sent
+    // to the backend. If `mascots` is undefined or a slot's `name` is empty,
+    // name addressing ("Hey Toshi") can't work — the backend needs both names.
+    log(
+      '[composer] join mascots=%o wakePhrase=%s',
+      mascots?.map(m => ({ mascotId: m.mascotId, name: m.name })),
+      wakePhrase
     );
     try {
       // Await the RPC BEFORE dispatching setBackendMeetJoining so that a

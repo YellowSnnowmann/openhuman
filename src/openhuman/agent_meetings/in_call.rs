@@ -877,6 +877,9 @@ async fn emit_bot_speak_inner(
     tracing::info!(
         text_len = text.len(),
         correlation_id = ?correlation_id,
+        kind = kind,
+        seq = ?seq,
+        mascot_slot = ?mascot_slot,
         "{LOG_PREFIX} emitting bot:speak"
     );
     mgr.emit("bot:speak", payload)
