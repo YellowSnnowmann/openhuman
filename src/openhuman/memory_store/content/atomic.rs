@@ -109,9 +109,10 @@ pub fn write_if_new(abs_path: &Path, bytes: &[u8]) -> anyhow::Result<bool> {
 ///
 /// Behaviour when the file already exists:
 /// - on-disk body sha matches `body_sha256` → idempotent no-op.
-/// - mismatch → the stale file is removed and rewritten atomically from
-///   `full_bytes`. At ingest the freshly-composed input is authoritative, so
-///   overwriting a drifted on-disk file is the correct reconciliation.
+/// - mismatch → atomically replaced (temp file + rename over the destination)
+///   from `full_bytes`, so the file is never observed missing or partial. At
+///   ingest the freshly-composed input is authoritative, so overwriting a
+///   drifted on-disk file is the correct reconciliation.
 pub fn write_or_replace_body(
     abs_path: &Path,
     full_bytes: &[u8],
@@ -130,28 +131,59 @@ pub fn write_or_replace_body(
             "[content_store::atomic] on-disk body sha mismatch for {} (disk={disk_sha} new={body_sha256}) — re-staging",
             abs_path.display()
         );
-        // Remove the stale file first; write_if_new's fast-path would skip it.
-        if let Err(e) = std::fs::remove_file(abs_path) {
+    }
+    // Write the replacement to a sibling temp file and atomically rename it over
+    // the destination. rename() replaces an existing file atomically on POSIX and
+    // NTFS, so — unlike unlink-then-write — the destination is never observed
+    // missing or partially written even if the process crashes or the write
+    // fails mid-way (a committed DB row can never end up pointing at an absent
+    // body file). Post-condition: on success `abs_path` holds exactly
+    // `full_bytes`, whose body hashes to `body_sha256`.
+    write_via_temp_rename(abs_path, full_bytes)
+}
+
+/// Write `bytes` to `abs_path` via a sibling tempfile + fsync + atomic rename,
+/// **replacing** any existing file. The rename is atomic on POSIX and NTFS, so
+/// the destination is never seen missing or half-written. Parent directories are
+/// created on demand and the parent dir entry is fsync'd on Unix for durability.
+fn write_via_temp_rename(abs_path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    let parent = abs_path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)
+        .map_err(|e| anyhow::anyhow!("create_dir_all {:?}: {e}", parent))?;
+
+    let tmp_path = parent.join(format!(".tmp_{}.md", uuid_v4_hex()));
+    {
+        let mut f = std::fs::File::create(&tmp_path)
+            .map_err(|e| anyhow::anyhow!("create tempfile {:?}: {e}", tmp_path))?;
+        f.write_all(bytes)
+            .map_err(|e| anyhow::anyhow!("write tempfile {:?}: {e}", tmp_path))?;
+        f.sync_all()
+            .map_err(|e| anyhow::anyhow!("fsync tempfile {:?}: {e}", tmp_path))?;
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_path, abs_path) {
+        // Keep the old destination intact; only our temp is cleaned up.
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(anyhow::anyhow!(
+            "rename {:?} -> {:?}: {e}",
+            tmp_path,
+            abs_path
+        ));
+    }
+
+    #[cfg(unix)]
+    if let Ok(dir) = std::fs::File::open(parent) {
+        if let Err(e) = dir.sync_all() {
             log::warn!(
-                "[content_store::atomic] failed to remove stale file {}: {e}",
-                abs_path.display()
+                "[content_store::atomic] parent dir fsync failed for {:?}: {e}",
+                parent
             );
         }
     }
-    let wrote = write_if_new(abs_path, full_bytes)?;
-    if !wrote {
-        // write_if_new skipped: the file still exists (a stale remove that failed,
-        // or a writer that won the rename race). Refuse to let the caller record a
-        // content_sha256 the on-disk body does not actually hash to (#4689) — that
-        // is exactly the DB/disk divergence this function exists to prevent.
-        let disk_sha = read_body_sha256(abs_path).unwrap_or_default();
-        if disk_sha != body_sha256 {
-            return Err(anyhow::anyhow!(
-                "[content_store::atomic] content file {} still holds a mismatching body after re-stage (disk={disk_sha} expected={body_sha256})",
-                abs_path.display()
-            ));
-        }
-    }
+    log::debug!(
+        "[content_store::atomic] wrote (replace) {}",
+        abs_path.display()
+    );
     Ok(())
 }
 

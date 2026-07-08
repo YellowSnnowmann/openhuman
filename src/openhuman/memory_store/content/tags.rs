@@ -213,13 +213,16 @@ fn ensure_tag_rewrite_preserves_body(
             .and_then(split_front_matter)
             .map(|(_, body)| body.to_string())
     };
-    if body(old_bytes) != body(new_bytes) {
-        return Err(anyhow::anyhow!(
-            "[content_store::tags] update_chunk_tags would mutate body for {:?} — aborting rewrite",
+    // Require BOTH sides to parse AND match. Comparing `Option`s directly would
+    // let two un-parseable sides (`None == None`) pass — the exact silent-drift
+    // case this guard exists to catch — so treat an unparseable body as a failure.
+    match (body(old_bytes), body(new_bytes)) {
+        (Some(a), Some(b)) if a == b => Ok(()),
+        _ => Err(anyhow::anyhow!(
+            "[content_store::tags] update_chunk_tags would mutate or invalidate the body for {:?} — aborting rewrite",
             abs_path
-        ));
+        )),
     }
-    Ok(())
 }
 
 /// Slugify an entity kind string for use in an Obsidian hierarchical tag.
@@ -470,6 +473,14 @@ mod tests {
         let old = b"---\nk: v\n---\nBODY";
         let drifted = b"---\nk: v\n---\nDIFFERENT BODY";
         assert!(ensure_tag_rewrite_preserves_body(old, drifted, p).is_err());
+    }
+
+    #[test]
+    fn ensure_tag_rewrite_preserves_body_rejects_unparseable_bodies() {
+        // Both sides lack front-matter → both parse to None. The guard must still
+        // fail rather than let `None == None` pass silently.
+        let p = std::path::Path::new("x.md");
+        assert!(ensure_tag_rewrite_preserves_body(b"no front matter", b"still none", p).is_err());
     }
 
     #[test]

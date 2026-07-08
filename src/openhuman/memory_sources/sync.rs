@@ -318,19 +318,6 @@ async fn sync_items_individually(
     let items = reader.list_items(source, config).await?;
     let total = items.len();
 
-    if total == 0 {
-        return Ok(0);
-    }
-
-    emit_sync_stage(
-        MemorySyncTrigger::Manual,
-        MemorySyncStage::Stored,
-        Some(source.kind.as_str()),
-        Some(&source.id),
-        Some(format!("{total} item(s) discovered")),
-        Some(&source.id),
-    );
-
     // Reconcile before re-ingesting: for LOCAL FOLDER sources only, drop chunks
     // (rows + on-disk bodies) for items previously ingested under this source
     // that no longer exist on disk — e.g. a renamed or deleted file. Each item
@@ -339,12 +326,16 @@ async fn sync_items_individually(
     // and orphans the old chunk + its on-disk body; without this the stale body
     // lingers forever and can only ever be served as a ≤500-char preview (#4689).
     //
+    // Runs BEFORE the empty-listing early return so an emptied folder (every file
+    // deleted → total == 0) still reconciles instead of leaving all its chunks
+    // behind. This is safe on an empty or partial listing because
+    // `prune_vanished_items` re-checks each candidate on disk and only deletes
+    // files that are provably absent, so a transient listing miss (EACCES /
+    // EMFILE / stat stall) is never mistaken for a deletion.
+    //
     // Restricted to Folder: for feed / web / conversation sources, absence from
     // the current listing means "rolled off / not re-fetched", NOT "deleted", so
-    // pruning them would irrecoverably delete valid archived items. And even for
-    // a folder, `prune_vanished_items` re-checks each candidate on disk before
-    // deleting, so a transient listing miss (EACCES / EMFILE / stat stall) is
-    // never mistaken for a deletion.
+    // pruning them would irrecoverably delete valid archived items.
     if source_supports_prune(&source.kind) {
         if let Some(base_path) = source.path.clone() {
             let config = config.clone();
@@ -362,6 +353,19 @@ async fn sync_items_individually(
             }
         }
     }
+
+    if total == 0 {
+        return Ok(0);
+    }
+
+    emit_sync_stage(
+        MemorySyncTrigger::Manual,
+        MemorySyncStage::Stored,
+        Some(source.kind.as_str()),
+        Some(&source.id),
+        Some(format!("{total} item(s) discovered")),
+        Some(&source.id),
+    );
 
     let ingested = Arc::new(AtomicUsize::new(0));
     let processed = Arc::new(AtomicUsize::new(0));
@@ -759,6 +763,23 @@ mod tests {
 
         // Not deleted — the on-disk re-check kept it.
         assert_eq!(chunk_store::count_chunks(&cfg).unwrap(), 1);
+    }
+
+    #[test]
+    fn prune_vanished_items_prunes_when_folder_emptied() {
+        // Emptied folder: listing is empty (live = {}) and no files remain on
+        // disk, so the previously-ingested chunk must be pruned (the reason prune
+        // now runs before the total == 0 early return).
+        let tmp = TempDir::new().unwrap();
+        let mut cfg = Config::default();
+        cfg.workspace_dir = tmp.path().to_path_buf();
+        let base = tmp.path().join("empty_folder");
+        std::fs::create_dir_all(&base).unwrap();
+
+        seed(&cfg, &doc_chunk("mem_src:src4:gone.md"));
+        let live: HashSet<String> = HashSet::new();
+        prune_vanished_items(&cfg, "src4", &base, &live);
+        assert_eq!(chunk_store::count_chunks(&cfg).unwrap(), 0);
     }
 
     #[test]
