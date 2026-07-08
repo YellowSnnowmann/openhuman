@@ -13,6 +13,7 @@
 //! | [`ListFlowConnectionsTool`] | `None`              | read: connection refs (ids/names only)    |
 //! | [`SearchToolCatalogTool`]   | `None`              | read: real Composio tool slugs (live catalog) |
 //! | [`GetToolContractTool`]     | `None`              | read: one action's FULL live contract     |
+//! | [`GetToolOutputSampleTool`] | `ReadOnly`          | ONE bounded real Composio call (Read-scope only, connected toolkit only) |
 //! | [`ListAgentProfilesTool`]   | `None`              | read: selectable agent kinds (`agent_ref`)|
 //! | [`DryRunWorkflowTool`]  | `Execute` (tier-gated)  | run a *draft* against MOCK capabilities   |
 //! | [`SaveWorkflowTool`]    | `Write`                 | persist a graph onto an EXISTING flow     |
@@ -32,8 +33,18 @@
 //! `composio_list_toolkits`, `composio_list_connections`, `composio_connect`
 //! (defined in `composio/tools.rs`) — so the builder can link an app the
 //! workflow needs before proposing. Those stay within the invariant: connect
-//! is an approval-gated OAuth hand-off, and `composio_execute` (running a real
-//! action) remains deliberately OUT of scope.
+//! is an approval-gated OAuth hand-off, and `composio_execute` (running an
+//! arbitrary real action, any scope) remains deliberately OUT of scope.
+//!
+//! **One narrow, deliberate carve-out (B12):** [`GetToolOutputSampleTool`]
+//! (`get_tool_output_sample`) DOES perform a real Composio call — but only
+//! ever a `Read`-scope one (hard-refused otherwise, regardless of the user's
+//! per-toolkit scope preference), and only against a toolkit the user has
+//! ALREADY connected. It exists because some actions' live listings publish
+//! no output schema at all (verified for every GitHub action), leaving
+//! `get_tool_contract` with no ground truth for a downstream `split_out.path`
+//! — this makes exactly one bounded real read to observe the actual shape
+//! instead. It can never send/create/update/delete anything.
 
 use std::sync::Arc;
 
@@ -802,11 +813,150 @@ impl Tool for GetToolContractTool {
         };
 
         match catalog.iter().find(|c| c.slug.eq_ignore_ascii_case(&slug)) {
-            Some(contract) => Ok(ToolResult::success(serde_json::to_string_pretty(contract)?)),
+            Some(contract) => {
+                // B12: a prior real-output probe (get_tool_output_sample) for
+                // this exact slug is ACTUAL observed data and always wins
+                // over the schema-derived hint — most relevant for an action
+                // whose live listing publishes no output schema at all (e.g.
+                // every GitHub action verified live as of this fix), where
+                // `contract.primary_array_path` would otherwise be
+                // permanently `None`.
+                let contract =
+                    crate::openhuman::tinyflows::caps::apply_probe_override(contract.clone());
+                Ok(ToolResult::success(serde_json::to_string_pretty(
+                    &contract,
+                )?))
+            }
             None => Ok(ToolResult::error(format!(
                 "'{slug}' is not a real action in the '{toolkit}' toolkit's live catalog — use \
                  search_tool_catalog to find a real slug."
             ))),
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// get_tool_output_sample — READ-ONLY real Composio call: the B12 output probe
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `get_tool_output_sample`: make ONE bounded, READ-ONLY, REAL Composio call
+/// for `slug` and derive its `primary_array_path`/`output_fields` from the
+/// ACTUAL response, overriding `get_tool_contract`'s schema-derived hint for
+/// this slug from then on (see
+/// [`crate::openhuman::tinyflows::caps::apply_probe_override`]).
+///
+/// **Exists because a schema-derived hint sometimes doesn't exist at all**:
+/// Composio's live listing genuinely omits `output_parameters` for some
+/// actions — verified live for every GitHub action, including the curated
+/// `GITHUB_LIST_REPOSITORY_ISSUES` — leaving `get_tool_contract`'s
+/// `primary_array_path` permanently `null`. Without ground truth the builder
+/// has been observed guessing the whole-payload `"json.data"` as a
+/// `split_out.path` (live flow "funny reminders v2": one item — the
+/// `{issues:[...]}` container itself — instead of the real per-item list),
+/// silently degrading a fan-out to a single item.
+///
+/// **This is a deliberate, narrow carve-out of the workflow-builder agent's
+/// "propose/read only, no composio_execute" invariant** (see this module's
+/// top doc): unlike `composio_execute`, this tool can ONLY ever perform a
+/// `Read`-scope action (gated by
+/// [`crate::openhuman::tinyflows::caps::probe_tool_output_sample`]'s scope
+/// check, which ignores the user's per-toolkit scope preference — a probe
+/// must never perform a real mutation no matter what the user has toggled
+/// on) against a toolkit the user has ALREADY connected. No message is sent,
+/// no record created/updated/deleted, ever.
+///
+/// Pass the SAME `args` you intend to wire into the real `tool_call` node —
+/// this samples THAT call, not a generic fixture. Omit `args` (or pass `{}`)
+/// for a zero-required-arg action.
+pub struct GetToolOutputSampleTool {
+    config: Arc<Config>,
+}
+
+impl GetToolOutputSampleTool {
+    pub fn new(config: Arc<Config>) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait]
+impl Tool for GetToolOutputSampleTool {
+    fn name(&self) -> &str {
+        "get_tool_output_sample"
+    }
+
+    fn description(&self) -> &str {
+        "Make ONE bounded, READ-ONLY, REAL call to a Composio action and derive its real \
+         `primary_array_path`/`output_fields` from the ACTUAL response — use this when \
+         get_tool_contract returns `output_schema: null` / `primary_array_path: null` for a \
+         source tool you plan to `split_out` (e.g. every GitHub action, verified live), so a \
+         downstream split_out.path never fans out over the whole-payload container by mistake. \
+         Only ever performs a Read action (refuses Write/Admin actions unconditionally, \
+         regardless of the user's scope preference) against an ALREADY-CONNECTED toolkit — never \
+         sends, creates, updates, or deletes anything. Pass the SAME args you intend to wire into \
+         the real tool_call node — this samples THAT exact call. Call get_tool_contract again \
+         afterward (or trust this tool's own `primary_array_path`/`output_fields`) to see the \
+         override applied. Real actions only, not `oh:` or `=`-derived slugs."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string",
+                    "description": "The exact Composio action slug, e.g. 'GITHUB_LIST_REPOSITORY_ISSUES'."
+                },
+                "args": {
+                    "type": "object",
+                    "description": "Arguments for the real call — the SAME ones you intend to wire into the tool_call node (e.g. {\"owner\": \"acme\", \"repo\": \"widgets\"}). Omit for a zero-required-arg action."
+                }
+            },
+            "required": ["slug"],
+            "additionalProperties": false
+        })
+    }
+
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::ReadOnly
+    }
+
+    fn external_effect(&self) -> bool {
+        false
+    }
+
+    async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
+        let slug = match args.get("slug").and_then(Value::as_str).map(str::trim) {
+            Some(s) if !s.is_empty() => s.to_string(),
+            _ => return Ok(ToolResult::error("Missing 'slug' parameter".to_string())),
+        };
+        let call_args = args.get("args").cloned().unwrap_or(json!({}));
+
+        tracing::debug!(
+            target: "flows",
+            %slug,
+            "[flows] get_tool_output_sample: tool invoked"
+        );
+
+        match crate::openhuman::tinyflows::caps::probe_tool_output_sample(
+            &self.config,
+            &slug,
+            call_args,
+        )
+        .await
+        {
+            Ok(sample) => {
+                let primary_array_path_for_split_out = sample
+                    .primary_array_path
+                    .as_ref()
+                    .map(|p| format!("json.{p}"));
+                Ok(ToolResult::success(serde_json::to_string_pretty(&json!({
+                    "slug": slug,
+                    "primary_array_path": sample.primary_array_path,
+                    "split_out_path": primary_array_path_for_split_out,
+                    "output_fields": sample.output_fields,
+                }))?))
+            }
+            Err(e) => Ok(ToolResult::error(e)),
         }
     }
 }
@@ -964,6 +1114,24 @@ impl Tool for ListAgentProfilesTool {
 /// (`{ node_id, error }`, the error text read back out of the run's `output`
 /// state — see [`tool_call_error_message`]) and fails the dry run the same as
 /// a null resolution.
+///
+/// **Routing-divergence warning (B15's dry-run blind spot):** none of the
+/// checks above see a node that never ran at all. An `agent`/`tool_call` node
+/// downstream of a `condition` can be silently unexercised because the
+/// sandbox's mock trigger payload has a different *shape* than a real
+/// trigger's (e.g. a webhook's real JSON body vs. the dry run's `{}`
+/// default), so the condition takes a different branch under mock data than
+/// it would at runtime — a graph can dry-run `ok: true` while its most
+/// data-dependent node was never actually checked. After the run settles,
+/// every `agent`/`tool_call` node with no [`ExecutionStep`] in the
+/// [`CapturingObserver`] is collected into `routing_divergence_warnings`
+/// (`{ node_id, condition_node_id, message }`, `condition_node_id` naming the
+/// nearest upstream `condition` node found by walking predecessors — see
+/// [`find_upstream_condition`] — or `null` if none is found). This is a
+/// **warning, not a hard reject**: it never flips `ok` to `false` by itself
+/// (an unexercised branch can be entirely intentional), and is surfaced on
+/// both the `ok: true` and `ok: false` result shapes so the caller can
+/// double-check that node's wiring by hand.
 pub struct DryRunWorkflowTool {
     security: Arc<SecurityPolicy>,
     config: Arc<Config>,
@@ -1254,6 +1422,57 @@ impl Tool for DryRunWorkflowTool {
             })
             .collect();
 
+        // Routing-divergence blind spot (B15): an `agent`/`tool_call` node that
+        // did NOT execute during the sandbox run at all — because an upstream
+        // `condition` routed the mock trigger payload onto its OTHER branch —
+        // is invisible to every check above (`null_resolutions` etc. only
+        // inspect steps that ran). But the mock input's *shape* need not match
+        // a real trigger's shape (a webhook's real JSON vs. the dry run's `{}`
+        // default, say), so a condition that took the `false` branch under mock
+        // data may well take `true` at runtime with real data — or vice versa.
+        // Either way, the dry run silently never exercised the very node whose
+        // wiring most needed checking. This is a WARNING, not a hard reject
+        // (an unexercised branch can be entirely intentional), surfaced
+        // alongside the other diagnostics so the caller can double-check the
+        // wiring by hand.
+        let executed_steps = observer.steps();
+        let executed_node_ids: std::collections::HashSet<&str> = executed_steps
+            .iter()
+            .map(|step| step.node_id.as_str())
+            .collect();
+        let routing_divergence_warnings: Vec<Value> = graph
+            .nodes
+            .iter()
+            .filter(|node| {
+                node.kind != tinyflows::model::NodeKind::Trigger
+                    && (agent_node_ids.contains(node.id.as_str())
+                        || tool_call_node_ids.contains(node.id.as_str()))
+                    && !executed_node_ids.contains(node.id.as_str())
+            })
+            .map(|node| {
+                let condition_node_id = find_upstream_condition(&graph, &node.id);
+                let message = match &condition_node_id {
+                    Some(cid) => format!(
+                        "Node '{}' did not execute in the dry run (condition '{}' routed to \
+                         the other branch under mock data); verify the wiring — at runtime \
+                         with real data it may route differently.",
+                        node.id, cid
+                    ),
+                    None => format!(
+                        "Node '{}' did not execute in the dry run (an upstream branch routed \
+                         the mock data away from it); verify the wiring — at runtime with real \
+                         data it may route differently.",
+                        node.id
+                    ),
+                };
+                json!({
+                    "node_id": node.id,
+                    "condition_node_id": condition_node_id,
+                    "message": message,
+                })
+            })
+            .collect();
+
         tracing::info!(
             target: "flows",
             node_count = graph.nodes.len(),
@@ -1262,6 +1481,7 @@ impl Tool for DryRunWorkflowTool {
             agent_prompt_null_count = agent_prompt_nulls.len(),
             agent_input_context_null_count = agent_input_context_nulls.len(),
             node_error_count = node_errors.len(),
+            routing_divergence_warning_count = routing_divergence_warnings.len(),
             "[flows] dry_run_workflow: sandbox run finished"
         );
 
@@ -1286,6 +1506,7 @@ impl Tool for DryRunWorkflowTool {
                 "agent_prompt_nulls": agent_prompt_nulls,
                 "agent_input_context_nulls": agent_input_context_nulls,
                 "node_errors": node_errors,
+                "routing_divergence_warnings": routing_divergence_warnings,
                 "message": "These tool_call args resolved to null, an agent node's prompt or \
                     input_context resolved to null (an EMPTY prompt — see agent_prompt_nulls — \
                     or no upstream data at all — see agent_input_context_nulls), or a tool_call \
@@ -1294,7 +1515,10 @@ impl Tool for DryRunWorkflowTool {
                     output (give any agent node an output_parser.schema so its fields are \
                     addressable), feed upstream data into a null-resolved agent prompt/ \
                     input_context from a real upstream field instead of a jq expression inside \
-                    the prompt text, and fix or rewire whatever tool_call node_errors names.",
+                    the prompt text, and fix or rewire whatever tool_call node_errors names. Also \
+                    check routing_divergence_warnings: any agent/tool_call node listed there \
+                    never ran in this sandbox at all because an upstream condition routed the \
+                    mock data past it — verify that wiring by hand too.",
             }))?));
         }
 
@@ -1307,9 +1531,44 @@ impl Tool for DryRunWorkflowTool {
             "agent_prompt_nulls": agent_prompt_nulls,
             "agent_input_context_nulls": agent_input_context_nulls,
             "node_errors": node_errors,
-            "note": "SANDBOX (mock) output — LLM/tool/HTTP/code nodes returned deterministic echoes; NO real side effects occurred. This checks wiring/routing only, not whether real integrations work.",
+            "routing_divergence_warnings": routing_divergence_warnings,
+            "note": "SANDBOX (mock) output — LLM/tool/HTTP/code nodes returned deterministic echoes; NO real side effects occurred. This checks wiring/routing only, not whether real integrations work. \
+                If routing_divergence_warnings is non-empty, an agent/tool_call node never ran in \
+                this sandbox because an upstream condition routed the mock data past it — that \
+                node's wiring is unverified; check it by hand.",
         }))?))
     }
+}
+
+/// Walks a graph backward from `node_id`'s predecessors (any number of hops)
+/// to find the nearest ancestor that is a `condition` node — used to name the
+/// branch responsible for a routing-divergence warning (see
+/// [`DryRunWorkflowTool::execute`]'s routing-divergence check, just above).
+/// Returns `None` if no predecessor chain reaches a `condition` node (e.g. the
+/// node simply has no predecessors, or none of them is a condition) — the
+/// warning is still emitted, just without a named culprit node.
+fn find_upstream_condition(graph: &WorkflowGraph, node_id: &str) -> Option<String> {
+    let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<&str> = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.to_node == node_id)
+        .map(|edge| edge.from_node.as_str())
+        .collect();
+    while let Some(current) = queue.pop_front() {
+        if !visited.insert(current) {
+            continue;
+        }
+        if let Some(node) = graph.nodes.iter().find(|n| n.id == current) {
+            if node.kind == tinyflows::model::NodeKind::Condition {
+                return Some(node.id.clone());
+            }
+        }
+        for edge in graph.edges.iter().filter(|edge| edge.to_node == current) {
+            queue.push_back(edge.from_node.as_str());
+        }
+    }
+    None
 }
 
 /// Best-effort extraction of the human-readable error message the engine
