@@ -59,7 +59,7 @@ fn now_ms() -> u64 {
 pub fn auth_error_message(provider: &str, status: u16) -> String {
     format!(
         "{provider} rejected the API key (HTTP {status}). Update your {provider} \
-         API key in Settings → AI to restore it."
+         API key in Connections → API keys → LLM to restore it."
     )
 }
 

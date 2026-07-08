@@ -783,7 +783,7 @@ impl OpenAiCompatibleProvider {
             "{name} API error (404): model '{model}' does not support the \
              chat-completions API that OpenHuman uses — it appears to be a \
              completion-only / base model. Assign a chat-capable model to this \
-             provider (e.g. in Settings → AI), or pick a different model. \
+             provider (e.g. in Connections → API keys → LLM), or pick a different model. \
              Provider detail: {sanitized}",
             name = self.name,
         )
@@ -809,7 +809,7 @@ impl OpenAiCompatibleProvider {
         format!(
             "{name} API error: model '{model}' does not support chat — it \
              appears to be an embedding or non-chat model. Assign a \
-             chat-capable model to this provider (e.g. in Settings → AI), or \
+             chat-capable model to this provider (e.g. in Connections → API keys → LLM), or \
              pick a different model. Provider detail: {sanitized}",
             name = self.name,
         )

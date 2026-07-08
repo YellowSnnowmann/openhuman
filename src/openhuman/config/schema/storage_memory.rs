@@ -359,7 +359,7 @@ pub struct MemoryTreeConfig {
     ///
     /// Default `false` — "Build Summary Trees" was local-only before #002.
     /// Enabling this routes workspace memory summaries to the configured cloud
-    /// provider. Set to `true` via Settings → AI → Memory or the env var
+    /// provider. Set to `true` via Connections → API keys → LLM or the env var
     /// `OPENHUMAN_MEMORY_TREE_CLOUD_SUMMARIZATION=true` to acknowledge that
     /// memory content will be sent to an external service.
     #[serde(default)]

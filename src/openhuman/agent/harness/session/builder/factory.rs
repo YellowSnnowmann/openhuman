@@ -1262,7 +1262,7 @@ fn resolve_dispatcher_kind(
 ///
 /// Routing on `agent_id == "subconscious"` covers the second case (Codex P2:
 /// otherwise promoted background turns fall through to `chat_provider` and ignore
-/// Settings → AI "Subconscious"). Other explicit `hint:<role>` markers route to
+/// Connections → API keys → LLM "Subconscious"). Other explicit `hint:<role>` markers route to
 /// their workload; everything else (incl. the legacy `default_model` tier the
 /// bootstrap pinned) falls through to `chat` so `chat_provider` drives the
 /// user-facing turn.

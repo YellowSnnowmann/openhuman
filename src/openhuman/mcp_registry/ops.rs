@@ -937,7 +937,7 @@ async fn invoke_config_assist_agent(
         Err(e) => {
             return Ok(json!({
                 "reply": format!(
-                    "Couldn't start the assistant: {e}. Make sure AI/inference is configured (Settings → AI)."
+                    "Couldn't start the assistant: {e}. Make sure AI/inference is configured (Connections → API keys → LLM)."
                 ),
                 "suggested_env": null
             }));
@@ -966,7 +966,7 @@ async fn invoke_config_assist_agent(
         Ok(reply) => Ok(json!({ "reply": reply, "suggested_env": null })),
         Err(e) => Ok(json!({
             "reply": format!(
-                "I couldn't research that right now: {e}. Make sure AI/inference is configured (Settings → AI)."
+                "I couldn't research that right now: {e}. Make sure AI/inference is configured (Connections → API keys → LLM)."
             ),
             "suggested_env": null
         })),

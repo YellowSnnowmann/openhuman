@@ -6690,21 +6690,21 @@ const messages: TranslationMap = {
   'memoryTree.status.degradedStructure': 'Struktura wiki niekompletna',
   'memoryTree.status.extractionCoverage': 'Pokrycie ekstrakcji: {pct}% fragmentów ma strukturę',
   'memory.health.remediation.budget_exhausted':
-    'Osadzenia pamięci wyczerpały zarządzany budżet. Skonfiguruj lokalne osadzenia Ollama (Ustawienia → AI → Embeddings) lub dodaj własny klucz API osadzeń, aby kontynuować budowanie pamięci.',
+    'Osadzenia pamięci wyczerpały zarządzany budżet. Skonfiguruj lokalne osadzenia Ollama (Połączenia → Klucze API → Embeddingi) lub dodaj własny klucz API osadzeń, aby kontynuować budowanie pamięci.',
   'memory.health.remediation.auth_missing':
-    'Nie znaleziono poświadczeń osadzeń. Zaloguj się do OpenHuman lub skonfiguruj lokalne osadzenia Ollama w Ustawienia → AI → Embeddings.',
+    'Nie znaleziono poświadczeń osadzeń. Zaloguj się do OpenHuman lub skonfiguruj lokalne osadzenia Ollama w Połączenia → Klucze API → Embeddingi.',
   'memory.health.remediation.auth_invalid':
-    'Twoje poświadczenia osadzeń zostały odrzucone. Uwierzytelnij się ponownie lub przełącz na lokalne osadzenia Ollama w Ustawienia → AI → Embeddings.',
+    'Twoje poświadczenia osadzeń zostały odrzucone. Uwierzytelnij się ponownie lub przełącz na lokalne osadzenia Ollama w Połączenia → Klucze API → Embeddingi.',
   'memory.health.remediation.embeddings_unconfigured':
-    'Nie skonfigurowano dostawcy osadzeń, więc wyszukiwanie semantyczne jest wyłączone. Skonfiguruj lokalne osadzenia Ollama (zalecane) lub dodaj klucz osadzeń w Ustawienia → AI → Embeddings.',
+    'Nie skonfigurowano dostawcy osadzeń, więc wyszukiwanie semantyczne jest wyłączone. Skonfiguruj lokalne osadzenia Ollama (zalecane) lub dodaj klucz osadzeń w Połączenia → Klucze API → Embeddingi.',
   'memory.health.remediation.embedding_dim_mismatch':
     'Model osadzeń zwraca nieprawidłowy rozmiar wektora (pamięć oczekuje 1024 wymiarów). Wybierz model o 1024 wymiarach lub poproś dostawcę o 1024 wymiary.',
   'memory.health.remediation.local_model_unavailable':
-    'Wymagany model lokalny jest niedostępny. Zainstaluj/uruchom Ollama i pobierz model albo przełącz to zadanie na dostawcę chmurowego w Ustawienia → AI.',
+    'Wymagany model lokalny jest niedostępny. Zainstaluj/uruchom Ollama i pobierz model albo przełącz to zadanie na dostawcę chmurowego w Połączenia → Klucze API.',
   'memory.health.remediation.extraction_timeout':
-    'Model ekstrakcji pamięci przekracza limit czasu, więc wiki ma niewielką strukturę. Zmień model ekstrakcji pamięci na szybszy w Ustawienia → AI.',
+    'Model ekstrakcji pamięci przekracza limit czasu, więc wiki ma niewielką strukturę. Zmień model ekstrakcji pamięci na szybszy w Połączenia → Klucze API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'Brak dostępnego dostawcy podsumowań dla funkcji Twórz drzewa podsumowań. Włącz lokalną AI (Ollama) lub włącz podsumowywanie w chmurze w Ustawienia → AI → Pamięć.',
+    'Brak dostępnego dostawcy podsumowań dla funkcji Twórz drzewa podsumowań. Włącz lokalną AI (Ollama) lub włącz podsumowywanie w chmurze w Połączenia → Klucze API → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Pominięto element pamięci, ponieważ jego tekst był pusty. Żadne działanie nie jest wymagane — nowe elementy są nadal osadzane normalnie.',
   'memory.health.remediation.storage_unavailable':
@@ -6712,7 +6712,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.transient':
     'Tymczasowy błąd przerwał przetwarzanie pamięci. Ponowna próba nastąpi automatycznie.',
   'memory.health.remediation.unknown':
-    'Przetwarzanie pamięci napotkało problem. Sprawdź Ustawienia → AI w celu konfiguracji.',
+    'Przetwarzanie pamięci napotkało problem. Sprawdź Połączenia → Klucze API w celu konfiguracji.',
   // Chat — agent-generated artifacts (#2779)
 
   // Chat composer toolbar
