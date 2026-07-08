@@ -348,6 +348,7 @@ fn thread_reply_to_origin(
                 last_seq: seq,
                 created_at: now.clone(),
                 last_message_at: now.clone(),
+                ..Default::default()
             },
         )?;
         store::insert_message(
@@ -361,6 +362,7 @@ fn thread_reply_to_origin(
                 body,
                 timestamp: now.clone(),
                 seq,
+                ..Default::default()
             },
         )
     });
@@ -445,6 +447,7 @@ async fn report_peer_reply_to_master(
                 last_seq: seq,
                 created_at: now.clone(),
                 last_message_at: now.clone(),
+                ..Default::default()
             },
         )?;
         store::insert_message(
@@ -458,6 +461,7 @@ async fn report_peer_reply_to_master(
                 body: report.to_string(),
                 timestamp: now.clone(),
                 seq,
+                ..Default::default()
             },
         )
     })
@@ -691,6 +695,7 @@ pub async fn record_subconscious_directive(config: &Config, directive_id: i64, t
                 last_seq: directive_id,
                 created_at: now.clone(),
                 last_message_at: now.clone(),
+                ..Default::default()
             },
         )?;
         store::insert_message(
@@ -704,6 +709,7 @@ pub async fn record_subconscious_directive(config: &Config, directive_id: i64, t
                 body: text.to_string(),
                 timestamp: now.clone(),
                 seq: directive_id,
+                ..Default::default()
             },
         )
     }) {
@@ -941,6 +947,7 @@ impl ProductionRuntime {
                         last_seq: 0,
                         created_at: now.clone(),
                         last_message_at: now.clone(),
+                        ..Default::default()
                     },
                 )?;
                 store::insert_message(
@@ -954,6 +961,7 @@ impl ProductionRuntime {
                         body: body.to_string(),
                         timestamp: now.clone(),
                         seq,
+                        ..Default::default()
                     },
                 )
             })
@@ -1274,6 +1282,7 @@ impl OrchestrationRuntime for ProductionRuntime {
                         last_seq: seq,
                         created_at: now.clone(),
                         last_message_at: now.clone(),
+                        ..Default::default()
                     },
                 )?;
                 store::insert_message(
@@ -1287,6 +1296,7 @@ impl OrchestrationRuntime for ProductionRuntime {
                         body: body_owned,
                         timestamp: now.clone(),
                         seq,
+                        ..Default::default()
                     },
                 )
             })
@@ -1486,6 +1496,27 @@ pub(super) fn gather_unread_signals(
     Ok(out)
 }
 
+/// Gather remote-approval attention signals from the orchestration store: every
+/// session whose persisted v2 run-state is `waiting_approval` (Phase 1 stamps
+/// this — plus the prompt in `current_detail` and the in-flight `active_call_id`
+/// — when a peer harness emits an `approval_request`). Mirrors
+/// [`gather_unread_signals`]: pure store read, the pure mapper
+/// [`super::attention::remote_approval_signals`] does the filtering.
+pub(super) fn gather_remote_approval_signals(
+    conn: &rusqlite::Connection,
+) -> anyhow::Result<Vec<super::attention::RemoteApprovalSignal>> {
+    let signals = super::attention::remote_approval_signals(store::list_sessions(conn)?);
+    for sig in &signals {
+        log::debug!(
+            target: LOG,
+            "[orchestration_rpc] attention.remote_approval session_id={} has_call={}",
+            sig.session_id,
+            sig.active_call_id.is_some(),
+        );
+    }
+    Ok(signals)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1510,6 +1541,7 @@ mod tests {
             last_seq: 1,
             created_at: "2026-07-06T00:00:00Z".into(),
             last_message_at: at.into(),
+            ..Default::default()
         };
         let message = |id: &str, session: &str, kind: ChatKind, at: &str| OrchestrationMessage {
             id: id.into(),
@@ -1520,6 +1552,7 @@ mod tests {
             body: "hello".into(),
             timestamp: at.into(),
             seq: 1,
+            ..Default::default()
         };
 
         let signals = store::with_connection(&config.workspace_dir, |conn| {
@@ -1660,6 +1693,7 @@ mod tests {
             body: "hello".into(),
             timestamp: format!("2026-07-02T00:00:{seq:02}Z"),
             seq,
+            ..Default::default()
         }
     }
 
@@ -2021,6 +2055,7 @@ mod tests {
                     last_seq: 1,
                     created_at: "now".into(),
                     last_message_at: "now".into(),
+                    ..Default::default()
                 },
             )?;
             store::insert_message(conn, &msg("h1", 1))?;
