@@ -201,7 +201,7 @@ fn budget_exceeded_copy_mentions_top_up() {
     // switching routing to their own local model — so an Ollama user with
     // no credits can self-diagnose. We guide, never auto-switch.
     assert!(message.contains("Use Your Own Models"));
-    assert!(message.contains("Settings"));
+    assert!(message.contains("Connections → API keys → LLM"));
 }
 
 #[test]
