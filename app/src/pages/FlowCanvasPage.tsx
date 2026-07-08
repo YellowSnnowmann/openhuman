@@ -572,18 +572,20 @@ export default function FlowCanvasPage() {
   // Preserve any other state fields (e.g. a repair seed) — only drop
   // `copilotBuild`.
   const clearBuildSeed = useCallback(() => {
-    const state = location.state;
-    if (!state || typeof state !== 'object' || !('copilotBuild' in state)) return;
-    const next = { ...(state as Record<string, unknown>) };
+    // Named `routeState` (not `state`) to avoid shadowing the component-level
+    // `state` from `useState<LoadState>` that drives this file's render switch.
+    const routeState = location.state;
+    if (!routeState || typeof routeState !== 'object' || !('copilotBuild' in routeState)) return;
+    const next = { ...(routeState as Record<string, unknown>) };
     delete next.copilotBuild;
-    log('build seed consumed — clearing route state');
+    log('build seed consumed — clearing route state: id=%s', id);
     // Navigate with an object (not a bare pathname) so the current search and
     // hash are preserved — a string target would drop them.
     navigate(
       { pathname: location.pathname, search: location.search, hash: location.hash },
       { replace: true, state: next }
     );
-  }, [location.state, location.pathname, location.search, location.hash, navigate]);
+  }, [id, location.state, location.pathname, location.search, location.hash, navigate]);
 
   useEffect(() => {
     // Guards a stale response from clobbering newer state: this effect

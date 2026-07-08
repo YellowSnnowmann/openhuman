@@ -328,11 +328,20 @@ describe('FlowCanvasPage copilot build seed (prompt-bar instant create)', () => 
     expect(copilotPanelProps.current?.flowId).toBe('test-id');
   });
 
-  it('clears the build seed from route state once the copilot reports it consumed (#4597)', async () => {
+  it('clears only the build seed on consume, preserving sibling route state (#4597)', async () => {
     render(
       <MemoryRouter
         initialEntries={[
-          { pathname: '/flows/test-id', state: { copilotBuild: { description: 'digest it' } } },
+          {
+            pathname: '/flows/test-id',
+            state: {
+              copilotBuild: { description: 'digest it' },
+              // A sibling seed (a repair context) must survive the strip: the
+              // host clones state and deletes ONLY `copilotBuild` — a regression
+              // that nuked the whole state object would drop this too.
+              copilotRepair: { runId: 'run-1' },
+            },
+          },
         ]}>
         <Routes>
           <Route path="/flows/:id" element={<FlowCanvasPage />} />
@@ -343,6 +352,8 @@ describe('FlowCanvasPage copilot build seed (prompt-bar instant create)', () => 
     await waitFor(() =>
       expect(copilotPanelProps.current?.buildSeed).toEqual({ description: 'digest it' })
     );
+    // The sibling repair seed is present before consumption.
+    expect(copilotPanelProps.current?.repairSeed).toMatchObject({ runId: 'run-1' });
 
     // The panel dispatched the build turn and reports it consumed; the host must
     // strip `copilotBuild` from `location.state` so a later remount (close +
@@ -352,6 +363,8 @@ describe('FlowCanvasPage copilot build seed (prompt-bar instant create)', () => 
     });
 
     await waitFor(() => expect(copilotPanelProps.current?.buildSeed).toBeNull());
+    // ...but the sibling repair seed must NOT be nuked along with it.
+    expect(copilotPanelProps.current?.repairSeed).toMatchObject({ runId: 'run-1' });
   });
 
   it('keeps the copilot closed without a seed', async () => {

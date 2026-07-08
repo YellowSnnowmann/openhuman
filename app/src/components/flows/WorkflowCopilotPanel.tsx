@@ -226,8 +226,13 @@ export default function WorkflowCopilotPanel({
         buildSentRef.current = false;
       }
       // `failed`: the dispatch was attempted but errored (surfaced via
-      // `error`). Leave the guard set so we don't auto-resend and duplicate the
-      // turn; the user can retry manually.
+      // `error`). Leave the guard set so THIS mount doesn't auto-resend and
+      // duplicate the turn — the user retries from the input instead. Note the
+      // route seed is deliberately NOT consumed on failure, so a later close +
+      // reopen remounts the panel with a fresh `buildSentRef` and WILL re-fire
+      // the build: a reopen is thus an intentional retry, not a manual-only one.
+      // That's safe/desired — a failed turn persisted nothing (`mode:'build'`
+      // never saves; issue #4596), so there's no partial state to clean up.
       //
       // Regardless of outcome, record whether the turn proposed: when it didn't
       // (a clarifying question, or a no-op/failed turn that never built), carry
