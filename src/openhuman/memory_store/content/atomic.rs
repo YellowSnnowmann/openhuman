@@ -42,10 +42,13 @@ pub fn write_if_new(abs_path: &Path, bytes: &[u8]) -> anyhow::Result<bool> {
     {
         let mut f = std::fs::File::create(&tmp_path)
             .map_err(|e| anyhow::anyhow!("create tempfile {:?}: {e}", tmp_path))?;
-        f.write_all(bytes)
-            .map_err(|e| anyhow::anyhow!("write tempfile {:?}: {e}", tmp_path))?;
-        f.sync_all()
-            .map_err(|e| anyhow::anyhow!("fsync tempfile {:?}: {e}", tmp_path))?;
+        // Remove the temp file on write/fsync failure so a leaked
+        // `.tmp_<uuid>.md` never accumulates in the user-facing vault.
+        if let Err(e) = f.write_all(bytes).and_then(|_| f.sync_all()) {
+            drop(f);
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(anyhow::anyhow!("write/fsync tempfile {:?}: {e}", tmp_path));
+        }
     }
 
     // Rename: if the target appeared concurrently (another thread/process beat
@@ -155,10 +158,14 @@ fn write_via_temp_rename(abs_path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     {
         let mut f = std::fs::File::create(&tmp_path)
             .map_err(|e| anyhow::anyhow!("create tempfile {:?}: {e}", tmp_path))?;
-        f.write_all(bytes)
-            .map_err(|e| anyhow::anyhow!("write tempfile {:?}: {e}", tmp_path))?;
-        f.sync_all()
-            .map_err(|e| anyhow::anyhow!("fsync tempfile {:?}: {e}", tmp_path))?;
+        // Clean up the temp file on a write/fsync failure too — not just on the
+        // rename failure below. content_root is the user-facing vault, so a
+        // leaked `.tmp_<uuid>.md` is visible in Obsidian and would accumulate.
+        if let Err(e) = f.write_all(bytes).and_then(|_| f.sync_all()) {
+            drop(f);
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(anyhow::anyhow!("write/fsync tempfile {:?}: {e}", tmp_path));
+        }
     }
 
     if let Err(e) = std::fs::rename(&tmp_path, abs_path) {
