@@ -514,6 +514,19 @@ fn prune_vanished_items(
         let Some(rel) = stale.strip_prefix(&prefix) else {
             continue;
         };
+        // Defense-in-depth: `rel` comes from a stored composite id. If it were
+        // ever empty, absolute, or contained `..`, `base_path.join(rel)` could
+        // resolve outside the source folder (on Unix an absolute `rel` silently
+        // discards `base_path`), and a `NotFound` there would delete real chunk
+        // rows. The current folder reader can't produce such ids, so keep any
+        // such candidate rather than risk deleting on a path we can't vouch for.
+        if rel.is_empty() || rel.contains("..") || std::path::Path::new(rel).is_absolute() {
+            tracing::warn!(
+                source_id = %source_id,
+                "[memory_sources:sync] prune: skipping candidate with unsafe relative path"
+            );
+            continue;
+        }
         match std::fs::symlink_metadata(base_path.join(rel)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => { /* absent → prune */ }
             _ => continue,
@@ -780,6 +793,50 @@ mod tests {
         let live: HashSet<String> = HashSet::new();
         prune_vanished_items(&cfg, "src4", &base, &live);
         assert_eq!(chunk_store::count_chunks(&cfg).unwrap(), 0);
+    }
+
+    #[test]
+    fn prune_vanished_items_keeps_candidate_with_unsafe_relative_path() {
+        // Defense-in-depth: a stored id whose relative path is absolute must not
+        // be pruned even when its file is "absent" (join would escape the base).
+        let tmp = TempDir::new().unwrap();
+        let mut cfg = Config::default();
+        cfg.workspace_dir = tmp.path().to_path_buf();
+        let base = tmp.path().join("folder");
+        std::fs::create_dir_all(&base).unwrap();
+
+        seed(&cfg, &doc_chunk("mem_src:src5:/etc/hostname"));
+        let live: HashSet<String> = HashSet::new();
+        prune_vanished_items(&cfg, "src5", &base, &live);
+        // Not deleted — the unsafe-path guard skipped it.
+        assert_eq!(chunk_store::count_chunks(&cfg).unwrap(), 1);
+    }
+
+    #[test]
+    fn list_source_ids_with_prefix_isolates_sibling_prefixes() {
+        // `mem_src:src1:` must not match `mem_src:src10:` items.
+        let tmp = TempDir::new().unwrap();
+        let mut cfg = Config::default();
+        cfg.workspace_dir = tmp.path().to_path_buf();
+
+        seed(&cfg, &doc_chunk("mem_src:src1:a.md"));
+        seed(&cfg, &doc_chunk("mem_src:src1:c.md"));
+        seed(&cfg, &doc_chunk("mem_src:src10:b.md"));
+
+        let mut got = chunk_store::list_source_ids_with_prefix(
+            &cfg,
+            ChunkSourceKind::Document,
+            "mem_src:src1:",
+        )
+        .unwrap();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                "mem_src:src1:a.md".to_string(),
+                "mem_src:src1:c.md".to_string()
+            ]
+        );
     }
 
     #[test]
