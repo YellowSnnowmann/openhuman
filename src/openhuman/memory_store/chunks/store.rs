@@ -493,6 +493,72 @@ pub(crate) fn upsert_staged_chunks_tx(
     Ok(staged.len())
 }
 
+/// Repair the stored body-sha token for one chunk (#4689).
+///
+/// The chunk content file is content-addressed and atomically written, so it is
+/// the source of truth for its body. When a read detects that the on-disk body
+/// no longer hashes to the recorded `content_sha256` (e.g. an external editor
+/// rewrote a synced file after ingest), the reader serves the full on-disk body
+/// and calls this to re-point the stale token at the disk bytes so the next read
+/// verifies cleanly instead of falling back to the ≤500-char preview.
+pub fn update_chunk_content_sha256(
+    config: &Config,
+    chunk_id: &str,
+    new_sha256: &str,
+) -> Result<()> {
+    with_connection(config, |conn| {
+        conn.execute(
+            "UPDATE mem_tree_chunks SET content_sha256 = ?1 WHERE id = ?2",
+            params![new_sha256, chunk_id],
+        )?;
+        Ok(())
+    })
+}
+
+/// Summary counterpart of [`update_chunk_content_sha256`] (#4689).
+pub fn update_summary_content_sha256(
+    config: &Config,
+    summary_id: &str,
+    new_sha256: &str,
+) -> Result<()> {
+    with_connection(config, |conn| {
+        conn.execute(
+            "UPDATE mem_tree_summaries SET content_sha256 = ?1 WHERE id = ?2",
+            params![new_sha256, summary_id],
+        )?;
+        Ok(())
+    })
+}
+
+/// List the distinct `source_id`s of chunk rows for `source_kind` whose id
+/// starts with `source_id_prefix` (#4689).
+///
+/// Used by folder/list-based resync to discover previously-ingested items that
+/// have since vanished (e.g. a renamed or deleted file) so their stale rows +
+/// on-disk bodies can be cleaned. The prefix is applied Rust-side (literal, not
+/// a SQL `LIKE`) so ids containing `_`/`%` are matched verbatim — matching the
+/// convention in [`delete_chunks_by_source_prefix`].
+pub fn list_source_ids_with_prefix(
+    config: &Config,
+    source_kind: SourceKind,
+    source_id_prefix: &str,
+) -> Result<Vec<String>> {
+    with_connection(config, |conn| {
+        let mut stmt =
+            conn.prepare("SELECT DISTINCT source_id FROM mem_tree_chunks WHERE source_kind = ?1")?;
+        let rows = stmt.query_map(params![source_kind.as_str()], |row| row.get::<_, String>(0))?;
+        let out = rows
+            .filter_map(|row| match row {
+                Ok(source_id) if source_id.starts_with(source_id_prefix) => Some(Ok(source_id)),
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("Failed to list mem_tree chunk source_ids by prefix")?;
+        Ok(out)
+    })
+}
+
 fn upsert_chunks_with_statement(
     stmt: &mut rusqlite::Statement<'_>,
     chunks: &[Chunk],
