@@ -160,7 +160,7 @@ mod tests {
         assert_eq!(snap[0].provider, "anthropic");
         assert_eq!(snap[1].provider, "openrouter");
         assert!(snap[1].message.contains("openrouter"));
-        assert!(snap[1].message.contains("Settings"));
+        assert!(snap[1].message.contains("Connections → API keys → LLM"));
         reset_for_tests();
     }
 }
