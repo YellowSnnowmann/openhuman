@@ -19,6 +19,7 @@
  * Invariant: the copilot only PROPOSES. Accept applies to the UNSAVED local
  * draft (no `flows_update`); persistence stays behind the canvas's own Save.
  */
+import createDebug from 'debug';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BubbleMarkdown } from '../../features/conversations/components/AgentMessageBubble';
@@ -30,6 +31,8 @@ import { useT } from '../../lib/i18n/I18nContext';
 import type { WorkflowProposal } from '../../store/chatRuntimeSlice';
 import ChatComposer from '../chat/ChatComposer';
 import Button from '../ui/Button';
+
+const log = createDebug('app:flows:copilot-panel');
 
 /**
  * Context for a repair turn opened from a failed run's inspector ("Fix with
@@ -112,7 +115,7 @@ export default function WorkflowCopilotPanel({
     threadId,
     sending,
     proposal,
-    messages,
+    displayMessages,
     toolTimeline,
     liveResponse,
     error,
@@ -142,13 +145,42 @@ export default function WorkflowCopilotPanel({
     }
   }, [proposal, onProposal]);
 
+  // Holds the ORIGINAL ask when a turn ends without a proposal — i.e. the
+  // agent asked a genuinely-ambiguous clarifying question (the prompt's
+  // "bucket 3" branch) and stopped rather than revising. `submit` always
+  // sends `mode: 'revise'` with the CURRENT graph, but while a question is
+  // still open that graph hasn't changed yet, so a bare follow-up answer
+  // ("#eng") would be the agent's ENTIRE context for the next turn — the
+  // original request ("post a daily summary to Slack") would be lost and the
+  // turn renders as "Revise it as follows: #eng" against a stale/blank draft.
+  // Prepending the unresolved ask keeps that context alive across the Q&A
+  // round-trip; it's cleared once a turn actually proposes (the graph itself
+  // then carries the state, so later revises don't need it).
+  const pendingAskRef = useRef<string | null>(null);
+
+  // Sets/clears `pendingAskRef` after a turn settles, logging the decision
+  // (stable prefix + thread correlation, never the raw ask/answer text — that
+  // may carry user-authored content).
+  const updatePendingAsk = useCallback(
+    (proposed: boolean, ask: string) => {
+      log(
+        'pendingAsk: %s thread=%s',
+        proposed ? 'cleared (proposal landed)' : 'set (still open)',
+        threadId
+      );
+      pendingAskRef.current = proposed ? null : ask;
+    },
+    [threadId]
+  );
+
   // Auto-send the repair turn once when opened from a failed run.
   const repairSentRef = useRef(false);
   useEffect(() => {
     if (!repairSeed || repairSentRef.current) return;
     repairSentRef.current = true;
-    void send({
-      displayText: t('flows.copilot.repairDisplay'),
+    const instruction = t('flows.copilot.repairDisplay');
+    send({
+      displayText: instruction,
       request: {
         mode: 'repair',
         instruction: '',
@@ -157,8 +189,10 @@ export default function WorkflowCopilotPanel({
         error: repairSeed.error ?? null,
         failingNodeIds: repairSeed.failingNodeIds ?? [],
       },
+    }).then(({ proposed }) => {
+      updatePendingAsk(proposed, instruction);
     });
-  }, [repairSeed, send, t]);
+  }, [repairSeed, send, t, updatePendingAsk]);
 
   // Auto-send the build turn once when opened from the prompt bar's
   // instant-create path: the user's description becomes the first user turn on
@@ -172,12 +206,12 @@ export default function WorkflowCopilotPanel({
     if (!buildSeed || buildSentRef.current) return;
     // Optimistically guard re-entry while the async dispatch is in flight.
     buildSentRef.current = true;
-    void send({
+    send({
       displayText: buildSeed.description,
       request: flowId
         ? { mode: 'build', instruction: buildSeed.description, graph, flowId }
         : { mode: 'revise', instruction: buildSeed.description, graph, flowId },
-    }).then(outcome => {
+    }).then(({ outcome, proposed }) => {
       if (outcome === 'dispatched') {
         // Clear the ephemeral route seed only once the turn actually
         // dispatched, so closing and reopening the panel (which remounts it
@@ -194,29 +228,41 @@ export default function WorkflowCopilotPanel({
       // `failed`: the dispatch was attempted but errored (surfaced via
       // `error`). Leave the guard set so we don't auto-resend and duplicate the
       // turn; the user can retry manually.
+      //
+      // Regardless of outcome, record whether the turn proposed: when it didn't
+      // (a clarifying question, or a no-op/failed turn that never built), carry
+      // the original description forward so the user's free-text answer (via
+      // `submit` below) doesn't strand the agent with no idea what it was asked
+      // to build. A later turn that proposes clears it.
+      updatePendingAsk(proposed, buildSeed.description);
     });
     // `graph`/`flowId` are read once for the seed turn — later edits must not
     // re-fire it (guarded by the ref regardless).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildSeed, send]);
+  }, [buildSeed, send, updatePendingAsk]);
 
   // Keep the transcript pinned to the newest message / streamed activity.
   // `scrollTo` is optional-chained: jsdom (tests) doesn't implement it.
   useEffect(() => {
     scrollRef.current?.scrollTo?.({ top: scrollRef.current.scrollHeight });
-  }, [messages, sending, proposal, toolTimeline, liveResponse]);
+  }, [displayMessages, sending, proposal, toolTimeline, liveResponse]);
 
   const submit = useCallback(
     async (raw?: string) => {
       const trimmed = (raw ?? text).trim();
       if (!trimmed || sending) return;
       setText('');
-      await send({
+      const priorAsk = pendingAskRef.current;
+      const instruction = priorAsk
+        ? `${priorAsk}\n\n(This is my answer to your question above: ${trimmed})`
+        : trimmed;
+      const { proposed } = await send({
         displayText: trimmed,
-        request: { mode: 'revise', instruction: trimmed, graph, flowId },
+        request: { mode: 'revise', instruction, graph, flowId },
       });
+      updatePendingAsk(proposed, instruction);
     },
-    [text, sending, send, graph, flowId]
+    [text, sending, send, graph, flowId, updatePendingAsk]
   );
 
   const handleInputKeyDown = useCallback(
@@ -249,7 +295,7 @@ export default function WorkflowCopilotPanel({
   const hasTimeline = toolTimeline.length > 0;
   const hasLiveText = liveResponse.trim().length > 0;
   const isEmpty =
-    messages.length === 0 && !proposal && !sending && !error && !hasTimeline && !hasLiveText;
+    displayMessages.length === 0 && !proposal && !sending && !error && !hasTimeline && !hasLiveText;
 
   return (
     <aside
@@ -280,8 +326,11 @@ export default function WorkflowCopilotPanel({
           </p>
         )}
 
-        {/* Conversation transcript: user turns right-aligned, agent turns left. */}
-        {messages.map(message =>
+        {/* Conversation transcript: user turns right-aligned, agent turns left.
+            Renders `displayMessages` (interim narration bubbles filtered out —
+            that narration already streams via the tool timeline / live text
+            below it double-renders it as a bubble too, see B4). */}
+        {displayMessages.map(message =>
           message.sender === 'user' ? (
             <div key={message.id} className="flex justify-end" data-testid="workflow-copilot-user">
               <div className="max-w-[85%] rounded-2xl bg-primary-500 px-3 py-1.5 text-sm text-content-inverted">

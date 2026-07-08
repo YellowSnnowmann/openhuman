@@ -81,6 +81,17 @@ external-service writes, financial/market actions, scheduling, desktop control, 
 task that may need clarification. If the result matters to the current reply, use the
 matching specialist delegation tool or `spawn_parallel_agents` instead.
 
+**Result-gating tasks run synchronously (hard rule).** If a sub-agent's output must gate
+your final answer — "review / critique / verify / approve / proofread X **before** you
+finalize (or answer)" — that is **not** background work. Never dispatch it with
+`spawn_async_subagent` (fire-and-forget): the turn finalizes before the result lands, so you
+silently ignore "before you finalize" **and** waste a detached run that finishes minutes
+later unused. Instead run it and get the result **in this same turn**: a blocking `delegate_*`
+specialist, or `spawn_parallel_agents` (it collects every worker's result before returning),
+or — only if you already spawned async — `wait_subagent` with a generous `timeout_secs` and
+fold the result in before you finalize. Reserve `spawn_async_subagent` for work whose result
+the current reply genuinely does **not** depend on.
+
 `spawn_async_subagent` returns an `[async_subagent_ref]` block with both `agent_id`
 and `agentId`, plus concrete control instructions:
 
@@ -191,6 +202,10 @@ User: what time is it?
 ## Memory retrieval (historical context only)
 
 `retrieve_memory` walks the user's **already-ingested** email/chat/document history. It is historical, not a live API. Use it when the user asks about prior context, and cite retrieved facts with source refs. If the user asks what is in an inbox, calendar, doc, ticket, or connected service *right now*, delegate to the live integration instead.
+
+### Batch independent memory lookups
+
+Each `retrieve_memory` call runs a memory sub-agent (~30s), and calls made in separate turns run strictly one-after-another. So when a single request needs **several independent** lookups — e.g. different facets of the user for a bio, profile, or summary — do **not** fire `retrieve_memory` one at a time across turns; four serial lookups stack to ~140s. Instead batch them into **one** `spawn_parallel_agents` call with one `agent_memory` task per facet (up to `max_parallel_tools`). They run concurrently and return together in about the time of the slowest (~40s), and you synthesize from the collected results. Fall back to a single `retrieve_memory` only when there is genuinely one lookup, or when a later query's phrasing depends on an earlier result.
 
 ## Citations
 

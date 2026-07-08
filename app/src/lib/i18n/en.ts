@@ -3560,6 +3560,20 @@ const en: TranslationMap = {
   'chat.approval.fallback': 'The agent wants to run an action that needs your approval.',
   'chat.approval.title': 'Approval needed',
   'chat.approval.tool': 'Tool:',
+  // Flow-approval surface — chat banner for a `flow_approval_request` socket
+  // event (a paused tinyflows run's gate, surfaced while the user is
+  // chatting rather than inspecting the run directly).
+  'chat.flowApproval.title': 'Workflow needs approval',
+  'chat.flowApproval.fallback':
+    'A workflow run wants to perform an action that needs your approval.',
+  'chat.flowApproval.tool': 'Tool:',
+  'chat.flowApproval.flow': 'Flow:',
+  'chat.flowApproval.approve': 'Approve once',
+  'chat.flowApproval.approveAlways': 'Approve always',
+  'chat.flowApproval.approveAlwaysHint': 'Skip this checkpoint for future runs of this flow',
+  'chat.flowApproval.deny': 'Deny',
+  'chat.flowApproval.deciding': 'Working…',
+  'chat.flowApproval.error': 'Could not record your decision — try again.',
   'chat.flowProposal.title': 'Workflow proposal',
   'chat.flowProposal.subtitle': 'Review this automation before saving it.',
   'chat.flowProposal.triggerLabel': 'Trigger',
@@ -4339,6 +4353,18 @@ const en: TranslationMap = {
   'notifications.flow.approveHint': 'Resume the workflow past this checkpoint',
   'notifications.flow.dismissHint': 'Hide this prompt without resuming the workflow',
   'notifications.flow.viewRun': 'View run',
+  // Flow-approval surface — notification-center gate card for the
+  // `flow-gate-approval` CoreNotification kind. Distinct from
+  // `notifications.flow.*` above (that's the older `flows_resume`-based
+  // pending-approval prompt); this one decides via `approval_decide`.
+  'notifications.flowGate.title': 'Workflow needs approval',
+  'notifications.flowGate.tool': 'Tool:',
+  'notifications.flowGate.approve': 'Approve once',
+  'notifications.flowGate.approveAlways': 'Approve always',
+  'notifications.flowGate.approveAlwaysHint': 'Skip this checkpoint for future runs of this flow',
+  'notifications.flowGate.deny': 'Deny',
+  'notifications.flowGate.deciding': 'Working…',
+  'notifications.flowGate.error': 'Could not record your decision. Please try again.',
   'flowRuns.inspector.title': 'Run details',
   'flowRuns.inspector.startedAt': 'Started',
   'flowRuns.inspector.finishedAt': 'Finished',
@@ -4346,6 +4372,15 @@ const en: TranslationMap = {
   'flowRuns.inspector.error': 'Error',
   'flowRuns.inspector.pendingApprovals': 'Pending approvals',
   'flowRuns.inspector.pendingApprovalsCount': '{count} node(s) awaiting approval',
+  // Actionable approval gate cards (flow-approval surface — run details).
+  'flowRuns.inspector.approval.tool': 'Tool:',
+  'flowRuns.inspector.approval.approve': 'Approve once',
+  'flowRuns.inspector.approval.approveAlways': 'Approve always',
+  'flowRuns.inspector.approval.approveAlwaysHint':
+    'Skip this checkpoint for future runs of this flow',
+  'flowRuns.inspector.approval.deny': 'Deny',
+  'flowRuns.inspector.approval.deciding': 'Working…',
+  'flowRuns.inspector.approval.loadError': 'Could not load pending approvals for this run.',
   'flowRuns.inspector.steps': 'Steps',
   'flowRuns.inspector.noSteps': 'No steps recorded yet.',
   'flowRuns.inspector.output': 'Output',
@@ -5954,6 +5989,7 @@ const en: TranslationMap = {
   'settings.approvalHistory.decidedAt': 'Decided {date}',
   'settings.approvalHistory.decision.approveOnce': 'Approved once',
   'settings.approvalHistory.decision.approveAlways': 'Always allowed',
+  'settings.approvalHistory.decision.approveAlwaysFlow': 'Always allowed (flow)',
   'settings.approvalHistory.decision.deny': 'Denied',
   'settings.theme.title': 'Theme Studio',
   'settings.theme.menuDesc': 'Fully customize colours and fonts, or pick a preset theme.',
@@ -6069,6 +6105,13 @@ const en: TranslationMap = {
   'settings.mascot.menuDesc': 'Pick the mascot color used across the app',
   'settings.mascot.noCharacters': 'No OpenHuman characters are available yet',
   'settings.mascot.noColorVariants': 'No color variants',
+  'settings.mascot.secondaryHeading': 'Meeting duo (second mascot)',
+  'settings.mascot.secondaryDesc':
+    'Add a second mascot for meetings. When two are set they appear together and take turns speaking. Leave as None for a single mascot.',
+  'settings.mascot.secondaryNone': 'None (single mascot)',
+  'settings.mascot.perMascotVoiceHeading': 'Per-mascot voices',
+  'settings.mascot.primaryVoiceLabel': 'First mascot voice',
+  'settings.mascot.secondaryVoiceLabel': 'Second mascot voice',
   'settings.mascot.voice.current': 'current',
   'settings.mascot.voice.customDesc':
     'Find voice ids at api.elevenlabs.io/v1/voices or your ElevenLabs dashboard. Only the id is stored — your API key stays on the backend.',
