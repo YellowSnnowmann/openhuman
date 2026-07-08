@@ -5412,6 +5412,9 @@ const messages: TranslationMap = {
   'settings.appearance.fontSizeXLargeDesc': 'সর্বাধিক পঠনযোগ্যতার জন্য সবচেয়ে বড় লেখা।',
   'settings.appearance.fontSizeHelperText':
     'সিস্টেম ফন্ট সেটিং নির্বিশেষে পুরো অ্যাপ জুড়ে — চ্যাট, সেটিংস ও প্যানেল — লেখার আকার পরিবর্তন করে।',
+  'settings.appearance.fontSizeCustomLabel': 'কাস্টম আকার',
+  'settings.appearance.fontSizeCustomAria': 'পিক্সেলে কাস্টম ফন্ট আকার',
+  'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'নীচের ট্যাব বার',
   'settings.appearance.tabBarAlwaysShowLabels': 'সর্বদা লেবেলগুলি দেখান',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

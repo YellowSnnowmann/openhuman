@@ -205,7 +205,8 @@ const messages: TranslationMap = {
   'orchPage.discover.notDiscoverableGuide':
     'Registriere ein @handle, damit andere Agenten dich finden und dir schreiben können.',
   'orchPage.discover.linkTitle': 'Neuen Agenten verknüpfen',
-  'orchPage.discover.linkDescription': 'Füge eine Agenten-ID ein, um eine Verbindungsanfrage zu senden.',
+  'orchPage.discover.linkDescription':
+    'Füge eine Agenten-ID ein, um eine Verbindungsanfrage zu senden.',
   'orchPage.discover.noRequests': 'Keine eingehenden Anfragen.',
   'orchPage.usage.nav': 'Nutzung',
   'orchPage.usage.connections': 'Verbindungen',
@@ -5558,6 +5559,9 @@ const messages: TranslationMap = {
   'settings.appearance.fontSizeXLargeDesc': 'Der größte Text für maximale Lesbarkeit.',
   'settings.appearance.fontSizeHelperText':
     'Skaliert den Text in der gesamten App — Chat, Einstellungen und Bereiche — unabhängig von der Schrifteinstellung deines Systems.',
+  'settings.appearance.fontSizeCustomLabel': 'Benutzerdefinierte Größe',
+  'settings.appearance.fontSizeCustomAria': 'Benutzerdefinierte Schriftgröße in Pixeln',
+  'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'Untere Tab-Leiste',
   'settings.appearance.tabBarAlwaysShowLabels': 'Beschriftungen immer anzeigen',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':
