@@ -1,4 +1,4 @@
-import { type ReactElement, useState } from 'react';
+import { type ChangeEvent, type ReactElement, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
@@ -107,8 +107,18 @@ const AppearancePanel = () => {
   }
   const commitCustomFontSize = () => {
     const parsed = Number.parseInt(pxDraft, 10);
-    if (Number.isFinite(parsed)) dispatch(setCustomFontSizePx(parsed));
-    else setPxDraft(String(effectiveFontSizePx));
+    if (Number.isFinite(parsed)) {
+      console.debug('[appearance] commit custom font-size', { pxDraft, parsed });
+      dispatch(setCustomFontSizePx(parsed));
+    } else {
+      console.debug('[appearance] custom font-size rejected, reverting draft', { pxDraft });
+      setPxDraft(String(effectiveFontSizePx));
+    }
+  };
+  const handleFontSizeSlider = (event: ChangeEvent<HTMLInputElement>) => {
+    const px = Number(event.target.value);
+    console.debug('[appearance] custom font-size slider', { px });
+    dispatch(setCustomFontSizePx(px));
   };
 
   // Build at render time so the labels follow the active locale; `t()` itself
@@ -280,7 +290,7 @@ const AppearancePanel = () => {
         {/* Fine-tune the exact size beyond the presets (issue #4246). */}
         <div className="bg-surface rounded-xl border border-line px-4 py-3 mt-3">
           <div className="flex items-center justify-between gap-3">
-            <label htmlFor="font-size-slider" className="text-sm font-medium text-content">
+            <label htmlFor="font-size-custom-number" className="text-sm font-medium text-content">
               {t('settings.appearance.fontSizeCustomLabel')}
             </label>
             <SettingsNumberField
@@ -302,7 +312,7 @@ const AppearancePanel = () => {
             max={MAX_FONT_SIZE_PX}
             step={1}
             value={effectiveFontSizePx}
-            onChange={e => dispatch(setCustomFontSizePx(Number(e.target.value)))}
+            onChange={handleFontSizeSlider}
             aria-label={t('settings.appearance.fontSizeCustomAria')}
             aria-valuetext={`${effectiveFontSizePx}${t('settings.appearance.fontSizeUnit')}`}
             className="w-full mt-3 accent-primary-500 cursor-pointer"
