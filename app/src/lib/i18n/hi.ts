@@ -5413,6 +5413,7 @@ const messages: TranslationMap = {
     'आपके सिस्टम फ़ॉन्ट सेटिंग से स्वतंत्र रूप से पूरे ऐप — चैट, सेटिंग्स और पैनल — में टेक्स्ट का आकार बदलता है।',
   'settings.appearance.fontSizeCustomLabel': 'कस्टम आकार',
   'settings.appearance.fontSizeCustomAria': 'पिक्सेल में कस्टम फ़ॉन्ट आकार',
+  'settings.appearance.fontSizeCustomSliderAria': 'कस्टम फ़ॉन्ट आकार स्लाइडर, पिक्सेल में',
   'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'निचला टैब बार',
   'settings.appearance.tabBarAlwaysShowLabels': 'हमेशा लेबल दिखाएं',

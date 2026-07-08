@@ -5414,6 +5414,7 @@ const messages: TranslationMap = {
     'সিস্টেম ফন্ট সেটিং নির্বিশেষে পুরো অ্যাপ জুড়ে — চ্যাট, সেটিংস ও প্যানেল — লেখার আকার পরিবর্তন করে।',
   'settings.appearance.fontSizeCustomLabel': 'কাস্টম আকার',
   'settings.appearance.fontSizeCustomAria': 'পিক্সেলে কাস্টম ফন্ট আকার',
+  'settings.appearance.fontSizeCustomSliderAria': 'কাস্টম ফন্ট আকারের স্লাইডার, পিক্সেলে',
   'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'নীচের ট্যাব বার',
   'settings.appearance.tabBarAlwaysShowLabels': 'সর্বদা লেবেলগুলি দেখান',

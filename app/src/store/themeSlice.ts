@@ -393,23 +393,24 @@ export const selectDeveloperMode = (state: { theme: ThemeState }): boolean =>
   state.theme.developerMode;
 
 /**
- * The effective root `font-size` string to apply to `<html>`. A fine-tuned
+ * The effective root font size in px (numeric). A fine-tuned
  * {@link ThemeState.customFontSizePx} (issue #4246) wins; otherwise the active
- * {@link ThemeState.fontSize} preset drives it. Falls back to `medium` when the
- * slice is absent (SSR / early boot).
+ * {@link ThemeState.fontSize} preset drives it. Falls back to `medium` (16) when
+ * the slice is absent (SSR / early boot). This is the canonical resolver;
+ * {@link selectRootFontSizePx} formats it for the DOM.
  */
-export function selectRootFontSizePx(state: { theme?: ThemeState }): string {
+export function selectEffectiveFontSizePx(state: { theme?: ThemeState }): number {
   const theme = state.theme;
   const custom = theme?.customFontSizePx;
   if (typeof custom === 'number' && Number.isFinite(custom)) {
-    return `${clampFontSizePx(custom)}px`;
+    return clampFontSizePx(custom);
   }
-  return FONT_SIZE_PX[theme?.fontSize ?? 'medium'] ?? FONT_SIZE_PX.medium;
+  return parseInt(FONT_SIZE_PX[theme?.fontSize ?? 'medium'] ?? FONT_SIZE_PX.medium, 10);
 }
 
-/** Numeric counterpart of {@link selectRootFontSizePx} (px, no unit). */
-export function selectEffectiveFontSizePx(state: { theme?: ThemeState }): number {
-  return parseInt(selectRootFontSizePx(state), 10);
+/** The effective root `font-size` string to apply to `<html>` (px suffix). */
+export function selectRootFontSizePx(state: { theme?: ThemeState }): string {
+  return `${selectEffectiveFontSizePx(state)}px`;
 }
 
 /**

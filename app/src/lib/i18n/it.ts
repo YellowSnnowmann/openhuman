@@ -5504,6 +5504,8 @@ const messages: TranslationMap = {
     'Ridimensiona il testo in tutta l’app — chat, impostazioni e pannelli — indipendentemente dall’impostazione del carattere del sistema.',
   'settings.appearance.fontSizeCustomLabel': 'Dimensione personalizzata',
   'settings.appearance.fontSizeCustomAria': 'Dimensione del carattere personalizzata in pixel',
+  'settings.appearance.fontSizeCustomSliderAria':
+    'Cursore dimensione carattere personalizzata, in pixel',
   'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'Barra delle schede inferiore',
   'settings.appearance.tabBarAlwaysShowLabels': 'Mostra sempre le etichette',

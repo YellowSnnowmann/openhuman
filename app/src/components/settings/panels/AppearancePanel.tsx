@@ -313,7 +313,7 @@ const AppearancePanel = () => {
             step={1}
             value={effectiveFontSizePx}
             onChange={handleFontSizeSlider}
-            aria-label={t('settings.appearance.fontSizeCustomAria')}
+            aria-label={t('settings.appearance.fontSizeCustomSliderAria')}
             aria-valuetext={`${effectiveFontSizePx}${t('settings.appearance.fontSizeUnit')}`}
             className="w-full mt-3 accent-primary-500 cursor-pointer"
             data-testid="font-size-slider"

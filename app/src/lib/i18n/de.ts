@@ -5561,6 +5561,8 @@ const messages: TranslationMap = {
     'Skaliert den Text in der gesamten App — Chat, Einstellungen und Bereiche — unabhängig von der Schrifteinstellung deines Systems.',
   'settings.appearance.fontSizeCustomLabel': 'Benutzerdefinierte Größe',
   'settings.appearance.fontSizeCustomAria': 'Benutzerdefinierte Schriftgröße in Pixeln',
+  'settings.appearance.fontSizeCustomSliderAria':
+    'Schieberegler für benutzerdefinierte Schriftgröße, in Pixeln',
   'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'Untere Tab-Leiste',
   'settings.appearance.tabBarAlwaysShowLabels': 'Beschriftungen immer anzeigen',

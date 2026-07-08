@@ -5350,6 +5350,7 @@ const messages: TranslationMap = {
     '시스템 글꼴 설정과 관계없이 앱 전체 — 채팅, 설정, 패널 — 의 텍스트 크기를 조정합니다.',
   'settings.appearance.fontSizeCustomLabel': '사용자 지정 크기',
   'settings.appearance.fontSizeCustomAria': '픽셀 단위 사용자 지정 글꼴 크기',
+  'settings.appearance.fontSizeCustomSliderAria': '사용자 지정 글꼴 크기 슬라이더, 픽셀 단위',
   'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': '하단 탭 표시줄',
   'settings.appearance.tabBarAlwaysShowLabels': '항상 레이블 표시',

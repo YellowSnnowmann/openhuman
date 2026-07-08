@@ -5130,6 +5130,7 @@ const messages: TranslationMap = {
     '在整个应用中缩放文字——聊天、设置和面板——与系统字体设置无关。',
   'settings.appearance.fontSizeCustomLabel': '自定义大小',
   'settings.appearance.fontSizeCustomAria': '自定义字体大小（像素）',
+  'settings.appearance.fontSizeCustomSliderAria': '自定义字体大小滑块（像素）',
   'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': '底部标签栏',
   'settings.appearance.tabBarAlwaysShowLabels': '始终显示标签',
