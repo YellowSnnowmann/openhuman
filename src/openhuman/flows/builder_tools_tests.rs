@@ -951,6 +951,92 @@ async fn dry_run_passes_when_agent_uses_input_context_instead_of_prompt_expressi
     );
 }
 
+#[tokio::test]
+async fn dry_run_warns_on_unexercised_agent_after_condition() {
+    // B15's dry-run blind spot: `gate` is a `condition` wired with only a
+    // `true` edge to `classify`. The dry run's default trigger input is `{}`
+    // (no `input` param passed), so `gate`'s configured field ("active") is
+    // absent — falsey — and the condition emits `false`. Since `false` has no
+    // outgoing edge, `classify` never executes at all: not a null resolution,
+    // not a node error, just silently unexercised. A real trigger's payload
+    // could easily carry `active: true` and take the other branch, so the
+    // dry run must still surface this as a warning even though `ok` stays
+    // `true` — there's nothing here that flips it to a hard reject.
+    let tool = DryRunWorkflowTool::new(
+        policy(AutonomyLevel::Supervised),
+        test_config(&TempDir::new().unwrap()),
+    );
+    let graph = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "gate", "kind": "condition", "name": "Gate",
+              "config": { "field": "active" } },
+            { "id": "classify", "kind": "agent", "name": "Classify",
+              "config": { "prompt": "Classify the item.", "input_context": "=item" } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "gate" },
+            { "from_node": "gate", "from_port": "true", "to_node": "classify" }
+        ]
+    });
+
+    let result = tool.execute(json!({ "graph": graph })).await.unwrap();
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(
+        parsed["ok"], true,
+        "an unexercised branch is a warning, not a hard reject: {parsed}"
+    );
+    let warnings = parsed["routing_divergence_warnings"]
+        .as_array()
+        .expect("routing_divergence_warnings array");
+    assert_eq!(warnings.len(), 1, "{parsed}");
+    assert_eq!(warnings[0]["node_id"], "classify");
+    assert_eq!(warnings[0]["condition_node_id"], "gate");
+    assert!(
+        warnings[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("classify"),
+        "{parsed}"
+    );
+}
+
+#[tokio::test]
+async fn dry_run_no_routing_divergence_warning_when_every_node_executes() {
+    // FALSE-POSITIVE-PREVENTION: a condition whose taken branch under the
+    // default mock input DOES reach the downstream agent must not warn.
+    let tool = DryRunWorkflowTool::new(
+        policy(AutonomyLevel::Supervised),
+        test_config(&TempDir::new().unwrap()),
+    );
+    let graph = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "gate", "kind": "condition", "name": "Gate",
+              "config": { "field": "active" } },
+            { "id": "classify", "kind": "agent", "name": "Classify",
+              "config": { "prompt": "Classify the item.", "input_context": "=item" } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "gate" },
+            { "from_node": "gate", "from_port": "false", "to_node": "classify" }
+        ]
+    });
+
+    let result = tool.execute(json!({ "graph": graph })).await.unwrap();
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(parsed["ok"], true, "{parsed}");
+    assert!(
+        parsed["routing_divergence_warnings"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "{parsed}"
+    );
+}
+
 /// (systemic tool-contract fix, Part 2b) A missing required Composio arg is
 /// now a HARD REJECT at `revise_workflow` — `validate_tool_contracts` runs
 /// ahead of the older advisory `graph_wiring_warnings` check and catches the

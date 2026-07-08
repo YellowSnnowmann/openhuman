@@ -964,6 +964,24 @@ impl Tool for ListAgentProfilesTool {
 /// (`{ node_id, error }`, the error text read back out of the run's `output`
 /// state — see [`tool_call_error_message`]) and fails the dry run the same as
 /// a null resolution.
+///
+/// **Routing-divergence warning (B15's dry-run blind spot):** none of the
+/// checks above see a node that never ran at all. An `agent`/`tool_call` node
+/// downstream of a `condition` can be silently unexercised because the
+/// sandbox's mock trigger payload has a different *shape* than a real
+/// trigger's (e.g. a webhook's real JSON body vs. the dry run's `{}`
+/// default), so the condition takes a different branch under mock data than
+/// it would at runtime — a graph can dry-run `ok: true` while its most
+/// data-dependent node was never actually checked. After the run settles,
+/// every `agent`/`tool_call` node with no [`ExecutionStep`] in the
+/// [`CapturingObserver`] is collected into `routing_divergence_warnings`
+/// (`{ node_id, condition_node_id, message }`, `condition_node_id` naming the
+/// nearest upstream `condition` node found by walking predecessors — see
+/// [`find_upstream_condition`] — or `null` if none is found). This is a
+/// **warning, not a hard reject**: it never flips `ok` to `false` by itself
+/// (an unexercised branch can be entirely intentional), and is surfaced on
+/// both the `ok: true` and `ok: false` result shapes so the caller can
+/// double-check that node's wiring by hand.
 pub struct DryRunWorkflowTool {
     security: Arc<SecurityPolicy>,
     config: Arc<Config>,
@@ -1254,6 +1272,57 @@ impl Tool for DryRunWorkflowTool {
             })
             .collect();
 
+        // Routing-divergence blind spot (B15): an `agent`/`tool_call` node that
+        // did NOT execute during the sandbox run at all — because an upstream
+        // `condition` routed the mock trigger payload onto its OTHER branch —
+        // is invisible to every check above (`null_resolutions` etc. only
+        // inspect steps that ran). But the mock input's *shape* need not match
+        // a real trigger's shape (a webhook's real JSON vs. the dry run's `{}`
+        // default, say), so a condition that took the `false` branch under mock
+        // data may well take `true` at runtime with real data — or vice versa.
+        // Either way, the dry run silently never exercised the very node whose
+        // wiring most needed checking. This is a WARNING, not a hard reject
+        // (an unexercised branch can be entirely intentional), surfaced
+        // alongside the other diagnostics so the caller can double-check the
+        // wiring by hand.
+        let executed_steps = observer.steps();
+        let executed_node_ids: std::collections::HashSet<&str> = executed_steps
+            .iter()
+            .map(|step| step.node_id.as_str())
+            .collect();
+        let routing_divergence_warnings: Vec<Value> = graph
+            .nodes
+            .iter()
+            .filter(|node| {
+                node.kind != tinyflows::model::NodeKind::Trigger
+                    && (agent_node_ids.contains(node.id.as_str())
+                        || tool_call_node_ids.contains(node.id.as_str()))
+                    && !executed_node_ids.contains(node.id.as_str())
+            })
+            .map(|node| {
+                let condition_node_id = find_upstream_condition(&graph, &node.id);
+                let message = match &condition_node_id {
+                    Some(cid) => format!(
+                        "Node '{}' did not execute in the dry run (condition '{}' routed to \
+                         the other branch under mock data); verify the wiring — at runtime \
+                         with real data it may route differently.",
+                        node.id, cid
+                    ),
+                    None => format!(
+                        "Node '{}' did not execute in the dry run (an upstream branch routed \
+                         the mock data away from it); verify the wiring — at runtime with real \
+                         data it may route differently.",
+                        node.id
+                    ),
+                };
+                json!({
+                    "node_id": node.id,
+                    "condition_node_id": condition_node_id,
+                    "message": message,
+                })
+            })
+            .collect();
+
         tracing::info!(
             target: "flows",
             node_count = graph.nodes.len(),
@@ -1262,6 +1331,7 @@ impl Tool for DryRunWorkflowTool {
             agent_prompt_null_count = agent_prompt_nulls.len(),
             agent_input_context_null_count = agent_input_context_nulls.len(),
             node_error_count = node_errors.len(),
+            routing_divergence_warning_count = routing_divergence_warnings.len(),
             "[flows] dry_run_workflow: sandbox run finished"
         );
 
@@ -1286,6 +1356,7 @@ impl Tool for DryRunWorkflowTool {
                 "agent_prompt_nulls": agent_prompt_nulls,
                 "agent_input_context_nulls": agent_input_context_nulls,
                 "node_errors": node_errors,
+                "routing_divergence_warnings": routing_divergence_warnings,
                 "message": "These tool_call args resolved to null, an agent node's prompt or \
                     input_context resolved to null (an EMPTY prompt — see agent_prompt_nulls — \
                     or no upstream data at all — see agent_input_context_nulls), or a tool_call \
@@ -1294,7 +1365,10 @@ impl Tool for DryRunWorkflowTool {
                     output (give any agent node an output_parser.schema so its fields are \
                     addressable), feed upstream data into a null-resolved agent prompt/ \
                     input_context from a real upstream field instead of a jq expression inside \
-                    the prompt text, and fix or rewire whatever tool_call node_errors names.",
+                    the prompt text, and fix or rewire whatever tool_call node_errors names. Also \
+                    check routing_divergence_warnings: any agent/tool_call node listed there \
+                    never ran in this sandbox at all because an upstream condition routed the \
+                    mock data past it — verify that wiring by hand too.",
             }))?));
         }
 
@@ -1307,9 +1381,44 @@ impl Tool for DryRunWorkflowTool {
             "agent_prompt_nulls": agent_prompt_nulls,
             "agent_input_context_nulls": agent_input_context_nulls,
             "node_errors": node_errors,
-            "note": "SANDBOX (mock) output — LLM/tool/HTTP/code nodes returned deterministic echoes; NO real side effects occurred. This checks wiring/routing only, not whether real integrations work.",
+            "routing_divergence_warnings": routing_divergence_warnings,
+            "note": "SANDBOX (mock) output — LLM/tool/HTTP/code nodes returned deterministic echoes; NO real side effects occurred. This checks wiring/routing only, not whether real integrations work. \
+                If routing_divergence_warnings is non-empty, an agent/tool_call node never ran in \
+                this sandbox because an upstream condition routed the mock data past it — that \
+                node's wiring is unverified; check it by hand.",
         }))?))
     }
+}
+
+/// Walks a graph backward from `node_id`'s predecessors (any number of hops)
+/// to find the nearest ancestor that is a `condition` node — used to name the
+/// branch responsible for a routing-divergence warning (see
+/// [`DryRunWorkflowTool::execute`]'s routing-divergence check, just above).
+/// Returns `None` if no predecessor chain reaches a `condition` node (e.g. the
+/// node simply has no predecessors, or none of them is a condition) — the
+/// warning is still emitted, just without a named culprit node.
+fn find_upstream_condition(graph: &WorkflowGraph, node_id: &str) -> Option<String> {
+    let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<&str> = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.to_node == node_id)
+        .map(|edge| edge.from_node.as_str())
+        .collect();
+    while let Some(current) = queue.pop_front() {
+        if !visited.insert(current) {
+            continue;
+        }
+        if let Some(node) = graph.nodes.iter().find(|n| n.id == current) {
+            if node.kind == tinyflows::model::NodeKind::Condition {
+                return Some(node.id.clone());
+            }
+        }
+        for edge in graph.edges.iter().filter(|edge| edge.to_node == current) {
+            queue.push_back(edge.from_node.as_str());
+        }
+    }
+    None
 }
 
 /// Best-effort extraction of the human-readable error message the engine
