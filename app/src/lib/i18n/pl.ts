@@ -1073,7 +1073,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': 'Nie udało się zakończyć wdrożenia. Spróbuj ponownie.',
   'onboarding.apiKeys.title': 'Dodajmy Twoje klucze API',
   'onboarding.apiKeys.subtitle':
-    'Możesz wkleić je teraz lub pominąć i dodać później w Ustawieniach › AI. Klucze są przechowywane na tym urządzeniu, zaszyfrowane w spoczynku.',
+    'Możesz wkleić je teraz lub pominąć i dodać później w Połączenia › klucze API. Klucze są przechowywane na tym urządzeniu, zaszyfrowane w spoczynku.',
   'onboarding.apiKeys.openaiLabel': 'Klucz API OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6758,7 +6758,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'Model ekstrakcji pamięci przekracza limit czasu, więc wiki ma niewielką strukturę. Zmień model ekstrakcji pamięci na szybszy w Połączenia → Klucze API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'Brak dostępnego dostawcy podsumowań dla funkcji Twórz drzewa podsumowań. Włącz lokalną AI (Ollama) lub włącz podsumowywanie w chmurze w Połączenia → Klucze API → LLM.',
+    'Brak dostępnego dostawcy podsumowań dla funkcji Twórz drzewa podsumowań. Włącz lokalną AI (Ollama) albo ustaw memory_tree.cloud_summarization_opt_in=true i skonfiguruj dostawcę LLM w Połączenia → Klucze API → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Pominięto element pamięci, ponieważ jego tekst był pusty. Żadne działanie nie jest wymagane — nowe elementy są nadal osadzane normalnie.',
   'memory.health.remediation.storage_unavailable':

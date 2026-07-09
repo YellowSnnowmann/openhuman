@@ -1089,7 +1089,7 @@ const messages: TranslationMap = {
     'Onboarding konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.',
   'onboarding.apiKeys.title': 'Fügen wir deine API-Schlüssel hinzu',
   'onboarding.apiKeys.subtitle':
-    'Du kannst sie jetzt einfügen oder überspringen und später unter „Einstellungen“ > „KI“ hinzufügen. Schlüssel werden auf diesem Gerät gespeichert und im Ruhezustand verschlüsselt.',
+    'Du kannst sie jetzt einfügen oder überspringen und später unter „Verbindungen“ > „API-Schlüssel“ hinzufügen. Schlüssel werden auf diesem Gerät gespeichert und im Ruhezustand verschlüsselt.',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API Schlüssel',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -4235,8 +4235,8 @@ const messages: TranslationMap = {
   'pages.settings.accountSection.description':
     'Wiederherstellungsphrase, Team, Verbindungen und Datenschutzeinstellungen.',
   'pages.settings.accountSection.title': 'Konto',
-  'pages.settings.ai.llm': 'Llm',
-  'pages.settings.ai.llmDesc': 'Llm absch',
+  'pages.settings.ai.llm': 'LLM',
+  'pages.settings.ai.llmDesc': 'Sprachmodell-Anbieter und Routing',
   'pages.settings.ai.voice': 'Stimme',
   'pages.settings.ai.voiceDesc': 'Sprachbeschreibung',
   'pages.settings.aiSection.description':
@@ -6835,9 +6835,9 @@ const messages: TranslationMap = {
   'memory.health.remediation.local_model_unavailable':
     'Ein erforderliches lokales Modell ist nicht verfügbar. Installiere/starte Ollama und lade das Modell herunter, oder wechsle diese Arbeitslast unter Verbindungen → API-Schlüssel zu einem Cloud-Anbieter.',
   'memory.health.remediation.extraction_timeout':
-    'Das Modell zur Speicherextraktion überschreitet die Zeit, daher hat das Wiki wenig Struktur. Wechsle das Modell für die Speicherextraktion unter Verbindungen → API-Schlüssel → Llm zu einem schnelleren.',
+    'Das Modell zur Speicherextraktion überschreitet die Zeit, daher hat das Wiki wenig Struktur. Wechsle das Modell für die Speicherextraktion unter Verbindungen → API-Schlüssel → LLM zu einem schnelleren.',
   'memory.health.remediation.summarizer_unavailable':
-    'Für „Zusammenfassungsbäume erstellen” ist kein Zusammenfassungsanbieter verfügbar. Aktiviere die lokale KI (Ollama) oder aktiviere die Cloud-Zusammenfassung unter Verbindungen → API-Schlüssel → Llm.',
+    'Für „Zusammenfassungsbäume erstellen” ist kein Zusammenfassungsanbieter verfügbar. Aktiviere die lokale KI (Ollama) oder setze memory_tree.cloud_summarization_opt_in=true und konfiguriere einen LLM-Anbieter unter Verbindungen → API-Schlüssel → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Ein Speicherelement wurde übersprungen, weil sein Text leer war. Keine Aktion erforderlich — neue Einträge werden weiterhin normal eingebettet.',
   'memory.health.remediation.storage_unavailable':

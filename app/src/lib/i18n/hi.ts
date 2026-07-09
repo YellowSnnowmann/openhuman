@@ -1056,7 +1056,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': 'ऑनबोर्डिंग पूरी नहीं हो सकी। कृपया पुनः प्रयास करें।',
   'onboarding.apiKeys.title': 'अपनी API Keys जोड़ें',
   'onboarding.apiKeys.subtitle':
-    'अभी पेस्ट करें या बाद में Settings › AI में जोड़ें। Keys इस डिवाइस पर एन्क्रिप्टेड रहती हैं।',
+    'अभी पेस्ट करें या बाद में कनेक्शन › API कुंजियाँ में जोड़ें। Keys इस डिवाइस पर एन्क्रिप्टेड रहती हैं।',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API कुंजी',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6658,7 +6658,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'मेमोरी एक्सट्रैक्शन मॉडल टाइम आउट हो रहा है, इसलिए विकी में बहुत कम संरचना है। कनेक्शन → API कुंजियाँ → LLM में मेमोरी एक्सट्रैक्शन मॉडल को तेज़ मॉडल में बदलें।',
   'memory.health.remediation.summarizer_unavailable':
-    'सारांश ट्री बनाएँ के लिए कोई सारांश प्रदाता उपलब्ध नहीं है। स्थानीय AI (Ollama) सक्षम करें, या कनेक्शन → API कुंजियाँ → LLM में क्लाउड सारांश सक्षम करें।',
+    'सारांश ट्री बनाएँ के लिए कोई सारांश प्रदाता उपलब्ध नहीं है। स्थानीय AI (Ollama) सक्षम करें, या memory_tree.cloud_summarization_opt_in=true सेट करके कनेक्शन → API कुंजियाँ → LLM में LLM provider कॉन्फ़िगर करें।',
   'memory.health.remediation.empty_input_refused':
     'एक मेमोरी आइटम छोड़ दिया गया क्योंकि उसका टेक्स्ट खाली था। कोई कार्रवाई आवश्यक नहीं — नए आइटम सामान्य रूप से एम्बेड होते रहेंगे।',
   'memory.health.remediation.storage_unavailable':

@@ -1080,7 +1080,7 @@ const messages: TranslationMap = {
     'No se pudo completar el proceso de incorporación. Por favor, inténtalo de nuevo.',
   'onboarding.apiKeys.title': 'Agreguemos tus claves API',
   'onboarding.apiKeys.subtitle':
-    'Puedes pegarlas ahora u omitir y agregarlas luego en Configuración › IA. Las claves se guardan en este dispositivo, cifradas en reposo.',
+    'Puedes pegarlas ahora u omitir y agregarlas luego en Conexiones › claves API. Las claves se guardan en este dispositivo, cifradas en reposo.',
   'onboarding.apiKeys.openaiLabel': 'Clave API de OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6786,7 +6786,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'El modelo de extracción de memoria está agotando el tiempo de espera, por lo que la wiki tiene poca estructura. Cambia el modelo de extracción de memoria por uno más rápido en Conexiones → Claves de API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'No hay ningún proveedor de resúmenes disponible para Crear árboles de resumen. Activa la IA local (Ollama) o activa el resumen en la nube en Conexiones → Claves de API → LLM.',
+    'No hay ningún proveedor de resúmenes disponible para Crear árboles de resumen. Activa la IA local (Ollama), o configura memory_tree.cloud_summarization_opt_in=true y un proveedor LLM en Conexiones → Claves de API → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Se omitió un elemento de memoria porque su texto estaba vacío. No se requiere ninguna acción — los elementos nuevos siguen incrustándose con normalidad.',
   'memory.health.remediation.storage_unavailable':

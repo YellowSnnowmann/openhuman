@@ -1093,7 +1093,7 @@ const en: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'The memory extraction model is timing out, so the wiki has little structure. Switch the Memory extraction model to a faster one in Connections → API keys → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'No summarization provider is available for Build Summary Trees. Enable local AI (Ollama), or enable cloud summarization in Connections → API keys → LLM.',
+    'No summarization provider is available for Build Summary Trees. Enable local AI (Ollama), or set memory_tree.cloud_summarization_opt_in=true and configure an LLM provider in Connections → API keys → LLM.',
   'memory.health.remediation.empty_input_refused':
     'A memory item was skipped because its text was empty. No action needed — newer items continue to embed normally.',
   'memory.health.remediation.storage_unavailable':
@@ -1188,7 +1188,7 @@ const en: TranslationMap = {
   // Onboarding: API keys step (only when Custom is picked)
   'onboarding.apiKeys.title': "Let's Add Your API Keys",
   'onboarding.apiKeys.subtitle':
-    'You can paste them now or skip and add them later in Settings › AI. Keys are stored on this device, encrypted at rest.',
+    'You can paste them now or skip and add them later in Connections › API keys. Keys are stored on this device, encrypted at rest.',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API key',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':

@@ -1072,7 +1072,7 @@ const messages: TranslationMap = {
     'Не удалось завершить настройку. Пожалуйста, попробуйте ещё раз.',
   'onboarding.apiKeys.title': 'Добавь свои API-ключи',
   'onboarding.apiKeys.subtitle':
-    'Вставь их сейчас или пропусти и добавь позже в Настройки › AI. Ключи хранятся на этом устройстве в зашифрованном виде.',
+    'Вставь их сейчас или пропусти и добавь позже в Подключения › API-ключи. Ключи хранятся на этом устройстве в зашифрованном виде.',
   'onboarding.apiKeys.openaiLabel': 'API-ключ OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6729,7 +6729,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'Модель извлечения памяти превышает время ожидания, поэтому в вики мало структуры. Выберите более быструю модель извлечения памяти в разделе Подключения → API-ключи → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'Нет доступного поставщика суммаризации для «Построить деревья сводок». Включите локальный ИИ (Ollama) или включите облачную суммаризацию в разделе Подключения → API-ключи → LLM.',
+    'Нет доступного поставщика суммаризации для «Построить деревья сводок». Включите локальный ИИ (Ollama) или установите memory_tree.cloud_summarization_opt_in=true и настройте провайдера LLM в Подключения → API-ключи → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Элемент памяти пропущен, так как его текст был пуст. Действия не требуются — новые элементы продолжают встраиваться как обычно.',
   'memory.health.remediation.storage_unavailable':

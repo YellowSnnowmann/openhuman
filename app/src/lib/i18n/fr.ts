@@ -1084,7 +1084,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': "Impossible de terminer l'intégration. Veuillez réessayer.",
   'onboarding.apiKeys.title': 'Ajoutons tes clés API',
   'onboarding.apiKeys.subtitle':
-    'Tu peux les coller maintenant ou passer et les ajouter plus tard dans Paramètres › IA. Les clés sont stockées sur cet appareil, chiffrées au repos.',
+    'Tu peux les coller maintenant ou passer et les ajouter plus tard dans Connexions › clés API. Les clés sont stockées sur cet appareil, chiffrées au repos.',
   'onboarding.apiKeys.openaiLabel': 'Clé API OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6809,7 +6809,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     "Le modèle d'extraction de mémoire dépasse le délai imparti, le wiki a donc peu de structure. Choisissez un modèle d'extraction de mémoire plus rapide dans Connexions → Clés API → LLM.",
   'memory.health.remediation.summarizer_unavailable':
-    "Aucun fournisseur de résumé n'est disponible pour Créer des arbres de résumé. Activez l'IA locale (Ollama) ou activez la synthèse cloud dans Connexions → Clés API → LLM.",
+    "Aucun fournisseur de résumé n'est disponible pour Créer des arbres de résumé. Activez l'IA locale (Ollama), ou définissez memory_tree.cloud_summarization_opt_in=true et configurez un fournisseur LLM dans Connexions → Clés API → LLM.",
   'memory.health.remediation.empty_input_refused':
     "Un élément de mémoire a été ignoré car son texte était vide. Aucune action requise — les nouveaux éléments continuent de s'intégrer normalement.",
   'memory.health.remediation.storage_unavailable':

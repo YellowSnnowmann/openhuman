@@ -1066,7 +1066,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': 'Tidak dapat menyelesaikan orientasi. Silakan coba lagi.',
   'onboarding.apiKeys.title': 'Mari Tambahkan API Key Anda',
   'onboarding.apiKeys.subtitle':
-    'Anda dapat menempelkannya sekarang atau lewati dan tambahkan nanti di Pengaturan › AI. Key disimpan di perangkat ini, dienkripsi saat penyimpanan.',
+    'Anda dapat menempelkannya sekarang atau lewati dan tambahkan nanti di Koneksi › API key. Key disimpan di perangkat ini, dienkripsi saat penyimpanan.',
   'onboarding.apiKeys.openaiLabel': 'API key OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6681,7 +6681,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'Model ekstraksi memori kehabisan waktu, sehingga wiki memiliki sedikit struktur. Ganti model ekstraksi memori ke yang lebih cepat di Koneksi → Kunci API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'Tidak ada penyedia ringkasan yang tersedia untuk Buat Pohon Ringkasan. Aktifkan AI lokal (Ollama), atau aktifkan ringkasan cloud di Koneksi → Kunci API → LLM.',
+    'Tidak ada penyedia ringkasan yang tersedia untuk Buat Pohon Ringkasan. Aktifkan AI lokal (Ollama), atau setel memory_tree.cloud_summarization_opt_in=true dan konfigurasikan penyedia LLM di Koneksi → Kunci API → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Item memori dilewati karena teksnya kosong. Tidak diperlukan tindakan — item baru tetap disematkan seperti biasa.',
   'memory.health.remediation.storage_unavailable':

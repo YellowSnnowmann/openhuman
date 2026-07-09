@@ -1005,7 +1005,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': '无法完成引导流程，请重试。',
   'onboarding.apiKeys.title': '添加你的 API 密钥',
   'onboarding.apiKeys.subtitle':
-    '你可以现在粘贴，也可以跳过并稍后在设置 › AI 中添加。密钥会加密存储在此设备上。',
+    '你可以现在粘贴，也可以跳过并稍后在连接 › API 密钥中添加。密钥会加密存储在此设备上。',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API 密钥',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6302,7 +6302,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     '记忆提取模型超时，因此 Wiki 结构很少。请在连接 → API 密钥 → 语言模型 中将记忆提取模型更换为更快的模型。',
   'memory.health.remediation.summarizer_unavailable':
-    '没有可用于构建摘要树的摘要提供方。请启用本地 AI（Ollama），或在连接 → API 密钥 → 语言模型中启用云端摘要。',
+    '没有可用于构建摘要树的摘要提供方。请启用本地 AI（Ollama），或设置 memory_tree.cloud_summarization_opt_in=true，并在连接 → API 密钥 → 语言模型中配置语言模型提供商。',
   'memory.health.remediation.empty_input_refused':
     '由于文本为空，一项记忆已被跳过。无需操作 — 新条目继续正常嵌入。',
   'memory.health.remediation.storage_unavailable':

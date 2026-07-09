@@ -1050,7 +1050,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': '온보딩을 완료할 수 없습니다. 다시 시도해 주세요.',
   'onboarding.apiKeys.title': 'API 키를 추가해 봅시다',
   'onboarding.apiKeys.subtitle':
-    '지금 붙여넣거나 건너뛰고 나중에 설정 › AI에서 추가할 수 있습니다. 키는 이 기기에 저장되며 저장 시 암호화됩니다.',
+    '지금 붙여넣거나 건너뛰고 나중에 연결 › API 키에서 추가할 수 있습니다. 키는 이 기기에 저장되며 저장 시 암호화됩니다.',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API 키',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6584,7 +6584,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     '메모리 추출 모델이 시간 초과되어 위키 구조가 거의 없습니다. 연결 → API 키 → LLM에서 메모리 추출 모델을 더 빠른 것으로 변경하세요.',
   'memory.health.remediation.summarizer_unavailable':
-    '요약 트리 만들기에 사용할 수 있는 요약 제공자가 없습니다. 로컬 AI(Ollama)를 활성화하거나, 연결 → API 키 → LLM에서 클라우드 요약을 활성화하세요.',
+    '요약 트리 만들기에 사용할 수 있는 요약 제공자가 없습니다. 로컬 AI(Ollama)를 활성화하거나, memory_tree.cloud_summarization_opt_in=true를 설정하고 연결 → API 키 → LLM에서 LLM 제공자를 구성하세요.',
   'memory.health.remediation.empty_input_refused':
     '텍스트가 비어 있어 메모리 항목이 건너뛰어졌습니다. 조치가 필요하지 않습니다 — 새 항목은 정상적으로 임베딩됩니다.',
   'memory.health.remediation.storage_unavailable':

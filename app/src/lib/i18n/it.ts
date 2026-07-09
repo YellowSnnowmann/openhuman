@@ -1080,7 +1080,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': "Impossibile completare l'onboarding. Riprova.",
   'onboarding.apiKeys.title': 'Aggiungiamo le tue chiavi API',
   'onboarding.apiKeys.subtitle':
-    'Puoi incollarle ora o saltare e aggiungerle dopo in Impostazioni › AI. Le chiavi sono memorizzate su questo dispositivo, crittografate a riposo.',
+    'Puoi incollarle ora o saltare e aggiungerle dopo in Connessioni › chiavi API. Le chiavi sono memorizzate su questo dispositivo, crittografate a riposo.',
   'onboarding.apiKeys.openaiLabel': 'Chiave API OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6772,7 +6772,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'Il modello di estrazione della memoria sta andando in timeout, quindi il wiki ha poca struttura. Passa a un modello di estrazione della memoria più veloce in Connessioni → Chiavi API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    "Nessun provider di riepilogo è disponibile per Crea alberi di riepilogo. Abilita l'IA locale (Ollama) o abilita il riepilogo cloud in Connessioni → Chiavi API → LLM.",
+    "Nessun provider di riepilogo è disponibile per Crea alberi di riepilogo. Abilita l'IA locale (Ollama), oppure imposta memory_tree.cloud_summarization_opt_in=true e configura un provider LLM in Connessioni → Chiavi API → LLM.",
   'memory.health.remediation.empty_input_refused':
     'Un elemento di memoria è stato saltato perché il suo testo era vuoto. Nessuna azione necessaria — i nuovi elementi continuano a essere incorporati normalmente.',
   'memory.health.remediation.storage_unavailable':

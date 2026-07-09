@@ -1059,7 +1059,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': 'অনবোর্ডিং শেষ করা যায়নি। আবার চেষ্টা করুন।',
   'onboarding.apiKeys.title': 'আপনার API কী যোগ করুন',
   'onboarding.apiKeys.subtitle':
-    'এখনই পেস্ট করুন বা এড়িয়ে গিয়ে পরে Settings › AI-এ যোগ করুন। কীগুলো এই ডিভাইসে এনক্রিপ্ট করে সংরক্ষিত থাকে।',
+    'এখনই পেস্ট করুন বা এড়িয়ে গিয়ে পরে সংযোগ › API কী-তে যোগ করুন। কীগুলো এই ডিভাইসে এনক্রিপ্ট করে সংরক্ষিত থাকে।',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API কী',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6661,7 +6661,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'মেমরি এক্সট্র্যাকশন মডেল টাইম আউট হচ্ছে, তাই উইকিতে সামান্য কাঠামো আছে। সংযোগ → API কী → LLM-তে মেমরি এক্সট্র্যাকশন মডেল একটি দ্রুততর মডেলে পরিবর্তন করুন।',
   'memory.health.remediation.summarizer_unavailable':
-    'সারাংশ ট্রি তৈরির জন্য কোনও সারাংশ প্রদানকারী উপলব্ধ নেই। স্থানীয় AI (Ollama) সক্ষম করুন, অথবা সংযোগ → API কী → LLM-তে ক্লাউড সারাংশ সক্ষম করুন।',
+    'সারাংশ ট্রি তৈরির জন্য কোনও সারাংশ প্রদানকারী উপলব্ধ নেই। স্থানীয় AI (Ollama) সক্ষম করুন, অথবা memory_tree.cloud_summarization_opt_in=true সেট করে সংযোগ → API কী → LLM-তে একটি LLM প্রদানকারী কনফিগার করুন।',
   'memory.health.remediation.empty_input_refused':
     'একটি মেমরি আইটেম এড়িয়ে যাওয়া হয়েছে কারণ এর পাঠ্য খালি ছিল। কোনো পদক্ষেপের প্রয়োজন নেই — নতুন আইটেমগুলি স্বাভাবিকভাবে এমবেড করতে থাকে।',
   'memory.health.remediation.storage_unavailable':

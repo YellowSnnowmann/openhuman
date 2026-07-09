@@ -1035,7 +1035,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': 'تعذّر إتمام الإعداد. يُرجى المحاولة مجددًا.',
   'onboarding.apiKeys.title': 'لنضف مفاتيح API الخاصة بك',
   'onboarding.apiKeys.subtitle':
-    'يمكنك لصقها الآن أو تخطيها وإضافتها لاحقًا من الإعدادات › الذكاء الاصطناعي. تُحفظ المفاتيح على هذا الجهاز مشفرةً.',
+    'يمكنك لصقها الآن أو تخطيها وإضافتها لاحقًا من الاتصالات › مفاتيح API. تُحفظ المفاتيح على هذا الجهاز مشفرةً.',
   'onboarding.apiKeys.openaiLabel': 'مفتاح OpenAI API',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -6514,7 +6514,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.extraction_timeout':
     'يتجاوز نموذج استخراج الذاكرة المهلة الزمنية، لذا فإن بنية الويكي قليلة. بدّل نموذج استخراج الذاكرة إلى نموذج أسرع في الاتصالات → مفاتيح API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'لا يتوفر مزوّد تلخيص لميزة إنشاء أشجار التلخيص. فعّل الذكاء الاصطناعي المحلي (Ollama)، أو فعّل تلخيص السحابة في الاتصالات → مفاتيح API → LLM.',
+    'لا يتوفر مزوّد تلخيص لميزة إنشاء أشجار التلخيص. فعّل الذكاء الاصطناعي المحلي (Ollama)، أو اضبط memory_tree.cloud_summarization_opt_in=true وهيّئ مزوّد LLM في الاتصالات → مفاتيح API → LLM.',
   'memory.health.remediation.empty_input_refused':
     'تم تخطي عنصر ذاكرة لأن نصه كان فارغًا. لا حاجة لأي إجراء — تستمر العناصر الجديدة في التضمين بشكل طبيعي.',
   'memory.health.remediation.storage_unavailable':
