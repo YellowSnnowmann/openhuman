@@ -1,10 +1,10 @@
-//! Cloud event pusher — forwards sanitized orchestration events up to the
-//! hosted brain (`POST /orchestration/v1/events`).
+//! Hosted-brain uplink + read surface.
 //!
-//! Phase 0 runs this in **shadow mode**: the local wake graph remains
-//! authoritative and the push is an additional, best-effort, fire-and-forget
-//! side effect gated behind [`OrchestrationConfig::cloud_shadow`]
-//! (default off). It never blocks or fails ingest.
+//! Forwards sanitized orchestration events (`POST /orchestration/v1/events`) and
+//! world-diff batches (`POST /orchestration/v1/world-diff`) to the hosted brain,
+//! which runs the wake/reasoning graph server-side, and reads back
+//! sessions / messages / steering (`GET /orchestration/v1/*`). Forwarding is
+//! best-effort and fire-and-forget, so it never blocks or fails ingest.
 //!
 //! Auth + base-URL plumbing mirrors the other hosted-API adapters
 //! (`announcements/ops.rs`, `billing/ops.rs`): an app-session JWT via
@@ -14,6 +14,7 @@
 use std::time::Duration;
 
 use reqwest::Method;
+use serde_json::Value;
 
 use crate::api::config::effective_backend_api_url;
 use crate::api::BackendOAuthClient;
@@ -151,6 +152,66 @@ pub async fn push_world_diff_with(
         &label,
     )
     .await
+}
+
+// ── Hosted read surface (GET) ─────────────────────────────────────────────────
+// The renderer reads session / message / state / steering / world-diff state
+// from the hosted brain over these routes. Each returns the unwrapped `data`
+// payload (`BackendOAuthClient` strips the `{success,data}` envelope). Callers
+// fall back to the local render cache on `Err` and surface an offline notice.
+// A replayed/duplicate write is a 202 (not a 409) server-side, so a read never
+// needs to special-case dedupe.
+
+const SESSIONS_PATH: &str = "/orchestration/v1/sessions";
+const STEERING_PATH: &str = "/orchestration/v1/steering";
+
+/// GET the hosted session list →
+/// `[{ sessionId, counterpartAgentId, lastSeq, status, lastCycleId?, lastEventTs?, updatedAt? }]`.
+pub async fn fetch_sessions(config: &Config) -> Result<Value, String> {
+    authed_get(config, SESSIONS_PATH.to_string(), "sessions").await
+}
+
+/// GET messages for a session, optionally after a `seq` cursor →
+/// `[{ seq, role, sender, body, kind, ts, cycleId }]`. Cursor param is `?after=`.
+pub async fn fetch_messages(
+    config: &Config,
+    session_id: &str,
+    after_seq: Option<i64>,
+) -> Result<Value, String> {
+    let mut path = format!(
+        "/orchestration/v1/sessions/{}/messages",
+        urlencoding::encode(session_id)
+    );
+    if let Some(after) = after_seq {
+        path.push_str(&format!("?after={after}"));
+    }
+    authed_get(config, path, "messages").await
+}
+
+/// GET the current steering directive + recent history →
+/// `{ active: { directive, consumedCycles, maxCycles } | null, history: [{ directive, createdAt? }] }`.
+pub async fn fetch_steering(config: &Config) -> Result<Value, String> {
+    authed_get(config, STEERING_PATH.to_string(), "steering").await
+}
+
+/// Shared authed GET → unwrapped `data` value, with the same JWT/base plumbing as
+/// the pushers. Returns a flattened error string on transport / non-2xx so the
+/// caller can degrade to the local render cache.
+async fn authed_get(config: &Config, path: String, label: &str) -> Result<Value, String> {
+    let token = crate::openhuman::credentials::session_support::require_live_session_token(config)?;
+    let api_url = effective_backend_api_url(&config.api_url);
+    let client = BackendOAuthClient::new(&api_url).map_err(|e| e.to_string())?;
+    match client.authed_json(&token, Method::GET, &path, None).await {
+        Ok(data) => {
+            log::debug!(target: LOG, "[orchestration] cloud.read.ok {label}");
+            Ok(data)
+        }
+        Err(err) => {
+            let msg = crate::api::flatten_authed_error(err);
+            log::warn!(target: LOG, "[orchestration] cloud.read.fail {label} err={msg}");
+            Err(msg)
+        }
+    }
 }
 
 // Transport tests live in `tests/orchestration_shadow_push_e2e.rs` (integration

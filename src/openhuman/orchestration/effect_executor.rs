@@ -153,9 +153,81 @@ pub async fn execute_send_dm(effect: &SendDmEffect) -> Result<(), String> {
     Ok(())
 }
 
-/// Handle an inbound `orch:effect:send_dm` frame end-to-end: parse → dedupe →
-/// send → produce the ack frame. Returns `(callId, ackFrame)` for the caller to
-/// emit, or `None` when the frame is unparseable (nothing to ack).
+/// A self-directed reply (the human↔OpenHuman Master chat, or the subconscious
+/// window) — rendered into the local cache, never Signal-sent to a peer. The
+/// hosted brain ships every terminal reply as a `send_dm`; the device decides
+/// whether that reply is for a peer or for the user's own window.
+fn is_self_session(session_id: &str) -> bool {
+    session_id.is_empty() || session_id == "master" || session_id == "subconscious"
+}
+
+/// Persist a hosted-authored reply into the local render cache as an `assistant`
+/// message and nudge the renderer, so the reply shows in its window even though
+/// the reasoning ran server-side. Idempotent by `call_id` (`INSERT OR IGNORE`),
+/// so a redelivered effect never doubles a row.
+async fn persist_reply(
+    agent_id: &str,
+    session_id: &str,
+    chat_kind: super::types::ChatKind,
+    call_id: &str,
+    body: &str,
+) -> Result<(), String> {
+    use super::types::{OrchestrationMessage, OrchestrationSession};
+    let config = crate::openhuman::config::Config::load_or_init()
+        .await
+        .map_err(|e| format!("config load: {e}"))?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let message_id = format!("reply:{call_id}");
+    let agent_owned = agent_id.to_string();
+    let session_owned = session_id.to_string();
+    let body_owned = body.to_string();
+    let now_owned = now.clone();
+    super::store::with_connection(&config.workspace_dir, move |conn| {
+        let seq = super::store::next_session_seq(conn, &agent_owned, &session_owned)?;
+        super::store::upsert_session(
+            conn,
+            &OrchestrationSession {
+                session_id: session_owned.clone(),
+                agent_id: agent_owned.clone(),
+                source: chat_kind.as_str().to_string(),
+                last_seq: seq,
+                created_at: now_owned.clone(),
+                last_message_at: now_owned.clone(),
+                ..Default::default()
+            },
+        )?;
+        super::store::insert_message(
+            conn,
+            &OrchestrationMessage {
+                id: message_id.clone(),
+                agent_id: agent_owned.clone(),
+                session_id: session_owned.clone(),
+                chat_kind,
+                role: "assistant".to_string(),
+                body: body_owned.clone(),
+                timestamp: now_owned.clone(),
+                seq,
+                ..Default::default()
+            },
+        )?;
+        Ok(())
+    })
+    .map_err(|e| format!("persist reply: {e}"))?;
+    super::bus::notify_orchestration_message(agent_id, session_id, chat_kind.as_str());
+    Ok(())
+}
+
+/// Handle an inbound `orch:effect:send_dm` frame end-to-end.
+///
+/// The hosted brain ships every terminal reply here. The device:
+/// - mirrors the reply body into the local render cache (so the window shows it
+///   regardless of the peer-send outcome), then
+/// - for a **self** session (Master / subconscious) that is the whole job — the
+///   reply is rendered, never Signal-sent;
+/// - for a **peer** session it is also sent over Signal to the counterpart.
+///
+/// Returns `(callId, ackFrame)` for the caller to emit over `orch:effect:result`,
+/// or `None` when the frame is unparseable (nothing to ack).
 pub async fn handle_send_dm(data: &Value) -> Option<(String, Value)> {
     let effect = match parse_send_dm(data) {
         Ok(e) => e,
@@ -177,6 +249,68 @@ pub async fn handle_send_dm(data: &Value) -> Option<(String, Value)> {
         ));
     }
 
+    let self_session = is_self_session(&effect.session_id);
+    // Where the reply is rendered locally. Self replies land in the user's own
+    // Master/subconscious window; peer replies land in that peer's session.
+    let (cache_agent, cache_session, chat_kind) = if self_session {
+        let session = if effect.session_id.is_empty() {
+            "master"
+        } else {
+            &effect.session_id
+        };
+        (
+            super::types::LOCAL_MASTER_AGENT.to_string(),
+            session.to_string(),
+            super::types::ChatKind::from_str(session),
+        )
+    } else {
+        (
+            effect.counterpart_agent_id.clone(),
+            effect.session_id.clone(),
+            super::types::ChatKind::Session,
+        )
+    };
+
+    let persist_res = persist_reply(
+        &cache_agent,
+        &cache_session,
+        chat_kind,
+        &effect.call_id,
+        &effect.body,
+    )
+    .await;
+
+    // A self reply is terminal here — no peer to Signal. Ack reflects the local
+    // render outcome so a rare cache-write failure is visible server-side.
+    if self_session {
+        return Some(match persist_res {
+            Ok(()) => {
+                log::debug!(
+                    target: LOG,
+                    "[orchestration] effect.send_dm.self_reply call_id={} session={}",
+                    effect.call_id,
+                    cache_session
+                );
+                (
+                    effect.call_id.clone(),
+                    effect_result_frame(&effect.call_id, true, None),
+                )
+            }
+            Err(e) => {
+                log::warn!(target: LOG, "[orchestration] effect.send_dm.self_persist_failed call_id={}: {e}", effect.call_id);
+                (
+                    effect.call_id.clone(),
+                    effect_result_frame(&effect.call_id, false, Some(&e)),
+                )
+            }
+        });
+    }
+
+    // Peer reply: the cache mirror is best-effort (log on failure), but the ack
+    // reflects the Signal send — that is what the hosted outbox is tracking.
+    if let Err(e) = persist_res {
+        log::warn!(target: LOG, "[orchestration] effect.send_dm.cache_mirror_failed call_id={}: {e}", effect.call_id);
+    }
     let (ok, error) = match execute_send_dm(&effect).await {
         Ok(()) => {
             log::debug!(
@@ -189,6 +323,132 @@ pub async fn handle_send_dm(data: &Value) -> Option<(String, Value)> {
         }
         Err(e) => {
             log::warn!(target: LOG, "[orchestration] effect.send_dm.failed call_id={}: {e}", effect.call_id);
+            (false, Some(e))
+        }
+    };
+    Some((
+        effect.call_id.clone(),
+        effect_result_frame(&effect.call_id, ok, error.as_deref()),
+    ))
+}
+
+// ── evict effect (context-guard → local memory RAG) ───────────────────────────
+
+/// One evicted compressed-history entry the hosted context-guard is asking the
+/// device to mirror into its local memory RAG so the summary stays retrievable
+/// offline after the server drops it from the wake context window.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvictEntry {
+    #[serde(default)]
+    pub cycle_id: String,
+    #[serde(default)]
+    pub summary: String,
+}
+
+/// An `orch:effect:evict` effect. Backend frame:
+/// `{ cycleId, callId, sessionId, entries: [{ cycleId, summary }] }`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvictEffect {
+    #[serde(default)]
+    pub cycle_id: String,
+    pub call_id: String,
+    #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub entries: Vec<EvictEntry>,
+}
+
+/// Parse an `orch:effect:evict` frame. Pure.
+pub fn parse_evict(data: &Value) -> Result<EvictEffect, String> {
+    serde_json::from_value(data.clone()).map_err(|e| format!("parse evict: {e}"))
+}
+
+/// Stable, idempotent RAG source id for an evicted entry. The ingest pipeline
+/// gates on this key, so a redelivered evict (or a replayed cycle) re-ingests
+/// nothing even beyond the `callId` dedupe.
+fn evict_source_id(session_id: &str, cycle_id: &str) -> String {
+    let session = if session_id.is_empty() {
+        "master"
+    } else {
+        session_id
+    };
+    format!("orch_evict:{session}:{cycle_id}")
+}
+
+/// Fold each evicted summary into local memory RAG via the standard ingest
+/// pipeline. The device's memory never leaves the machine — only the hosted
+/// brain's own compressed summary text (which it just sent us) is stored.
+pub async fn execute_evict(effect: &EvictEffect) -> Result<(), String> {
+    use crate::openhuman::memory::ingest_pipeline::ingest_document_with_scope;
+    use crate::openhuman::memory_sync::canonicalize::document::DocumentInput;
+
+    let config = crate::openhuman::config::Config::load_or_init()
+        .await
+        .map_err(|e| format!("config load: {e}"))?;
+
+    let mut ingested = 0usize;
+    for entry in &effect.entries {
+        if entry.summary.trim().is_empty() {
+            continue;
+        }
+        let source_id = evict_source_id(&effect.session_id, &entry.cycle_id);
+        let doc = DocumentInput {
+            provider: "orchestration".to_string(),
+            title: format!("Evicted orchestration summary {}", entry.cycle_id),
+            body: entry.summary.clone(),
+            modified_at: chrono::Utc::now(),
+            source_ref: Some(source_id.clone()),
+        };
+        ingest_document_with_scope(
+            &config,
+            &source_id,
+            "user",
+            vec!["orchestration".to_string(), "evicted".to_string()],
+            doc,
+            Some("orchestration/evicted".to_string()),
+        )
+        .await
+        .map_err(|e| format!("evict ingest cycle={}: {e}", entry.cycle_id))?;
+        ingested += 1;
+    }
+    log::debug!(
+        target: LOG,
+        "[orchestration] effect.evict.ingested count={ingested} session={}",
+        effect.session_id
+    );
+    Ok(())
+}
+
+/// Handle an inbound `orch:effect:evict` frame end-to-end: parse → dedupe →
+/// mirror into RAG → produce the ack frame. Returns `(callId, ackFrame)` for the
+/// caller to emit over `orch:effect:result`, or `None` when unparseable.
+pub async fn handle_evict(data: &Value) -> Option<(String, Value)> {
+    let effect = match parse_evict(data) {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!(target: LOG, "[orchestration] effect.evict.parse_failed: {e}");
+            return None;
+        }
+    };
+
+    if is_duplicate_call(&effect.call_id) {
+        log::debug!(
+            target: LOG,
+            "[orchestration] effect.evict.duplicate call_id={} (re-acking)",
+            effect.call_id
+        );
+        return Some((
+            effect.call_id.clone(),
+            effect_result_frame(&effect.call_id, true, None),
+        ));
+    }
+
+    let (ok, error) = match execute_evict(&effect).await {
+        Ok(()) => (true, None),
+        Err(e) => {
+            log::warn!(target: LOG, "[orchestration] effect.evict.failed call_id={}: {e}", effect.call_id);
             (false, Some(e))
         }
     };
