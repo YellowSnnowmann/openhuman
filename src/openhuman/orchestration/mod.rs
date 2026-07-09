@@ -92,8 +92,14 @@ pub async fn start_hosted_client_services(config: &Config) {
             )
             .await;
         }));
+        // Fire-and-forget the one-shot history migration so a slow/offline
+        // network can't block login-gated startup. Idempotent; the flag stays
+        // unset on failure so it retries next login.
+        let migrate_cfg = config.clone();
+        guard.push(tokio::spawn(async move {
+            migrate_history::migrate_if_needed(&migrate_cfg).await;
+        }));
     }
-    migrate_history::migrate_if_needed(config).await;
     log::info!(target: "orchestration", "[orchestration] hosted-client services started");
 }
 
