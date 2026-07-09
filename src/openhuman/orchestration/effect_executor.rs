@@ -118,13 +118,36 @@ pub fn handle_tool_call(data: &Value) -> Option<(String, Value)> {
 
 static SEEN_CALL_IDS: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-/// Record a `callId` and report whether it was already executed on this device.
-/// Guards the at-least-once socket delivery so a redelivered effect is acked
-/// (idempotently) but not executed twice.
+/// Bound on retained call ids. At the cap the window is cleared wholesale (a coarse
+/// TTL) so the guard can't grow without limit now that both send_dm and evict feed
+/// it; a redelivery for an effect older than this many claims may then re-execute,
+/// which is safe (effects are idempotent) and vanishingly rare.
+const SEEN_CALL_IDS_CAP: usize = 16_384;
+
+/// Claim `call_id` for execution and report whether it was already claimed (i.e. a
+/// redelivered effect). Claiming on entry — rather than on success — is deliberate:
+/// it stops a redelivery that arrives *while the first attempt is still running* from
+/// executing the effect a second time. A claim whose effect ultimately FAILS is
+/// released via [`release_call`] so the hosted brain's redelivery re-runs it; a claim
+/// whose effect succeeds stays latched so the redelivery is re-acked idempotently
+/// without re-executing.
 pub fn is_duplicate_call(call_id: &str) -> bool {
     let mut guard = SEEN_CALL_IDS.lock().unwrap_or_else(|p| p.into_inner());
     let set = guard.get_or_insert_with(HashSet::new);
+    if set.len() >= SEEN_CALL_IDS_CAP {
+        set.clear();
+    }
     !set.insert(call_id.to_string())
+}
+
+/// Release a `call_id` claimed by [`is_duplicate_call`] after its effect FAILED, so a
+/// subsequent redelivery re-executes it instead of the guard re-acking a stale
+/// `ok:true` and silently dropping the lost work.
+pub fn release_call(call_id: &str) {
+    let mut guard = SEEN_CALL_IDS.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(set) = guard.as_mut() {
+        set.remove(call_id);
+    }
 }
 
 /// Wrap the reply body for `session_id`. Empty/`master`/`subconscious` sessions
@@ -183,34 +206,39 @@ async fn persist_reply(
     let body_owned = body.to_string();
     let now_owned = now.clone();
     super::store::with_connection(&config.workspace_dir, move |conn| {
-        let seq = super::store::next_session_seq(conn, &agent_owned, &session_owned)?;
-        super::store::upsert_session(
-            conn,
-            &OrchestrationSession {
-                session_id: session_owned.clone(),
-                agent_id: agent_owned.clone(),
-                source: chat_kind.as_str().to_string(),
-                last_seq: seq,
-                created_at: now_owned.clone(),
-                last_message_at: now_owned.clone(),
-                ..Default::default()
-            },
-        )?;
-        super::store::insert_message(
-            conn,
-            &OrchestrationMessage {
-                id: message_id.clone(),
-                agent_id: agent_owned.clone(),
-                session_id: session_owned.clone(),
-                chat_kind,
-                role: "assistant".to_string(),
-                body: body_owned.clone(),
-                timestamp: now_owned.clone(),
-                seq,
-                ..Default::default()
-            },
-        )?;
-        Ok(())
+        // Allocate the per-session seq and persist the reply in one immediate txn so
+        // two concurrent self-replies on the same (agent_id, session_id) can't read
+        // the same `MAX(seq)+1` and persist a duplicate ordinal (matches `ingest_one`).
+        super::store::in_immediate_txn(conn, |conn| {
+            let seq = super::store::next_session_seq(conn, &agent_owned, &session_owned)?;
+            super::store::upsert_session(
+                conn,
+                &OrchestrationSession {
+                    session_id: session_owned.clone(),
+                    agent_id: agent_owned.clone(),
+                    source: chat_kind.as_str().to_string(),
+                    last_seq: seq,
+                    created_at: now_owned.clone(),
+                    last_message_at: now_owned.clone(),
+                    ..Default::default()
+                },
+            )?;
+            super::store::insert_message(
+                conn,
+                &OrchestrationMessage {
+                    id: message_id.clone(),
+                    agent_id: agent_owned.clone(),
+                    session_id: session_owned.clone(),
+                    chat_kind,
+                    role: "assistant".to_string(),
+                    body: body_owned.clone(),
+                    timestamp: now_owned.clone(),
+                    seq,
+                    ..Default::default()
+                },
+            )?;
+            Ok(())
+        })
     })
     .map_err(|e| format!("persist reply: {e}"))?;
     super::bus::notify_orchestration_message(agent_id, session_id, chat_kind.as_str());
@@ -298,6 +326,8 @@ pub async fn handle_send_dm(data: &Value) -> Option<(String, Value)> {
             }
             Err(e) => {
                 log::warn!(target: LOG, "[orchestration] effect.send_dm.self_persist_failed call_id={}: {e}", effect.call_id);
+                // Un-claim so a redelivery retries the local render.
+                release_call(&effect.call_id);
                 (
                     effect.call_id.clone(),
                     effect_result_frame(&effect.call_id, false, Some(&e)),
@@ -326,6 +356,10 @@ pub async fn handle_send_dm(data: &Value) -> Option<(String, Value)> {
             (false, Some(e))
         }
     };
+    if !ok {
+        // Un-claim so a redelivery re-sends instead of re-acking a stale success.
+        release_call(&effect.call_id);
+    }
     Some((
         effect.call_id.clone(),
         effect_result_frame(&effect.call_id, ok, error.as_deref()),
@@ -452,6 +486,11 @@ pub async fn handle_evict(data: &Value) -> Option<(String, Value)> {
             (false, Some(e))
         }
     };
+    if !ok {
+        // Un-claim so a redelivery re-runs the eviction instead of re-acking a stale
+        // success and losing the summary the brain asked to evict.
+        release_call(&effect.call_id);
+    }
     Some((
         effect.call_id.clone(),
         effect_result_frame(&effect.call_id, ok, error.as_deref()),

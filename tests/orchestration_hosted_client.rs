@@ -4,9 +4,10 @@
 //! crate (the root crate's `cfg(test)` build is gated elsewhere).
 
 use openhuman_core::openhuman::orchestration::effect_executor::{
-    effect_result_frame, is_duplicate_call, parse_evict,
+    effect_result_frame, is_duplicate_call, parse_evict, release_call,
 };
 use openhuman_core::openhuman::orchestration::store;
+use openhuman_core::openhuman::orchestration::wire::OrchestrationEventEnvelopeWire;
 use openhuman_core::openhuman::orchestration::world_model::observe_ingest_note;
 
 // ── world_model: bounded, single-line, never leaks the body ───────────────────
@@ -83,6 +84,25 @@ fn is_duplicate_call_is_true_only_on_the_second_sight() {
     assert!(is_duplicate_call(id), "second sight is a duplicate");
 }
 
+#[test]
+fn release_call_lets_a_failed_effect_be_retried() {
+    // A claim whose effect FAILS is released so the hosted brain's redelivery
+    // re-executes it, rather than the guard re-acking a stale success and dropping
+    // the work. (Unique id so it can't collide with the other dedupe test's id in
+    // the process-global set.)
+    let id = "unique-call-id-orchestration-release-test";
+    assert!(!is_duplicate_call(id), "first claim");
+    assert!(
+        is_duplicate_call(id),
+        "still claimed while the effect is in flight"
+    );
+    release_call(id);
+    assert!(
+        !is_duplicate_call(id),
+        "a released (failed) id is claimable again"
+    );
+}
+
 // ── world_obs device buffer round-trip ────────────────────────────────────────
 
 #[test]
@@ -117,6 +137,44 @@ fn world_obs_buffer_appends_monotonic_drains_fifo_and_deletes() {
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].id, keep);
     assert_eq!(remaining[0].note, "note-3");
+}
+
+#[test]
+fn forwarded_counterpart_id_is_not_re_encoded() {
+    // Load-bearing invariant for sync's re-paging guard: the device forwards
+    // `counterpartAgentId` as the exact base64 `envelope.from` it also stores as the
+    // local `agent_id`, and sync keys on the backend's verbatim echo of that string.
+    // Pin that the client never transforms the encoding here — if it did (or if the
+    // backend re-encoded), `next_session_seq` would miss the device's own rows and
+    // re-page every hosted turn under a second encoding, duplicating the session.
+    let agent = "ZCAAuA+2GVoRrT08Gt8JUVnxnISTelSxnDuyScze334=";
+    let env =
+        OrchestrationEventEnvelopeWire::build(agent, "sess-1", 3, "user", agent, "hi", 100, "dm");
+    assert_eq!(env.counterpart_agent_id, agent);
+    assert_eq!(env.event.sender, agent);
+}
+
+#[test]
+fn world_obs_seq_never_resets_after_a_full_drain() {
+    // Regression: `seq` must be a persistent monotonic counter, not `MAX(seq)+1`
+    // over the table. The uploader deletes every row after a successful push, so a
+    // table-scoped max would restart at 1 once the buffer empties and reuse seqs the
+    // backend already saw — its `(userId, sessionId, seq)` dedupe would then silently
+    // drop the fresh observation.
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().to_path_buf();
+
+    let s1 =
+        store::with_connection(&ws, |conn| store::append_world_obs(conn, "h-1", "n1", 1)).unwrap();
+    // Drain and delete everything, emptying the buffer.
+    let rows = store::with_connection(&ws, |conn| store::drain_world_obs(conn, 10)).unwrap();
+    let ids: Vec<i64> = rows.iter().map(|o| o.id).collect();
+    store::with_connection(&ws, |conn| store::delete_world_obs(conn, &ids)).unwrap();
+
+    // The next ordinal must climb past s1, not reset to 1.
+    let s2 =
+        store::with_connection(&ws, |conn| store::append_world_obs(conn, "h-1", "n2", 2)).unwrap();
+    assert!(s2 > s1, "seq reset after a full drain: s1={s1} s2={s2}");
 }
 
 #[test]

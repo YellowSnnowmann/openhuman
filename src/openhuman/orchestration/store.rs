@@ -534,6 +534,31 @@ pub fn list_messages_by_session(
     Ok(rows.into_iter().rev().collect())
 }
 
+/// The newest non-bookkeeping message for a specific `(agent_id, session_id)` — the
+/// agent-scoped analogue of [`list_messages_by_session`]'s newest row (same
+/// `status`/`lifecycle`/`unknown`/`session_info` exclusion). Used by the one-shot
+/// history migration: `list_messages_by_session` reads by `session_id` alone, so a
+/// legacy session id shared with another peer could surface *that* peer's latest
+/// turn and replay the wrong ask under this session's `agent_id`.
+pub fn latest_content_message(
+    conn: &Connection,
+    agent_id: &str,
+    session_id: &str,
+) -> Result<Option<OrchestrationMessage>> {
+    conn.query_row(
+        "SELECT id, agent_id, session_id, chat_kind, role, body, timestamp, seq,
+                event_kind, tool_name, call_id, ok, is_error, exit_code
+           FROM messages WHERE agent_id = ?1 AND session_id = ?2
+             AND (event_kind IS NULL
+                  OR event_kind NOT IN ('status', 'lifecycle', 'unknown', 'session_info'))
+           ORDER BY timestamp DESC, seq DESC LIMIT 1",
+        params![agent_id, session_id],
+        map_message_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
 /// Row → [`OrchestrationMessage`] mapper (a free fn so it is `Copy` and can be
 /// reused across the two `query_map` arms without a borrow-lifetime tangle).
 /// Column order MUST match the `SELECT` lists in the message readers.
@@ -738,16 +763,35 @@ pub struct WorldObs {
 /// Append one device-observed world note. `seq` is a global monotonic ordinal
 /// (unique within any single session, which is all the backend dedupe on
 /// `(userId, sessionId, seq)` requires). Returns the assigned seq.
+/// Buffer a world observation for the periodic world-diff uploader.
+///
+/// `seq` is drawn from the **persistent, monotonic** `world_obs:next_seq` counter in
+/// `kv` — it must never reset. The backend dedupes world-diff entries on
+/// `(userId, sessionId, seq)`, and the uploader deletes every row after a successful
+/// push ([`delete_world_obs`]), so a `MAX(seq)+1`-over-the-table scheme restarts at
+/// `1` once the buffer drains and reuses seqs the backend already saw — it then
+/// treats the fresh observation as a duplicate `202` no-op and silently drops it, so
+/// only the first batch per session ever reaches the hosted subconscious tier. The
+/// counter is seeded above any still-buffered row so an upgraded DB with pending rows
+/// can't collide either, and the allocate-then-insert runs in an immediate txn so two
+/// concurrent appends can't draw the same ordinal.
 pub fn append_world_obs(conn: &Connection, session_id: &str, note: &str, ts: i64) -> Result<i64> {
-    let next_seq: i64 =
-        conn.query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM world_obs", [], |r| {
-            r.get(0)
-        })?;
-    conn.execute(
-        "INSERT INTO world_obs (session_id, seq, note, ts) VALUES (?1, ?2, ?3, ?4)",
-        params![session_id, next_seq, note, ts],
-    )?;
-    Ok(next_seq)
+    in_immediate_txn(conn, |conn| {
+        let kv_max: i64 = kv_get(conn, "world_obs:next_seq")?
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(0);
+        let table_max: i64 =
+            conn.query_row("SELECT COALESCE(MAX(seq), 0) FROM world_obs", [], |r| {
+                r.get(0)
+            })?;
+        let next_seq = kv_max.max(table_max) + 1;
+        kv_set(conn, "world_obs:next_seq", &next_seq.to_string())?;
+        conn.execute(
+            "INSERT INTO world_obs (session_id, seq, note, ts) VALUES (?1, ?2, ?3, ?4)",
+            params![session_id, next_seq, note, ts],
+        )?;
+        Ok(next_seq)
+    })
 }
 
 /// Drain up to `limit` oldest buffered world observations (FIFO by insert order).

@@ -19,7 +19,7 @@ use crate::openhuman::config::Config;
 // never compiles `start_rdev_listener`, so gate the import to avoid an unused
 // import warning there.
 #[cfg(not(target_os = "macos"))]
-use super::hotkey::{self, ActivationMode};
+use super::hotkey::{self, ActivationMode, HotkeyEvent};
 
 const LOG_PREFIX: &str = "[dictation_listener]";
 

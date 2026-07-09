@@ -56,12 +56,16 @@ async fn resume_pending(config: &Config) -> Result<usize, String> {
 
     let mut resumed = 0usize;
     for session in sessions {
+        // Agent-scoped read: `list_sessions` rows are keyed by `(agent_id, session_id)`,
+        // and a legacy session id can collide across peers, so read the latest turn
+        // for *this* session's `agent_id` — reading by `session_id` alone could replay
+        // another peer's ask under `session.agent_id` and wake the wrong conversation.
         let latest = store::with_connection(&config.workspace_dir, |c| {
-            store::list_messages_by_session(c, &session.session_id, 1, None)
+            store::latest_content_message(c, &session.agent_id, &session.session_id)
         })
-        .map_err(|e| format!("list messages session={}: {e}", session.session_id))?;
+        .map_err(|e| format!("latest message session={}: {e}", session.session_id))?;
 
-        let Some(msg) = latest.into_iter().next() else {
+        let Some(msg) = latest else {
             continue;
         };
         // Only a genuinely pending human ask is resumed; a thread whose last turn

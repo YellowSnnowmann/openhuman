@@ -165,51 +165,74 @@ pub async fn push_world_diff_with(
 const SESSIONS_PATH: &str = "/orchestration/v1/sessions";
 const STEERING_PATH: &str = "/orchestration/v1/steering";
 
-/// GET the hosted session list →
-/// `[{ sessionId, counterpartAgentId, lastSeq, status, lastCycleId?, lastEventTs?, updatedAt? }]`.
-pub async fn fetch_sessions(config: &Config) -> Result<Value, String> {
-    authed_get(config, SESSIONS_PATH.to_string(), "sessions").await
+/// A session token + backend client resolved once and reused across every GET in a
+/// single sync read pass. `sync_reads` issues `fetch_sessions` + up to
+/// `MAX_SESSIONS_PER_SYNC` `fetch_messages` + `fetch_steering` per 20s tick, so
+/// rebuilding the client (and re-loading the session profile) per GET would repeat
+/// the profile lookup and discard the reqwest connection pool on every request.
+/// Resolve it once with [`read_pass`] and thread it through the pass.
+pub struct ReadPass {
+    client: BackendOAuthClient,
+    token: String,
 }
 
-/// GET messages for a session, optionally after a `seq` cursor →
-/// `[{ seq, role, sender, body, kind, ts, cycleId }]`. Cursor param is `?after=`.
-pub async fn fetch_messages(
-    config: &Config,
-    session_id: &str,
-    after_seq: Option<i64>,
-) -> Result<Value, String> {
-    let mut path = format!(
-        "/orchestration/v1/sessions/{}/messages",
-        urlencoding::encode(session_id)
-    );
-    if let Some(after) = after_seq {
-        path.push_str(&format!("?after={after}"));
-    }
-    authed_get(config, path, "messages").await
-}
-
-/// GET the current steering directive + recent history →
-/// `{ active: { directive, consumedCycles, maxCycles } | null, history: [{ directive, createdAt? }] }`.
-pub async fn fetch_steering(config: &Config) -> Result<Value, String> {
-    authed_get(config, STEERING_PATH.to_string(), "steering").await
-}
-
-/// Shared authed GET → unwrapped `data` value, with the same JWT/base plumbing as
-/// the pushers. Returns a flattened error string on transport / non-2xx so the
-/// caller can degrade to the local render cache.
-async fn authed_get(config: &Config, path: String, label: &str) -> Result<Value, String> {
+/// Resolve the token + client for one sync read pass. `Err` (no live session) → the
+/// caller degrades the whole pass to the local render cache.
+pub fn read_pass(config: &Config) -> Result<ReadPass, String> {
     let token = crate::openhuman::credentials::session_support::require_live_session_token(config)?;
     let api_url = effective_backend_api_url(&config.api_url);
     let client = BackendOAuthClient::new(&api_url).map_err(|e| e.to_string())?;
-    match client.authed_json(&token, Method::GET, &path, None).await {
-        Ok(data) => {
-            log::debug!(target: LOG, "[orchestration] cloud.read.ok {label}");
-            Ok(data)
+    Ok(ReadPass { client, token })
+}
+
+impl ReadPass {
+    /// GET the hosted session list →
+    /// `[{ sessionId, counterpartAgentId, lastSeq, status, lastCycleId?, lastEventTs?, updatedAt? }]`.
+    pub async fn fetch_sessions(&self) -> Result<Value, String> {
+        self.authed_get(SESSIONS_PATH.to_string(), "sessions").await
+    }
+
+    /// GET messages for a session, optionally after a `seq` cursor →
+    /// `[{ seq, role, sender, body, kind, ts, cycleId }]`. Cursor param is `?after=`.
+    pub async fn fetch_messages(
+        &self,
+        session_id: &str,
+        after_seq: Option<i64>,
+    ) -> Result<Value, String> {
+        let mut path = format!(
+            "/orchestration/v1/sessions/{}/messages",
+            urlencoding::encode(session_id)
+        );
+        if let Some(after) = after_seq {
+            path.push_str(&format!("?after={after}"));
         }
-        Err(err) => {
-            let msg = crate::api::flatten_authed_error(err);
-            log::warn!(target: LOG, "[orchestration] cloud.read.fail {label} err={msg}");
-            Err(msg)
+        self.authed_get(path, "messages").await
+    }
+
+    /// GET the current steering directive + recent history →
+    /// `{ active: { directive, consumedCycles, maxCycles } | null, history: [{ directive, createdAt? }] }`.
+    pub async fn fetch_steering(&self) -> Result<Value, String> {
+        self.authed_get(STEERING_PATH.to_string(), "steering").await
+    }
+
+    /// Shared authed GET → unwrapped `data`, reusing this pass's token + client.
+    /// Returns a flattened error string on transport / non-2xx so the caller can
+    /// degrade to the local render cache.
+    async fn authed_get(&self, path: String, label: &str) -> Result<Value, String> {
+        match self
+            .client
+            .authed_json(&self.token, Method::GET, &path, None)
+            .await
+        {
+            Ok(data) => {
+                log::debug!(target: LOG, "[orchestration] cloud.read.ok {label}");
+                Ok(data)
+            }
+            Err(err) => {
+                let msg = crate::api::flatten_authed_error(err);
+                log::warn!(target: LOG, "[orchestration] cloud.read.fail {label} err={msg}");
+                Err(msg)
+            }
         }
     }
 }

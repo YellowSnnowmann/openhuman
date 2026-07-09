@@ -84,7 +84,20 @@ fn ms_to_rfc3339(ms: i64) -> String {
 /// render cache and update reachability. Returns whether the hosted brain was
 /// reachable (a `GET /sessions` success).
 pub async fn sync_reads(config: &Config) -> bool {
-    let sessions_raw = match super::cloud::fetch_sessions(config).await {
+    // Resolve the token + backend client once and reuse them for every GET in this
+    // pass (sessions + per-session messages + steering), so the profile lookup and
+    // the reqwest connection pool aren't rebuilt on each request.
+    let pass = match super::cloud::read_pass(config) {
+        Ok(p) => p,
+        Err(e) => {
+            log::debug!(target: LOG, "[orchestration] sync.unreachable: {e}");
+            let _ = store::with_connection(&config.workspace_dir, |c| {
+                store::kv_set(c, REACHABLE_KEY, "0")
+            });
+            return false;
+        }
+    };
+    let sessions_raw = match pass.fetch_sessions().await {
         Ok(v) => v,
         Err(e) => {
             log::debug!(target: LOG, "[orchestration] sync.unreachable: {e}");
@@ -103,15 +116,34 @@ pub async fn sync_reads(config: &Config) -> bool {
 
     let sessions: Vec<HostedSession> = serde_json::from_value(sessions_raw).unwrap_or_default();
     for session in sessions.into_iter().take(MAX_SESSIONS_PER_SYNC) {
+        // INVARIANT: `counterpart_agent_id` is the opaque handle the device itself
+        // forwarded as `counterpartAgentId` (base64 `envelope.from`, see
+        // `ingest::forward_event`), echoed back verbatim — the hosted brain routes on
+        // it without decoding, it is not a credential. It therefore string-equals the
+        // `agent_id` under which ingest / `persist_reply` stored the device's own
+        // rows, which is what lets `local_max` below skip re-paging the device's
+        // forwarded turns. Every device-side session row keys on this same base64 form
+        // (ingest, this sync, and the send_dm mirror), so the encodings never diverge
+        // locally. If the backend is ever changed to re-encode agent keys (e.g. to the
+        // base58 pairing form), resolve this through `ingest::decode_agent_key` before
+        // deriving `agent_id`/`local_max`, or the same session would be inserted twice
+        // under two encodings and every turn would render twice.
         let agent_id = if session.counterpart_agent_id.is_empty() {
             session.session_id.clone()
         } else {
             session.counterpart_agent_id.clone()
         };
-        let last_message_at = session
-            .last_event_ts
-            .map(ms_to_rfc3339)
+        // `created_at` is a cosmetic "first seen" time that never advances, so a
+        // synthesized `now` is harmless there. `last_message_at` feeds
+        // `handle_status`'s `MAX(last_message_at)` ingest-staleness check, so it must
+        // NOT be synthesized from `now`: a quiet hosted session with no `lastEventTs`
+        // would otherwise look fresh on every 20s tick and mask real staleness. Leave
+        // it empty so the upsert's `MAX()` preserves any real prior timestamp instead.
+        let event_at = session.last_event_ts.map(ms_to_rfc3339);
+        let created_at = event_at
+            .clone()
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+        let last_message_at = event_at.unwrap_or_default();
 
         // Session metadata (status/last_seq) renders from hosted; COALESCE in
         // `upsert_session` preserves device-local enrichment (label, presence).
@@ -124,7 +156,7 @@ pub async fn sync_reads(config: &Config) -> bool {
                     agent_id: agent_id.clone(),
                     source: "hosted".to_string(),
                     last_seq: session.last_seq,
-                    created_at: last_message_at.clone(),
+                    created_at: created_at.clone(),
                     last_message_at: last_message_at.clone(),
                     status_state: status_state.clone(),
                     ..Default::default()
@@ -144,12 +176,9 @@ pub async fn sync_reads(config: &Config) -> bool {
         .map(|next| next - 1)
         .unwrap_or(0);
 
-        let msgs_raw = match super::cloud::fetch_messages(
-            config,
-            &session.session_id,
-            Some(local_max),
-        )
-        .await
+        let msgs_raw = match pass
+            .fetch_messages(&session.session_id, Some(local_max))
+            .await
         {
             Ok(v) => v,
             Err(e) => {
@@ -186,7 +215,7 @@ pub async fn sync_reads(config: &Config) -> bool {
     }
 
     // Steering summary for the status surface (best-effort).
-    if let Ok(data) = super::cloud::fetch_steering(config).await {
+    if let Ok(data) = pass.fetch_steering().await {
         let steering_cache = data.get("active").filter(|a| !a.is_null()).map(|active| {
             json!({
                 "text": active.get("directive").and_then(|v| v.as_str()).unwrap_or(""),
