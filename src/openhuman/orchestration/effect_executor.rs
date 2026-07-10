@@ -63,7 +63,8 @@ pub fn device_tool_manifest() -> Value {
                     "properties": {
                         "agent_id": { "type": "string", "description": "Local sub-agent id, e.g. code_executor, researcher, tools_agent." },
                         "prompt": { "type": "string", "description": "Clear, self-contained instruction for the sub-agent." },
-                        "context": { "type": "string", "description": "Optional context blob from prior results." }
+                        "context": { "type": "string", "description": "Optional context blob from prior results." },
+                        "toolkit": { "type": "string", "description": "Composio toolkit to scope to (e.g. gmail, notion). REQUIRED when agent_id is integrations_agent; ignored otherwise." }
                     },
                     "additionalProperties": false
                 }
@@ -201,12 +202,25 @@ async fn run_local_subagent(
     agent_id: &str,
     prompt: &str,
     context: Option<String>,
+    toolkit: Option<String>,
 ) -> (bool, String) {
     use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
     use crate::openhuman::agent::harness::subagent_runner::{
         run_subagent, SubagentRunOptions, SubagentRunStatus,
     };
     use crate::openhuman::agent_orchestration::parent_context::with_root_parent;
+
+    // `integrations_agent` MUST be scoped to a single Composio toolkit — mirror the
+    // `SpawnSubagentTool` pre-flight so a device run can't reason over the full,
+    // unscoped integration surface. `run_subagent` only narrows tools + the
+    // Connected-Integrations section when `toolkit_override` is set, so reject a
+    // toolkit-less request rather than run it unscoped.
+    if agent_id == "integrations_agent" && toolkit.is_none() {
+        return (
+            false,
+            "run_local_agent(integrations_agent): a `toolkit` argument is required".to_string(),
+        );
+    }
 
     let definition = match AgentDefinitionRegistry::global().and_then(|r| r.get(agent_id).cloned())
     {
@@ -220,6 +234,7 @@ async fn run_local_subagent(
     };
     let options = SubagentRunOptions {
         context,
+        toolkit_override: toolkit,
         ..Default::default()
     };
     let run = async move {
@@ -278,7 +293,13 @@ async fn run_local_agent_and_forward(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string);
-    let (ok, output) = run_local_subagent(&config, agent_id, &prompt, context).await;
+    let toolkit = run_args
+        .get("toolkit")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let (ok, output) = run_local_subagent(&config, agent_id, &prompt, context, toolkit).await;
 
     let body = format!(
         "[local sub-agent `{agent_id}` task {task_id} {}]\n{output}",
@@ -730,4 +751,30 @@ pub async fn handle_evict(data: &Value) -> Option<(String, Value)> {
         effect.call_id.clone(),
         effect_result_frame(&effect.call_id, ok, error.as_deref()),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::openhuman::config::Config;
+
+    #[tokio::test]
+    async fn integrations_agent_without_toolkit_is_rejected() {
+        // The toolkit guard fires before any registry/provider/network work, so a
+        // toolkit-less integrations_agent request is a failure completion rather
+        // than an unscoped run over the full Composio surface.
+        let (ok, msg) = run_local_subagent(
+            &Config::default(),
+            "integrations_agent",
+            "check gmail",
+            None,
+            None,
+        )
+        .await;
+        assert!(!ok);
+        assert!(
+            msg.contains("toolkit"),
+            "expected toolkit error, got: {msg}"
+        );
+    }
 }
