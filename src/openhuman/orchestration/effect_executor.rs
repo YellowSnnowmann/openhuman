@@ -350,7 +350,27 @@ async fn run_local_agent_and_forward(
         ts,
         "tool_completion",
     );
-    super::cloud::push_event(&config, &envelope).await?;
+    if let Err(e) = super::cloud::push_event(&config, &envelope).await {
+        // Forward failed (offline / signed out / retries exhausted): the brain
+        // never got this result and the completion row was persisted hidden, so
+        // it would vanish entirely. Un-hide it — it is now the only copy — and
+        // nudge the renderer so the user sees the result rather than losing it.
+        let completion_id = format!("tool-completion:{task_id}:{seq}");
+        if let Err(store_err) = super::store::with_connection(&config.workspace_dir, |conn| {
+            super::store::clear_message_event_kind(conn, &completion_id)
+        }) {
+            log::warn!(
+                target: LOG,
+                "[orchestration] run_local_agent.unhide_failed task={task_id}: {store_err}"
+            );
+        }
+        super::bus::notify_orchestration_message(
+            counterpart,
+            session_id,
+            super::types::ChatKind::Master.as_str(),
+        );
+        return Err(e);
+    }
     log::debug!(
         target: LOG,
         "[orchestration] run_local_agent.forwarded task={task_id} session={session_id} seq={seq} ok={ok}"
@@ -408,6 +428,13 @@ pub async fn handle_tool_call(data: &Value) -> Option<(String, Value)> {
     // for a call that never ran, masking the denial and stranding the brain on a
     // `tool_completion` that never comes.
     if !ok && super::exec_gate::is_local_execution_tool(&frame.name) {
+        // Diagnostic for the denied/invalid path; no raw args or error body.
+        log::warn!(
+            target: LOG,
+            "[orchestration] tool_call.dispatch_failed call_id={} name={} released_claim=true",
+            frame.call_id,
+            frame.name
+        );
         release_call(&frame.call_id);
     }
     Some((
@@ -902,6 +929,16 @@ mod tests {
             "redelivery re-denied, not fabricated-accepted"
         );
         assert!(second["result"].get("duplicate").is_none());
+        // Same real denial both times — not a fabricated/different error.
+        assert_eq!(first["error"], second["error"]);
+        assert!(
+            second["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("restricted to the Master chat"),
+            "the real non-Master denial: {}",
+            second["error"]
+        );
         release_call(call_id);
     }
 }

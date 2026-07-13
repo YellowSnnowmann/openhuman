@@ -631,7 +631,8 @@ mod tests {
             "Step-2 scope gate must keep general/web/date asks off integrations delegation"
         );
         assert!(
-            no_integrations.contains("When the request names no service, do not reach into one."),
+            no_integrations
+                .contains("neither names nor clearly implies a specific service's own data"),
             "Step-2 scope gate must forbid reaching into an unreferenced service"
         );
 

@@ -228,4 +228,11 @@ describe('AgentChatPanel', () => {
 
     expect(scroll.scrollTop).toBe(0); // left where the user parked it
   });
+
+  it('renders with no selected chat (covers the empty-messages fallback)', () => {
+    chatsApi.current = { ...chatsApi.current, selected: undefined as never };
+    render(<AgentChatPanel />);
+    // Exercises `selected?.messages ?? EMPTY_MESSAGES`; the panel still renders.
+    expect(screen.getByTestId('orch-agent-tab-master')).toBeInTheDocument();
+  });
 });
