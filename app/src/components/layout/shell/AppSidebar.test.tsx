@@ -54,6 +54,17 @@ describe('AppSidebar — Rewards footer entry', () => {
     );
   });
 
+  it('normalizes from_path to a route template so entity IDs never reach analytics', () => {
+    renderWithProviders(<AppSidebar />, { initialEntries: ['/chat/thread-abc123'] });
+
+    fireEvent.click(screen.getByTitle('nav.rewards'));
+
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      'tab_bar_change',
+      expect.objectContaining({ from_path: '/chat/:threadId', to_path: '/rewards' })
+    );
+  });
+
   it('hides the Rewards row for a local session but keeps Feedback', () => {
     mockCoreState = { snapshot: { sessionToken: 'header.payload.local' }, isReady: true };
     renderWithProviders(<AppSidebar />, { initialEntries: ['/chat'] });

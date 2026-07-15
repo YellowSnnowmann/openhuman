@@ -1,8 +1,11 @@
+import debugFactory from 'debug';
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useCoreState } from '../../../providers/CoreStateProvider';
 import { trackEvent } from '../../../services/analytics';
+import { normalizeAnalyticsPagePath } from '../../../services/analyticsRoutes';
 import { APP_VERSION } from '../../../utils/config';
 import { isLocalSessionToken } from '../../../utils/localSession';
 import ConnectionIndicator from '../../ConnectionIndicator';
@@ -11,6 +14,8 @@ import SidebarAppRail from './SidebarAppRail';
 import SidebarHeader from './SidebarHeader';
 import SidebarNav from './SidebarNav';
 import { SidebarSlotOutlet } from './SidebarSlot';
+
+const log = debugFactory('sidebar');
 
 interface FooterNavButtonProps {
   /** `NavTab.id`-style icon key resolved by {@link NavIcon}. */
@@ -93,12 +98,27 @@ export default function AppSidebar() {
   const feedbackActive = location.pathname === '/feedback';
   const rewardsActive = location.pathname === '/rewards';
 
+  // Log the gate outcome whenever it resolves/flips. Booleans only — never the
+  // session token or a raw path.
+  useEffect(() => {
+    log(
+      'rewards footer entry visibility resolved: visible=%s isReady=%s hasSession=%s local=%s',
+      showRewards,
+      isReady,
+      Boolean(coreSnapshot.sessionToken),
+      isLocalSessionToken(coreSnapshot.sessionToken)
+    );
+  }, [showRewards, isReady, coreSnapshot.sessionToken]);
+
   const handleFooterNav = (tab: string, path: string, active: boolean) => {
+    log('footer nav click: tab=%s active=%s', tab, active);
     if (!active) {
       trackEvent('tab_bar_change', {
         from_tab: 'unknown',
         to_tab: tab,
-        from_path: location.pathname,
+        // Normalize to a route template so route-scoped entity IDs (thread,
+        // flow, team, …) never leave the app via analytics.
+        from_path: normalizeAnalyticsPagePath(location.pathname),
         to_path: path,
       });
     }
