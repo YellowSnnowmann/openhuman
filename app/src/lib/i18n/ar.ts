@@ -3389,7 +3389,7 @@ const messages: TranslationMap = {
   'channels.connectHelp.telegram':
     'اختر طريقة أدناه: راسل بوت OpenHuman المُدار لربطه، أو الصق رمز البوت الخاص بك من @BotFather.',
   'channels.connectHelp.slackNote':
-    'تبحث عن Slack؟ يتصل Slack كتطبيق في علامة تبويب OAuth، وليس كقناة مراسلة هنا.',
+    'تبحث عن Slack؟ يتصل Slack كتطبيق من خلال الاتصالات → OAuth، وليس كقناة مراسلة هنا.',
   'channels.web.displayName': 'الويب',
   'channels.web.description': 'الدردشة عبر واجهة مستخدم الويب المضمنة.',
   'channels.web.authMode.managed_dm.description': 'استخدم دردشة الويب المضمنة - لا يلزم الإعداد.',

@@ -3883,7 +3883,7 @@ const en: TranslationMap = {
   'channels.connectHelp.telegram':
     'Pick a method below: message the managed OpenHuman bot to link it, or paste your own bot token from @BotFather.',
   'channels.connectHelp.slackNote':
-    'Looking for Slack? Slack connects as an app on the OAuth tab, not as a messaging channel here.',
+    'Looking for Slack? Slack connects as an app under Connections → OAuth, not as a messaging channel here.',
 
   // Web
   'channels.web.displayName': 'Web',

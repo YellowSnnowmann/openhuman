@@ -3496,7 +3496,7 @@ const messages: TranslationMap = {
   'channels.connectHelp.telegram':
     'Выберите способ ниже: напишите управляемому боту OpenHuman, чтобы привязать его, или вставьте собственный токен бота от @BotFather.',
   'channels.connectHelp.slackNote':
-    'Ищете Slack? Slack подключается как приложение на вкладке OAuth, а не как канал сообщений здесь.',
+    'Ищете Slack? Slack подключается как приложение в разделе Подключения → OAuth, а не как канал сообщений здесь.',
   'channels.web.displayName': 'Интернет',
   'channels.web.description': 'Общайтесь через встроенный веб-интерфейс.',
   'channels.web.authMode.managed_dm.description':
@@ -4118,7 +4118,7 @@ const messages: TranslationMap = {
   'flows.promptBar.submit': 'Создать',
   'flows.promptBar.startBuilding': 'Начать создание',
   'flows.promptBar.disclaimer':
-    'Копайлот — это ИИ, и он может ошибаться. Пожалуйста, проверяйте ответы.',
+    'Копайлот использует ИИ и может ошибаться. Пожалуйста, проверяйте ответы.',
   'flows.promptBar.thinking': 'Создание…',
   'flows.promptBar.heroTitle': 'Опишите рабочий процесс',
   'flows.promptBar.heroSubtitle':

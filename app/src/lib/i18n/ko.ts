@@ -3431,7 +3431,7 @@ const messages: TranslationMap = {
   'channels.connectHelp.telegram':
     '아래에서 방법을 선택하세요: 관리형 OpenHuman 봇에 메시지를 보내 연결하거나, @BotFather에서 발급한 봇 토큰을 붙여넣으세요.',
   'channels.connectHelp.slackNote':
-    'Slack을 찾으세요? Slack은 여기서 메시징 채널이 아니라 OAuth 탭에서 앱으로 연결됩니다.',
+    'Slack을 찾으세요? Slack은 여기서 메시징 채널이 아니라 연결 → OAuth에서 앱으로 연결됩니다.',
   'channels.web.displayName': '웹',
   'channels.web.description': '내장된 웹 UI를 통해 채팅합니다.',
   'channels.web.authMode.managed_dm.description':

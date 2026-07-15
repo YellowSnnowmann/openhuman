@@ -3483,7 +3483,7 @@ const messages: TranslationMap = {
   'channels.connectHelp.telegram':
     'Pilih metode di bawah: kirim pesan ke bot OpenHuman terkelola untuk menautkannya, atau tempel token bot Anda sendiri dari @BotFather.',
   'channels.connectHelp.slackNote':
-    'Mencari Slack? Slack terhubung sebagai aplikasi di tab OAuth, bukan sebagai saluran pesan di sini.',
+    'Mencari Slack? Slack terhubung sebagai aplikasi di Koneksi → OAuth, bukan sebagai saluran pesan di sini.',
   'channels.web.displayName': 'Web',
   'channels.web.description': 'Mengobrol melalui UI web bawaan.',
   'channels.web.authMode.managed_dm.description':

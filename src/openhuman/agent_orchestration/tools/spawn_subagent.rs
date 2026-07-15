@@ -1246,6 +1246,8 @@ mod tests {
         let msg = describe_unconnected_state("gmail", Some("EXPIRED"));
         assert!(msg.contains("OAuth token has expired"));
         assert!(msg.contains("reconnect 'gmail'"));
+        assert!(msg.contains("Connections → 'gmail'"));
+        assert!(!msg.contains("Settings → Connections"));
         assert!(!msg.contains("OAuth flow in progress"));
     }
 
@@ -1259,6 +1261,8 @@ mod tests {
                 "{status} must be quoted verbatim, not collapsed to a single label: {msg}"
             );
             assert!(msg.contains("reconnect 'gmail'"));
+            assert!(msg.contains("Connections → 'gmail'"));
+            assert!(!msg.contains("Settings → Connections"));
         }
     }
 
@@ -1292,6 +1296,8 @@ mod tests {
                 msg.contains(&expected),
                 "unknown status `{raw}` must be quoted verbatim (not its uppercased form): {msg}"
             );
+            assert!(msg.contains("Connections → 'gmail'"));
+            assert!(!msg.contains("Settings → Connections"));
         }
     }
 

@@ -3467,7 +3467,7 @@ const messages: TranslationMap = {
   'channels.connectHelp.telegram':
     'নিচে একটি পদ্ধতি বেছে নিন: লিঙ্ক করতে ম্যানেজড OpenHuman বটে বার্তা পাঠান, অথবা @BotFather থেকে আপনার নিজের বট টোকেন পেস্ট করুন।',
   'channels.connectHelp.slackNote':
-    'Slack খুঁজছেন? Slack এখানে মেসেজিং চ্যানেল হিসেবে নয়, OAuth ট্যাবে একটি অ্যাপ হিসেবে সংযুক্ত হয়।',
+    'Slack খুঁজছেন? Slack এখানে মেসেজিং চ্যানেল হিসেবে নয়, সংযোগ → OAuth-এ একটি অ্যাপ হিসেবে সংযুক্ত হয়।',
   'channels.web.displayName': 'ওয়েব',
   'channels.web.description': 'বিল্ট-ইন ওয়েব UI এর মাধ্যমে চ্যাট করুন।',
   'channels.web.authMode.managed_dm.description':

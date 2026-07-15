@@ -3531,7 +3531,7 @@ const messages: TranslationMap = {
   'channels.connectHelp.telegram':
     'Elige un método abajo: escribe al bot gestionado de OpenHuman para vincularlo, o pega tu propio token de bot de @BotFather.',
   'channels.connectHelp.slackNote':
-    '¿Buscas Slack? Slack se conecta como una app en la pestaña OAuth, no como un canal de mensajería aquí.',
+    '¿Buscas Slack? Slack se conecta como una app en Conexiones → OAuth, no como un canal de mensajería aquí.',
   'channels.web.displayName': 'Web',
   'channels.web.description': 'Chatea a través de la interfaz de usuario web incorporada.',
   'channels.web.authMode.managed_dm.description':

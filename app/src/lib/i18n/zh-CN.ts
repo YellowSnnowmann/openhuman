@@ -3286,7 +3286,7 @@ const messages: TranslationMap = {
   'channels.connectHelp.telegram':
     '在下方选择一种方式：给托管的 OpenHuman 机器人发消息以完成关联，或粘贴你在 @BotFather 获取的机器人令牌。',
   'channels.connectHelp.slackNote':
-    '在找 Slack？Slack 是在 OAuth 标签页中作为应用连接的，而不是这里的消息渠道。',
+    '在找 Slack？Slack 是在 连接 → OAuth 中作为应用连接的，而不是这里的消息渠道。',
   'channels.web.displayName': '网络',
   'channels.web.description': '通过内置的 Web UI 聊天。',
   'channels.web.authMode.managed_dm.description': '使用嵌入式 Web 聊天：无需设置。',
