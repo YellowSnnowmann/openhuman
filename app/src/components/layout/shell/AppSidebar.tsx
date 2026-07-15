@@ -12,6 +12,47 @@ import SidebarHeader from './SidebarHeader';
 import SidebarNav from './SidebarNav';
 import { SidebarSlotOutlet } from './SidebarSlot';
 
+interface FooterNavButtonProps {
+  /** `NavTab.id`-style icon key resolved by {@link NavIcon}. */
+  iconId: string;
+  /** Already-translated label (also used as the `title`). */
+  label: string;
+  /** Whether the current route matches this entry. */
+  active: boolean;
+  /** `data-walkthrough` attribute for the walkthrough tour. */
+  walkthroughAttr: string;
+  onClick: () => void;
+}
+
+/**
+ * Slim footer affordance button shared by the Rewards and Feedback rows. Kept
+ * thin and low-profile so it reads as a footer entry, not a primary nav tab.
+ */
+function FooterNavButton({
+  iconId,
+  label,
+  active,
+  walkthroughAttr,
+  onClick,
+}: FooterNavButtonProps) {
+  return (
+    <button
+      type="button"
+      data-walkthrough={walkthroughAttr}
+      onClick={onClick}
+      title={label}
+      aria-current={active ? 'page' : undefined}
+      className={`group flex flex-shrink-0 items-center justify-center gap-2 border-t border-line/70 px-3 py-1 text-[11px] transition-colors cursor-pointer dark:border-line/70 ${
+        active
+          ? 'bg-surface text-content font-medium'
+          : 'text-content-muted hover:bg-surface-strong/70 hover:text-content-secondary dark:hover:bg-surface-muted/60'
+      }`}>
+      <NavIcon id={iconId} className="h-3.5 w-3.5 flex-shrink-0" />
+      <span className="min-w-0 truncate">{label}</span>
+    </button>
+  );
+}
+
 /**
  * The root-shell sidebar, split top-to-bottom into:
  *
@@ -35,37 +76,33 @@ export default function AppSidebar() {
   const { t } = useT();
   const location = useLocation();
   const navigate = useNavigate();
-  const { snapshot: coreSnapshot } = useCoreState();
+  const { snapshot: coreSnapshot, isReady } = useCoreState();
   // Rewards is a cloud-only surface (credits/referrals/coupons live behind the
   // backend rewards API); the page itself renders an "unavailable" state for
   // local sessions, so there's no point offering the entry there. Mirrors the
   // `cloudOnly` intent recorded for rewards in navConfig's AVATAR_MENU_ITEMS.
-  const isLocalSession = isLocalSessionToken(coreSnapshot.sessionToken);
+  //
+  // Show it only once core state has bootstrapped to a real, non-local session.
+  // The initial snapshot is `{ isReady: false, sessionToken: null }`, and
+  // `isLocalSessionToken(null)` is `false`, so gating on the token alone would
+  // briefly flash Rewards for a local session until the first refresh resolves.
+  const showRewards =
+    isReady &&
+    Boolean(coreSnapshot.sessionToken) &&
+    !isLocalSessionToken(coreSnapshot.sessionToken);
   const feedbackActive = location.pathname === '/feedback';
   const rewardsActive = location.pathname === '/rewards';
 
-  const handleFeedbackClick = () => {
-    if (!feedbackActive) {
+  const handleFooterNav = (tab: string, path: string, active: boolean) => {
+    if (!active) {
       trackEvent('tab_bar_change', {
         from_tab: 'unknown',
-        to_tab: 'feedback',
+        to_tab: tab,
         from_path: location.pathname,
-        to_path: '/feedback',
+        to_path: path,
       });
     }
-    navigate('/feedback');
-  };
-
-  const handleRewardsClick = () => {
-    if (!rewardsActive) {
-      trackEvent('tab_bar_change', {
-        from_tab: 'unknown',
-        to_tab: 'rewards',
-        from_path: location.pathname,
-        to_path: '/rewards',
-      });
-    }
-    navigate('/rewards');
+    navigate(path);
   };
 
   return (
@@ -88,39 +125,23 @@ export default function AppSidebar() {
         <SidebarSlotOutlet className="flex h-full flex-col" />
       </div>
       {/* Slim account affordances pinned above the status bar — Rewards then
-          Feedback. Kept thin and low-profile so they read as footer entries,
-          not primary nav tabs. Rewards is hidden on local sessions (cloud-only
-          surface). */}
-      {!isLocalSession && (
-        <button
-          type="button"
-          data-walkthrough="tab-rewards"
-          onClick={handleRewardsClick}
-          title={t('nav.rewards')}
-          aria-current={rewardsActive ? 'page' : undefined}
-          className={`group flex flex-shrink-0 items-center justify-center gap-2 border-t border-line/70 px-3 py-1 text-[11px] transition-colors cursor-pointer dark:border-line/70 ${
-            rewardsActive
-              ? 'bg-surface text-content font-medium'
-              : 'text-content-muted hover:bg-surface-strong/70 hover:text-content-secondary dark:hover:bg-surface-muted/60'
-          }`}>
-          <NavIcon id="rewards" className="h-3.5 w-3.5 flex-shrink-0" />
-          <span className="min-w-0 truncate">{t('nav.rewards')}</span>
-        </button>
+          Feedback. Rewards is shown only for a resolved cloud session. */}
+      {showRewards && (
+        <FooterNavButton
+          iconId="rewards"
+          label={t('nav.rewards')}
+          active={rewardsActive}
+          walkthroughAttr="tab-rewards"
+          onClick={() => handleFooterNav('rewards', '/rewards', rewardsActive)}
+        />
       )}
-      <button
-        type="button"
-        data-walkthrough="tab-feedback"
-        onClick={handleFeedbackClick}
-        title={t('nav.feedback')}
-        aria-current={feedbackActive ? 'page' : undefined}
-        className={`group flex flex-shrink-0 items-center justify-center gap-2 border-t border-line/70 px-3 py-1 text-[11px] transition-colors cursor-pointer dark:border-line/70 ${
-          feedbackActive
-            ? 'bg-surface text-content font-medium'
-            : 'text-content-muted hover:bg-surface-strong/70 hover:text-content-secondary dark:hover:bg-surface-muted/60'
-        }`}>
-        <NavIcon id="feedback" className="h-3.5 w-3.5 flex-shrink-0" />
-        <span className="min-w-0 truncate">{t('nav.feedback')}</span>
-      </button>
+      <FooterNavButton
+        iconId="feedback"
+        label={t('nav.feedback')}
+        active={feedbackActive}
+        walkthroughAttr="tab-feedback"
+        onClick={() => handleFooterNav('feedback', '/feedback', feedbackActive)}
+      />
       {/* App-wide footer: connectivity status + build/version, pinned to the
           bottom of the sidebar. */}
       <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-t border-line px-2 py-0.5">
