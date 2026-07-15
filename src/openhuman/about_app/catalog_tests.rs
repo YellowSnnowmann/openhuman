@@ -402,5 +402,5 @@ fn catalog_how_to_uses_connections_nav_not_legacy_settings_paths() {
         how_to("intelligence.slack_memory_ingest"),
         "Connections > OAuth > Slack"
     );
-    assert!(how_to("workflows.connect_google").contains("Connections"));
+    assert_eq!(how_to("workflows.connect_google"), "Connections > OAuth");
 }
