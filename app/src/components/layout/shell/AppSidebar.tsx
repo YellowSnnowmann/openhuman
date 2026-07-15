@@ -1,8 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';
+import { useCoreState } from '../../../providers/CoreStateProvider';
 import { trackEvent } from '../../../services/analytics';
 import { APP_VERSION } from '../../../utils/config';
+import { isLocalSessionToken } from '../../../utils/localSession';
 import ConnectionIndicator from '../../ConnectionIndicator';
 import { NavIcon } from './navIcons';
 import SidebarAppRail from './SidebarAppRail';
@@ -33,7 +35,14 @@ export default function AppSidebar() {
   const { t } = useT();
   const location = useLocation();
   const navigate = useNavigate();
+  const { snapshot: coreSnapshot } = useCoreState();
+  // Rewards is a cloud-only surface (credits/referrals/coupons live behind the
+  // backend rewards API); the page itself renders an "unavailable" state for
+  // local sessions, so there's no point offering the entry there. Mirrors the
+  // `cloudOnly` intent recorded for rewards in navConfig's AVATAR_MENU_ITEMS.
+  const isLocalSession = isLocalSessionToken(coreSnapshot.sessionToken);
   const feedbackActive = location.pathname === '/feedback';
+  const rewardsActive = location.pathname === '/rewards';
 
   const handleFeedbackClick = () => {
     if (!feedbackActive) {
@@ -45,6 +54,18 @@ export default function AppSidebar() {
       });
     }
     navigate('/feedback');
+  };
+
+  const handleRewardsClick = () => {
+    if (!rewardsActive) {
+      trackEvent('tab_bar_change', {
+        from_tab: 'unknown',
+        to_tab: 'rewards',
+        from_path: location.pathname,
+        to_path: '/rewards',
+      });
+    }
+    navigate('/rewards');
   };
 
   return (
@@ -66,9 +87,26 @@ export default function AppSidebar() {
             app rail above its thread list) can order them via Tailwind `order-*`. */}
         <SidebarSlotOutlet className="flex h-full flex-col" />
       </div>
-      {/* Slim feedback row — pinned just above the status bar. Kept thin and
-          low-profile so it reads as a footer affordance, not a primary nav tab
-          (it used to live in SidebarNav). */}
+      {/* Slim account affordances pinned above the status bar — Rewards then
+          Feedback. Kept thin and low-profile so they read as footer entries,
+          not primary nav tabs. Rewards is hidden on local sessions (cloud-only
+          surface). */}
+      {!isLocalSession && (
+        <button
+          type="button"
+          data-walkthrough="tab-rewards"
+          onClick={handleRewardsClick}
+          title={t('nav.rewards')}
+          aria-current={rewardsActive ? 'page' : undefined}
+          className={`group flex flex-shrink-0 items-center justify-center gap-2 border-t border-line/70 px-3 py-1 text-[11px] transition-colors cursor-pointer dark:border-line/70 ${
+            rewardsActive
+              ? 'bg-surface text-content font-medium'
+              : 'text-content-muted hover:bg-surface-strong/70 hover:text-content-secondary dark:hover:bg-surface-muted/60'
+          }`}>
+          <NavIcon id="rewards" className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="min-w-0 truncate">{t('nav.rewards')}</span>
+        </button>
+      )}
       <button
         type="button"
         data-walkthrough="tab-feedback"
