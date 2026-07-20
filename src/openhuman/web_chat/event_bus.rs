@@ -516,7 +516,7 @@ mod tests {
             loop {
                 match rx.try_recv() {
                     Ok(ev) if ev.event == "automation_halt" => return ev,
-                    Ok(_) => {}                        // foreign event from a concurrent test
+                    Ok(_) => {} // foreign event from a concurrent test
                     Err(TryRecvError::Lagged(_)) => {} // skipped some; keep draining
                     Err(TryRecvError::Empty) => {
                         panic!("expected an automation_halt WebChannelEvent but none was published")
