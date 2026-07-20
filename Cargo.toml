@@ -96,13 +96,6 @@ tinyagents = { version = "1.7", features = ["sqlite"] }
 # link. Keep the version pin in lockstep with the submodule tag.
 tinycortex = { version = "0.1", features = ["git-diff", "persona", "sync"] }
 tinychannels = { version = "0.1", features = ["relay-websocket"] }
-# TokenJuice code compressor — AST-aware signature extraction. Optional (C build)
-# behind the default `tokenjuice-treesitter` feature; disabling it falls back to
-# the language-agnostic brace-depth heuristic. See src/openhuman/tokenjuice/compressors/code.rs.
-tree-sitter = { version = "0.26", optional = true }
-tree-sitter-rust = { version = "0.24", optional = true }
-tree-sitter-typescript = { version = "0.23", optional = true }
-tree-sitter-python = { version = "0.25", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_repr = "0.1"
@@ -180,21 +173,16 @@ cron = "0.12"
 futures-util = "0.3"
 directories = "6"
 toml = "1.0"
-shellexpand = "3.1"
 schemars = "1.2"
 tracing = { version = "0.1", default-features = false }
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "env-filter"] }
 tracing-appender = "0.2"
-prometheus = { version = "0.14", default-features = false }
 urlencoding = "2.1"
 motosan-ai-oauth = { version = "0.2", features = ["codex"] }
 thiserror = "2.0"
 ring = "0.17"
-prost = { version = "0.14", default-features = false }
-postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 chrono-tz = "0.10"
-dialoguer = { version = "0.12", features = ["fuzzy-select"] }
 dotenvy = "0.15"
 console = "0.16"
 regex = "1.10"
@@ -206,14 +194,6 @@ regex = "1.10"
 aho-corasick = "1.1"
 walkdir = "2"
 glob = "0.3"
-unicode-segmentation = "1"
-unicode-width = "0.2"
-# NFKC + combining-mark detection for the cross-thread search inverted
-# index (`memory_conversations::tokenize`). NFKC unifies CJK half/full-
-# width variants and Arabic presentation forms; `canonical_combining_class`
-# lets us strip diacritics across all scripts (Polish ą→a, Arabic harakat,
-# Hebrew niqqud, etc.) without per-language tables.
-unicode-normalization = "0.1"
 hostname = "0.4.2"
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pki-types = "1.14.0"
@@ -222,15 +202,9 @@ webpki-roots = "1.0.6"
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 clap = { version = "4.5", features = ["derive"] }
-clap_complete = "4.5"
 lettre = { version = "0.11.22", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"], optional = true }
-mail-parser = "0.11.2"
-async-imap = { version = "0.11", features = ["runtime-tokio"], default-features = false }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query", "ws", "macros"] }
 tower = { version = "0.5", default-features = false }
-opentelemetry = { version = "0.32", default-features = false, features = ["trace", "metrics"] }
-opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace", "metrics"] }
-opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client", "reqwest-rustls-webpki-roots"] }
 sentry = { version = "0.47.0", default-features = false, features = ["backtrace", "contexts", "panic", "tracing", "debug-images", "reqwest", "rustls"] }
 tokio-stream = { version = "0.1.18", features = ["full"] }
 url = "2"
@@ -255,11 +229,9 @@ ethers-signers = { version = "2.0.14", default-features = false }
 # - bitcoin: P2WPKH PSBT build/sign/broadcast (includes secp256k1).
 # - ed25519-dalek: Solana transaction signing.
 # - bs58: Solana base58 addresses + Tron base58check addresses.
-# - ripemd: RIPEMD160 for BTC HASH160 (P2WPKH) and Tron address hash.
 bitcoin = { version = "0.32", default-features = false, features = ["std", "secp-recovery", "rand-std"], optional = true }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
 bs58 = { version = "0.5", default-features = false, features = ["std", "check"] }
-ripemd = "0.1"
 # Shared BIP-39 mnemonic → seed for non-EVM chains (BTC P2WPKH derivation,
 # Tron secp256k1 derivation, Solana ed25519 SLIP-0010 derivation). Same crate
 # ethers-signers uses internally, exposed as a direct dep so we can derive
