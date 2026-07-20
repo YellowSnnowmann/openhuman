@@ -97,6 +97,7 @@ pub mod orchestration;
 pub mod overlay;
 pub mod people;
 pub mod plan_review;
+pub mod proc_metrics;
 pub mod profiles;
 pub mod prompt_injection;
 pub mod provider_surfaces;

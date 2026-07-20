@@ -42,6 +42,14 @@ path = "src/bin/test_mcp_stub.rs"
 name = "openhuman-fleet"
 path = "src/bin/fleet.rs"
 
+# Embedded-RSS benchmark harness (#5046). Gated behind the default-OFF
+# `rss-bench` feature so no benchmark code enters the shipped build. Build with
+# `cargo build --release --features rss-bench --bin rss-bench`.
+[[bin]]
+name = "rss-bench"
+path = "src/bin/rss_bench.rs"
+required-features = ["rss-bench"]
+
 [lib]
 name = "openhuman_core"
 crate-type = ["rlib"]
@@ -470,6 +478,10 @@ whatsapp-web = ["tinychannels/whatsapp-web"]
 # build (app/scripts/e2e-build.sh) flips it on. Shipped binaries never have
 # this feature so the wipe RPC isn't even registered, let alone reachable.
 e2e-test-support = []
+# Builds the `rss-bench` benchmark binary (#5046). Default-OFF, so it is never
+# part of the shipped desktop/library build and the feature-forwarding gate
+# (which only inspects the `default` list) never requires forwarding it.
+rss-bench = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
