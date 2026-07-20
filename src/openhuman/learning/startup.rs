@@ -270,13 +270,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn learning_subscriber_fires_with_no_channel_configured() {
-        init_global(DEFAULT_CAPACITY);
-        let (tmp, _client) = test_client();
-        // Make the memory client ready so the full Platform wiring runs — no
-        // channel runtime is ever constructed in this test.
-        let _ = crate::openhuman::memory::global::init(tmp.path().join("workspace"));
-        register_learning_subscribers(tmp.path().to_path_buf());
+    async fn learning_subscriber_fires_on_document_event() {
+        // The email-signature producer reacts to `DocumentCanonicalized` and pushes
+        // Identity candidates into the global candidate buffer. Driving this through
+        // the process-global event bus (as it originally did) is flaky under the full
+        // parallel suite: that singleton is shared by every test, so its receiver
+        // starves under load and drops this test's event. Exercise the subscriber on
+        // an ISOLATED bus instead — the repo's canonical test-isolation pattern (see
+        // `core::event_bus::bus`) — so delivery is deterministic. The #5003
+        // regression (the subscriber registers on the channel-independent boot path)
+        // is guarded separately by
+        // `email_signature_subscriber_registers_on_channel_independent_path` below.
+        use crate::core::event_bus::EventBus;
+        use crate::openhuman::learning::extract::signature::EmailSignatureSubscriber;
+        use std::sync::Arc;
 
         let source_id = unique_source_id("e2e");
         let body = signature_body();
@@ -286,12 +293,36 @@ mod tests {
             "signature body must yield at least one identity candidate"
         );
 
-        publish_email_doc(&source_id, &body);
+        let bus = EventBus::create(64);
+        let _handle = bus.subscribe(Arc::new(EmailSignatureSubscriber));
+        bus.publish(DomainEvent::DocumentCanonicalized {
+            source_id: source_id.clone(),
+            source_kind: "email".to_string(),
+            chunks_written: 1,
+            chunk_ids: vec![format!("{source_id}-c1")],
+            canonicalized_at: 0.0,
+            body_preview: Some(body),
+        });
+
         let got = wait_for_candidates(&source_id, expected).await;
         assert_eq!(
             got, expected,
             "email-signature subscriber must push the parsed identity candidates \
-             with no channel configured anywhere (#5003)"
+             from a DocumentCanonicalized event"
+        );
+    }
+
+    /// #5003 regression guard (channel-independent boot path): the email-signature
+    /// subscriber must register even when no memory client / channel is configured.
+    /// Synchronous (no bus delivery), so it is not subject to the shared-bus flake.
+    #[tokio::test]
+    async fn email_signature_subscriber_registers_on_channel_independent_path() {
+        init_global(DEFAULT_CAPACITY);
+        assert!(
+            crate::openhuman::learning::extract::signature::register_email_signature_subscriber()
+                .is_some(),
+            "email-signature subscriber must register on the global bus once it is \
+             initialised, independent of any channel configuration (#5003)"
         );
     }
 

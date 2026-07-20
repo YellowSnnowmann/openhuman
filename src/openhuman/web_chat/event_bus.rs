@@ -505,6 +505,27 @@ mod tests {
     /// - `args.reason` and `args.source` echoed from the domain event
     #[tokio::test]
     async fn automation_halt_subscriber_handle_publishes_correct_payload() {
+        // The web-channel bus is a process-shared broadcast; under the parallel test
+        // suite other tests publish to it too, so take THIS subscriber's next
+        // `automation_halt` event rather than whatever happens to be first in the
+        // buffer (which flaked as an "event name mismatch").
+        fn next_automation_halt(
+            rx: &mut tokio::sync::broadcast::Receiver<WebChannelEvent>,
+        ) -> WebChannelEvent {
+            use tokio::sync::broadcast::error::TryRecvError;
+            loop {
+                match rx.try_recv() {
+                    Ok(ev) if ev.event == "automation_halt" => return ev,
+                    Ok(_) => {}                        // foreign event from a concurrent test
+                    Err(TryRecvError::Lagged(_)) => {} // skipped some; keep draining
+                    Err(TryRecvError::Empty) => {
+                        panic!("expected an automation_halt WebChannelEvent but none was published")
+                    }
+                    Err(TryRecvError::Closed) => panic!("web-channel bus closed"),
+                }
+            }
+        }
+
         // Subscribe BEFORE calling handle so the broadcast receiver is created
         // before any event is sent (broadcast channels only buffer messages
         // sent AFTER the receiver subscribed).
@@ -519,9 +540,7 @@ mod tests {
         })
         .await;
 
-        let halted = rx
-            .try_recv()
-            .expect("AutomationHalted must publish a WebChannelEvent");
+        let halted = next_automation_halt(&mut rx);
         assert_eq!(
             halted.event, "automation_halt",
             "event name mismatch for halted"
@@ -553,9 +572,7 @@ mod tests {
         })
         .await;
 
-        let resumed = rx
-            .try_recv()
-            .expect("AutomationResumed must publish a WebChannelEvent");
+        let resumed = next_automation_halt(&mut rx);
         assert_eq!(
             resumed.event, "automation_halt",
             "event name mismatch for resumed"
