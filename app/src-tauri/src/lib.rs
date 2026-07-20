@@ -2387,6 +2387,7 @@ pub fn run() {
         let custom_runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_stack_size(openhuman_core::core::runtime::AGENT_WORKER_STACK_BYTES)
+            .max_blocking_threads(openhuman_core::core::runtime::MAX_BLOCKING_THREADS)
             .build()
             .expect("build custom tokio runtime for tauri async surface");
         let handle = custom_runtime.handle().clone();

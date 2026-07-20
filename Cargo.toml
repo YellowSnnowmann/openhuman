@@ -110,7 +110,15 @@ serde_yaml = "0.9"
 # stripper (`fast_html_to_text` in
 # providers/gmail/post_process.rs) and prefer the email's
 # `text/plain` MIME part when available.)
-reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls", "native-tls", "stream", "http2", "multipart", "socks"] }
+# TLS: rustls only in the base declaration, so Linux/macOS — including the
+# headless embedding target (#5046) — link a single TLS stack + cert set
+# (Mozilla webpki-roots). Windows re-adds `native-tls` via the
+# `[target.'cfg(windows)'.dependencies]` block below (Cargo unions features
+# per target), because `src/openhuman/tls/mod.rs` deliberately routes the
+# Windows client through the SChannel/OS cert store for corporate MITM +
+# AV root CAs. So the two TLS backends coexist only on Windows, never on
+# the RAM-sensitive platforms.
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls", "stream", "http2", "multipart", "socks"] }
 # Already in-tree via reqwest/hyper; named directly so `IntegrationClient::get_bytes`
 # can return `bytes::Bytes` without a copy.
 bytes = "1"
@@ -259,6 +267,12 @@ docx-rs = "0.4.20"
 # connections honor the Windows cert store, including corporate CAs
 # installed by AV / TLS-inspection proxies. See run-dev-win.sh notes.
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "native-tls"] }
+# Windows re-adds reqwest's native-tls backend (dropped from the base decl in
+# `[dependencies]`) so `tls::tls_client_builder()` can call `.use_native_tls()`
+# and reach the SChannel/OS cert store — same rationale as tokio-tungstenite
+# above. Cargo unions these features with the base rustls decl, so on Windows
+# reqwest carries both backends; Linux/macOS keep rustls only.
+reqwest = { version = "0.12", default-features = false, features = ["native-tls"] }
 # AppContainer / process-jail backend in `openhuman::cwd_jail`.
 # Feature list mirrors the Win32 surface used by cwd_jail/windows.rs:
 # AppContainer profile APIs, ACL editing, STARTUPINFOEXW process spawn,
