@@ -213,6 +213,27 @@ pub struct BenchReport {
 /// downstream trend tooling can detect format shifts.
 pub const REPORT_SCHEMA_VERSION: u32 = 1;
 
+impl BenchReport {
+    /// Marginal steady-state RSS cost of each additional agent (#5046), derived
+    /// from the smallest and largest rosters measured:
+    /// `(median_rss(max) - median_rss(min)) / (max_size - min_size)`.
+    ///
+    /// Returns `(min_roster_size, max_roster_size, kib_per_agent)`, or `None` when
+    /// fewer than two distinct roster sizes were measured (no incremental cost is
+    /// derivable). For the default `{1, 8}` rosters this is the per-agent cost of
+    /// agents 2–8.
+    pub fn per_agent_increment_kib(&self) -> Option<(usize, usize, u64)> {
+        let min = self.rosters.iter().min_by_key(|r| r.roster_size)?;
+        let max = self.rosters.iter().max_by_key(|r| r.roster_size)?;
+        let span = max.roster_size.checked_sub(min.roster_size)?;
+        if span == 0 {
+            return None;
+        }
+        let per_agent = max.median_rss_kib.saturating_sub(min.median_rss_kib) / span as u64;
+        Some((min.roster_size, max.roster_size, per_agent))
+    }
+}
+
 fn kib_to_mib(kib: u64) -> f64 {
     kib as f64 / 1024.0
 }
@@ -260,6 +281,14 @@ pub fn human_summary(report: &BenchReport) -> String {
             kib_to_mib(r.max_vm_hwm_kib),
             r.median_threads,
             r.binary_size_bytes as f64 / (1024.0 * 1024.0),
+        );
+    }
+    if let Some((min_size, max_size, per_agent_kib)) = report.per_agent_increment_kib() {
+        let _ = writeln!(out);
+        let _ = writeln!(
+            out,
+            "Per-agent increment (roster {min_size}→{max_size}): {:.2} MiB/agent",
+            kib_to_mib(per_agent_kib),
         );
     }
     out
@@ -376,6 +405,37 @@ mod tests {
         let summary = human_summary(&report);
         assert!(summary.contains("8 agents"));
         assert!(summary.contains("⚠️"), "over-cap roster must be flagged");
+    }
+
+    #[test]
+    fn per_agent_increment_from_min_and_max_rosters() {
+        let report = BenchReport {
+            schema_version: REPORT_SCHEMA_VERSION,
+            git_sha: "x".into(),
+            kernel: "6.1.0".into(),
+            rss_budget_kib: RSS_BUDGET_KIB,
+            rss_hard_cap_kib: RSS_HARD_CAP_KIB,
+            rosters: vec![
+                RosterResult::from_samples(1, vec![sample(20_000, 0, 0, 6)]),
+                RosterResult::from_samples(8, vec![sample(27_000, 0, 0, 6)]),
+            ],
+        };
+        // (27000 - 20000) / (8 - 1) = 1000 KiB per agent.
+        assert_eq!(report.per_agent_increment_kib(), Some((1, 8, 1000)));
+        assert!(human_summary(&report).contains("Per-agent increment (roster 1→8)"));
+    }
+
+    #[test]
+    fn per_agent_increment_none_for_single_roster() {
+        let report = BenchReport {
+            schema_version: REPORT_SCHEMA_VERSION,
+            git_sha: "x".into(),
+            kernel: "6.1.0".into(),
+            rss_budget_kib: RSS_BUDGET_KIB,
+            rss_hard_cap_kib: RSS_HARD_CAP_KIB,
+            rosters: vec![RosterResult::from_samples(1, vec![sample(20_000, 0, 0, 6)])],
+        };
+        assert_eq!(report.per_agent_increment_kib(), None);
     }
 
     #[cfg(not(target_os = "linux"))]
