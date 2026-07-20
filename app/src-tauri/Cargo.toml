@@ -166,6 +166,7 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     "inference",
     "voice",
     "web3",
+    "documents",
     "flows",
     "meet",
     "skills",
