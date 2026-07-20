@@ -41,6 +41,15 @@ pub fn init_global(capacity: usize) -> &'static EventBus {
     // is always safe from anywhere in the process once the bus is up.
     init_native_registry();
     GLOBAL_BUS.get_or_init(|| {
+        // Under `cfg(test)` the crate's ~12.6k unit tests share this one
+        // process-global bus and publish concurrently, so the default 256-slot
+        // broadcast buffer lets a slow subscriber fall behind and drop events
+        // (`RecvError::Lagged`) — intermittently flaking bus-delivery tests such
+        // as `learning::startup::tests::learning_subscriber_fires_with_no_channel_configured`.
+        // Raise the buffer floor for the test binary only; production is
+        // unaffected (it publishes at human speed and keeps the caller's capacity).
+        #[cfg(test)]
+        let capacity = capacity.max(1 << 16);
         tracing::debug!(capacity, "[event_bus] initializing global singleton");
         EventBus::create(capacity)
     })
