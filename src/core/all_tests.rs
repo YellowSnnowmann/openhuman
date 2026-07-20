@@ -1126,3 +1126,51 @@ fn meet_controllers_absent_when_feature_off() {
         );
     }
 }
+
+/// With the `http-server` feature on (the default), the HTTP + Socket.IO
+/// transport is compiled in — `HTTP_SERVER_COMPILED_IN` reflects that, and
+/// `axum` + `socketioxide` are linked (dependency shed proven separately by
+/// `cargo tree -i axum` / `cargo tree -i socketioxide`).
+#[test]
+#[cfg(feature = "http-server")]
+fn http_server_compiled_in_when_feature_on() {
+    assert!(crate::core::http_server_status::HTTP_SERVER_COMPILED_IN);
+}
+
+/// With the `http-server` feature off, the transport is compiled out: the
+/// marker flips, `serve()` returns without binding a listener, and `axum` +
+/// `socketioxide` leave the dependency graph. The desktop shell's compile-time
+/// assert on this marker (`app/src-tauri/src/lib.rs`) turns a silent
+/// listener-less core into a build failure (cf. voice #4901).
+#[test]
+#[cfg(not(feature = "http-server"))]
+fn http_server_compiled_out_when_feature_off() {
+    assert!(!crate::core::http_server_status::HTTP_SERVER_COMPILED_IN);
+}
+
+/// With `http-server` on, the `http_host` static-directory server registers its
+/// controllers, so the `http_host.*` RPC surface is present in `/schema`.
+#[test]
+#[cfg(feature = "http-server")]
+fn http_host_controllers_registered_when_http_server_on() {
+    let schemas = all_controller_schemas();
+    assert!(
+        schemas.iter().any(|s| s.namespace == "http_host"),
+        "`http_host` controllers must be registered when the `http-server` feature is on"
+    );
+}
+
+/// With `http-server` off, the whole `http_host` axum domain is compiled out and
+/// its controller-registration push in `core::all` is gated in lockstep, so the
+/// `http_host` namespace never enters the registry (unknown-method over `/rpc`,
+/// absent from `/schema`). This is the negative half that proves the gate
+/// removes the surface.
+#[test]
+#[cfg(not(feature = "http-server"))]
+fn http_host_controllers_absent_when_http_server_off() {
+    let schemas = all_controller_schemas();
+    assert!(
+        !schemas.iter().any(|s| s.namespace == "http_host"),
+        "`http_host` controllers must be compiled out when the `http-server` feature is off"
+    );
+}

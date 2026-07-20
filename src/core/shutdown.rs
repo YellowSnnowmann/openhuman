@@ -56,8 +56,11 @@ async fn run_hooks() {
 /// signal (SIGINT on all platforms, plus SIGTERM on Unix), then runs all
 /// registered shutdown hooks.
 ///
-/// This is intended to be used with [`axum::serve`]'s `with_graceful_shutdown`
-/// method or in the main loop to handle clean exits.
+/// This is intended to be used with `axum::serve`'s `with_graceful_shutdown`
+/// method or in the main loop to handle clean exits. (Plain code span, not an
+/// intra-doc link: `axum` is optional under the `http-server` feature (#5048)
+/// and absent from slim builds, where an intra-doc link to it would fail
+/// rustdoc.)
 pub async fn signal() {
     // Wait for the OS to send a termination signal.
     wait_for_signal().await;

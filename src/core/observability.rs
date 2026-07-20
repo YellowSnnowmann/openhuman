@@ -2455,6 +2455,10 @@ pub(crate) fn report_error_message(
 /// `sentry::capture_message` rather than the `sentry-tracing` bridge; the
 /// accompanying diagnostic line is tagged with [`REPORT_ERROR_TRACING_TARGET`]
 /// so the production layer ignores it and we never double-report.
+// Its sole caller is the `http-server`-gated RPC handler (unrecognised-method
+// reporting, #3567), so it has no caller in a slim build (#5048). Kept compiled
+// for the crash-reporting carve-out; the allow keeps the disabled build quiet.
+#[cfg_attr(not(feature = "http-server"), allow(dead_code))]
 pub(crate) fn report_warning_message(
     message: &str,
     domain: &str,

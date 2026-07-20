@@ -394,6 +394,48 @@ impl CoreRuntime {
             return Ok(());
         }
 
+        // Transport compiled out (#5048): run the selected background services
+        // and return without binding an HTTP/Socket.IO listener — same shape as
+        // the no-`rpc_http` guard above. The desktop shell always ships
+        // `http-server`; this keeps slim / headless-embedding builds linkable.
+        #[cfg(not(feature = "http-server"))]
+        {
+            // The bind inputs (`host`/`port`/`has_operator_token`) are only read
+            // by `serve_http`, which is compiled out here — touch them so they
+            // don't read as dead fields in the slim build.
+            let _ = (
+                ready_tx,
+                shutdown_token,
+                self.has_operator_token,
+                self.host.as_ref(),
+                self.port,
+            );
+            log::info!(
+                "[core] http-server feature disabled — starting selected background \
+                 services without an HTTP/Socket.IO transport"
+            );
+            self.start_selected_services();
+            return Ok(());
+        }
+
+        #[cfg(feature = "http-server")]
+        {
+            self.serve_http(ready_tx, shutdown_token).await
+        }
+    }
+
+    /// HTTP + Socket.IO transport body of [`Self::serve`].
+    ///
+    /// Compiled only under the `http-server` feature (#5048): builds the axum
+    /// router, binds the listener, starts the selected background services, and
+    /// serves until shutdown. With the feature off, [`serve`](Self::serve) runs
+    /// background services and returns without binding (see the arms above).
+    #[cfg(feature = "http-server")]
+    async fn serve_http(
+        &self,
+        ready_tx: Option<tokio::sync::oneshot::Sender<EmbeddedReadySignal>>,
+        shutdown_token: Option<CancellationToken>,
+    ) -> anyhow::Result<()> {
         // --- Host / port resolution ---
         let (resolved_port, port_source) = match self.port {
             Some(p) => (p, "builder port"),
