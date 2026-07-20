@@ -40,6 +40,7 @@ use openhuman_core::openhuman::proc_metrics::{
 };
 use openhuman_core::openhuman::tools::{Tool, ToolResult};
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -49,6 +50,11 @@ use tempfile::TempDir;
 const DEFAULT_ROSTER_SIZES: &[usize] = &[1, 8];
 /// Fresh processes sampled per roster size (≥ 5 per the issue).
 const DEFAULT_REPEAT: usize = 5;
+/// Per-child wall-clock budget. A child does bounded work (build a roster, one
+/// warm-up turn, a ≤2 s settle), so anything beyond this is a stall — kill it and
+/// fail the run rather than letting one bad child block the whole benchmark until
+/// the outer CI job timeout.
+const CHILD_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Provider that never touches the network: returns a fixed assistant message
 /// with a `stop` shape (no tool calls) so a turn completes in one round-trip.
@@ -183,10 +189,19 @@ async fn settle() {
 /// Child mode: build one roster in this fresh process, warm up, settle, sample,
 /// and print the sample as a single JSON line on stdout.
 async fn run_child(roster_size: usize) -> Result<()> {
+    // Diagnostics go to stderr so they never corrupt the single JSON line the
+    // parent parses from stdout.
+    eprintln!("[rss-bench] child: building {roster_size}-agent roster");
     let mut roster = build_roster(roster_size)?;
+    eprintln!("[rss-bench] child: warming up {roster_size} agent(s)");
     warm_up(&mut roster).await?;
+    eprintln!("[rss-bench] child: settling");
     settle().await;
     let sample = proc_metrics::sample_self()?;
+    eprintln!(
+        "[rss-bench] child: sampled rss={}KiB threads={}",
+        sample.rss_kib, sample.threads
+    );
     println!("{}", serde_json::to_string(&sample)?);
     drop(roster); // keep the roster alive until after the sample is taken
     Ok(())
@@ -200,14 +215,34 @@ async fn run_parent(out: Option<PathBuf>, repeat: usize, roster_sizes: &[usize])
     for &size in roster_sizes {
         let mut samples = Vec::with_capacity(repeat);
         for run in 0..repeat {
-            let output = tokio::process::Command::new(&exe)
+            eprintln!("[rss-bench] spawn child roster={size} run={run}");
+            // `kill_on_drop` + a `timeout` around `wait_with_output` gives a
+            // robust kill-and-reap: on timeout the cancelled future drops the
+            // child, `kill_on_drop` sends SIGKILL, and the tokio runtime reaps it.
+            let child = tokio::process::Command::new(&exe)
                 .arg("--child")
                 .arg("--roster")
                 .arg(size.to_string())
-                .output()
-                .await
-                .with_context(|| format!("spawn child roster={size}"))?;
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .with_context(|| format!("spawn child roster={size} run={run}"))?;
+            let output = match tokio::time::timeout(CHILD_TIMEOUT, child.wait_with_output()).await {
+                Ok(res) => res.with_context(|| format!("await child roster={size} run={run}"))?,
+                Err(_) => {
+                    eprintln!(
+                        "[rss-bench] child roster={size} run={run} timed out after {}s; killed",
+                        CHILD_TIMEOUT.as_secs()
+                    );
+                    anyhow::bail!(
+                        "child roster={size} run={run} timed out after {}s",
+                        CHILD_TIMEOUT.as_secs()
+                    );
+                }
+            };
             if !output.status.success() {
+                eprintln!("[rss-bench] child roster={size} run={run} exited non-zero");
                 anyhow::bail!(
                     "child roster={size} run={run} failed: {}",
                     String::from_utf8_lossy(&output.stderr)
@@ -222,6 +257,10 @@ async fn run_parent(out: Option<PathBuf>, repeat: usize, roster_sizes: &[usize])
                 .trim();
             let sample: ProcSample = serde_json::from_str(line)
                 .with_context(|| format!("parse child sample (roster={size}): {line:?}"))?;
+            eprintln!(
+                "[rss-bench] child roster={size} run={run} ok rss={}KiB",
+                sample.rss_kib
+            );
             samples.push(sample);
         }
         rosters.push(RosterResult::from_samples(size, samples));
