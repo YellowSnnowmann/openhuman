@@ -23,20 +23,11 @@ use std::sync::{Arc, Mutex as StdMutex};
 const LOG_PREFIX: &str = "[globe_hotkey]";
 const MAX_PENDING_EVENTS: usize = 64;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GlobeHotkeyStatus {
-    pub supported: bool,
-    pub running: bool,
-    pub input_monitoring_permission: PermissionState,
-    pub last_error: Option<String>,
-    pub events_pending: usize,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GlobeHotkeyPollResult {
-    pub status: GlobeHotkeyStatus,
-    pub events: Vec<String>,
-}
+// The inert status/result structs live in `types.rs` (dep-free, no FFI) so they
+// stay compiled when `desktop-automation` is off. Re-export here so existing
+// `accessibility::globe::{GlobeHotkeyStatus, GlobeHotkeyPollResult}` paths and
+// the `accessibility::mod.rs` re-export keep resolving.
+pub use super::types::{GlobeHotkeyPollResult, GlobeHotkeyStatus};
 
 #[cfg(target_os = "macos")]
 struct GlobeListenerProcess {

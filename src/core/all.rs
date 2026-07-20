@@ -82,6 +82,7 @@ pub enum DomainGroup {
     Web3,
     Voice,
     Media,
+    DesktopAutomation,
     // Everything not in a named family — always on in `full()`, off otherwise.
     Platform,
 }
@@ -381,7 +382,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Inline autocomplete settings
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::DesktopAutomation,
         crate::openhuman::autocomplete::all_autocomplete_registered_controllers(),
     );
     // External messaging channels (Web, Telegram, etc.)
@@ -470,7 +471,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Screen capture and UI analysis
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::DesktopAutomation,
         crate::openhuman::screen_intelligence::all_screen_intelligence_registered_controllers(),
     );
     // Sandbox execution backends (Docker, local jail, policy, cleanup)
@@ -747,7 +748,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Desktop companion — Clicky-style interaction loop.
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::DesktopAutomation,
         crate::openhuman::desktop_companion::all_desktop_companion_registered_controllers(),
     );
     // Structured WhatsApp Web data — agent-facing read-only controllers (list/search).
