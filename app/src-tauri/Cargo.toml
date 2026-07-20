@@ -171,6 +171,7 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     "meet",
     "skills",
     "mcp",
+    "crash-reporting",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 

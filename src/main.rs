@@ -5,7 +5,11 @@
 //! - Setting up secret scrubbing for outgoing error reports.
 //! - Dispatching command-line arguments to the core logic in `openhuman_core`.
 
+// Only used by the sentry secret-scrubbing path, which is compiled out when
+// the `crash-reporting` feature is disabled.
+#[cfg(feature = "crash-reporting")]
 use once_cell::sync::Lazy;
+#[cfg(feature = "crash-reporting")]
 use regex::Regex;
 
 /// Main application entry point.
@@ -33,6 +37,10 @@ fn main() {
     //      the GH org-level variable can be renamed)
     //   3. Each of the same names baked at compile time via `option_env!`
     // If none resolve to a non-empty value, `sentry::init` returns a no-op guard.
+    //
+    // The whole init (guard + secret-scrubbing `before_send`) is gated on the
+    // `crash-reporting` feature; a slim build compiles it out entirely.
+    #[cfg(feature = "crash-reporting")]
     let _sentry_guard = sentry::init(sentry::ClientOptions {
         dsn: std::env::var("OPENHUMAN_CORE_SENTRY_DSN")
             .ok()
@@ -259,6 +267,7 @@ fn restore_default_sigpipe() {}
 /// `app/src/utils/config.ts`) so events from every surface group under
 /// the same release in the Sentry dashboard and benefit from the same
 /// source-map upload.
+#[cfg(feature = "crash-reporting")]
 fn build_release_tag() -> String {
     let version = env!("CARGO_PKG_VERSION");
     let sha = option_env!("OPENHUMAN_BUILD_SHA").unwrap_or("").trim();
@@ -275,6 +284,7 @@ fn build_release_tag() -> String {
 /// Honors `OPENHUMAN_APP_ENV` at runtime (`staging` / `production`) so the
 /// same binary could in principle be redeployed between environments; falls
 /// back to debug/release detection when unset.
+#[cfg(feature = "crash-reporting")]
 fn resolve_environment() -> String {
     if let Ok(value) = std::env::var("OPENHUMAN_APP_ENV") {
         let trimmed = value.trim().to_ascii_lowercase();
@@ -295,6 +305,7 @@ fn resolve_environment() -> String {
 
 /// Ordered most-specific → least-specific. Keep in sync with
 /// `src/openhuman/memory/safety/mod.rs`.
+#[cfg(feature = "crash-reporting")]
 static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
     vec![
         // Matches "Bearer <token>" and redacts the token.
@@ -331,6 +342,7 @@ static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
 });
 
 /// Replaces patterns that look like secrets with `[REDACTED]`.
+#[cfg(feature = "crash-reporting")]
 fn scrub_secrets(input: &str) -> String {
     let mut result = input.to_string();
     for (re, replacement) in SECRET_PATTERNS.iter() {
@@ -339,7 +351,7 @@ fn scrub_secrets(input: &str) -> String {
     result
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "crash-reporting"))]
 mod tests {
     use super::*;
 

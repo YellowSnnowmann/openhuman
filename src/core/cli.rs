@@ -101,6 +101,12 @@ pub fn run_from_cli_args(args: &[String]) -> Result<()> {
 /// alias) or baked into the binary at build time via `option_env!`. Absent a
 /// DSN, the command exits non-zero with a diagnostic instead of silently
 /// producing no telemetry.
+///
+/// Only compiled with the `crash-reporting` feature; the `#[cfg(not(...))]`
+/// companion below returns a disabled-build error (mirrors the `mcp` CLI
+/// precedent, where the subcommand arm + top-level help stay compiled and the
+/// handler reports the build fact rather than a bogus "unknown command").
+#[cfg(feature = "crash-reporting")]
 fn run_sentry_test_command(args: &[String]) -> Result<()> {
     let mut message: Option<String> = None;
     let mut do_panic = false;
@@ -183,6 +189,17 @@ fn run_sentry_test_command(args: &[String]) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Disabled-build stand-in for [`run_sentry_test_command`]. Same signature as
+/// the `crash-reporting` version; reports that the probe is unavailable in a
+/// build compiled without the feature rather than pretending to succeed.
+#[cfg(not(feature = "crash-reporting"))]
+fn run_sentry_test_command(_args: &[String]) -> Result<()> {
+    Err(anyhow::anyhow!(
+        "sentry-test unavailable: built without the crash-reporting feature — \
+         rebuild with `--features crash-reporting`"
+    ))
 }
 
 /// Loads key/value pairs from a `.env` file into the process environment.

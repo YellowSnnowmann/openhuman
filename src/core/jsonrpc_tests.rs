@@ -974,6 +974,7 @@ async fn structured_rpc_error_envelope_passes_through_generic_dispatch() {
     assert!(message.contains("thread-ghost"));
 }
 
+#[cfg(feature = "crash-reporting")]
 #[tokio::test(flavor = "current_thread")]
 async fn thread_not_found_rpc_error_does_not_report_to_sentry() {
     use axum::body::to_bytes;
@@ -1087,6 +1088,7 @@ async fn thread_not_found_rpc_error_does_not_report_to_sentry() {
     );
 }
 
+#[cfg(feature = "crash-reporting")]
 #[tokio::test(flavor = "current_thread")]
 async fn unknown_method_severity_split_by_probe_allow_list() {
     // #3567: prove the full severity split at the transport boundary —
