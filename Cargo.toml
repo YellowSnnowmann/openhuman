@@ -217,10 +217,10 @@ sentry = { version = "0.47.0", default-features = false, features = ["backtrace"
 tokio-stream = { version = "0.1.18", features = ["full"] }
 url = "2"
 socketioxide = { version = "0.15", features = ["extensions"] }
-whisper-rs = "0.16"
+whisper-rs = { version = "0.16", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 tempfile = "3"
-cpal = "0.15"
+cpal = { version = "0.15", optional = true }
 hound = { version = "3.5", optional = true }
 enigo = "0.3"
 arboard = "3"
@@ -300,7 +300,7 @@ uiautomation = "0.25"
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-whisper-rs = { version = "0.16", features = ["metal"] }
+whisper-rs = { version = "0.16", features = ["metal"], optional = true }
 # Contacts framework bindings for address book seeding.
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSError", "NSObject", "NSString", "NSPredicate"] }
@@ -333,12 +333,25 @@ tokio = { version = "1", features = ["test-util"] }
 proptest = "1"
 
 [features]
-default = ["tokenjuice-treesitter", "voice", "web3", "media", "meet", "skills", "flows", "mcp"]
+default = ["tokenjuice-treesitter", "inference", "voice", "web3", "media", "meet", "skills", "flows", "mcp"]
 # AST-aware code compression (tree-sitter Rust/TS/Python grammars; C build).
 # On by default; disable to fall back to the brace-depth heuristic.
 tokenjuice-treesitter = [
     "tinyjuice/tinyjuice-treesitter",
 ]
+# In-process inference engine: the whisper.cpp STT engine
+# (`inference::local::service::whisper_engine`) plus the `cpal` audio-device
+# probe shared by voice capture and the accessibility microphone-permission
+# check. Default-ON. Slim / headless builds opt out via
+# `--no-default-features --features "<explicit list without inference>"`, which
+# drops the exclusive `whisper-rs` (including the macOS `metal` variant and the
+# `whisper-rs-sys` patch, which go inert once whisper-rs leaves the graph) and
+# `cpal` dependencies. When off, the whisper facade resolves to
+# `whisper_engine::stub` — in-process STT returns a disabled error, while the
+# local-AI service still reaches Ollama / LM Studio over HTTP — and the
+# microphone probe reports `Unknown`. `voice` requires this gate, so building
+# `voice` always pulls `inference` in transitively.
+inference = ["dep:whisper-rs", "dep:cpal"]
 # Voice + audio_toolkit domains: STT/TTS providers, the standalone dictation
 # server, always-on listening, and podcast audio generation/email delivery.
 # Default-ON — the desktop app always ships with voice. Slim / headless builds
@@ -346,10 +359,9 @@ tokenjuice-treesitter = [
 # which also drops the exclusive `hound` (WAV I/O) + `lettre` (podcast email)
 # dependencies. Composes with the runtime `DomainSet::voice` flag (#4796): the
 # feature narrows the compile-time surface, `DomainSet` gates it at runtime.
-# NOTE: this gate does NOT drop whisper-rs / llama / cpal — those live in the
-# inference domain (shared with accessibility for cpal) and await a separate
-# `inference` gate.
-voice = ["dep:hound", "dep:lettre"]
+# Requires `inference` (the whisper engine + the cpal capture stack), so
+# enabling `voice` turns `inference` on transitively.
+voice = ["inference", "dep:hound", "dep:lettre"]
 # Web3 domains: openhuman::wallet + openhuman::web3 + openhuman::x402 — the
 # crypto wallet (multi-chain sign/broadcast), the high-level swap/bridge/dapp
 # surface, and the x402 machine-payment protocol. Default-ON — the desktop app
