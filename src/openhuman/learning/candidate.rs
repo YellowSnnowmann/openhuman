@@ -233,7 +233,15 @@ static GLOBAL_BUFFER: OnceLock<Buffer> = OnceLock::new();
 /// Initialised on first call with a default capacity of 1024. All producers
 /// push into this buffer; the stability detector drains it.
 pub fn global() -> &'static Buffer {
-    GLOBAL_BUFFER.get_or_init(|| Buffer::new(1024))
+    // Production default: a 1024-entry ring drained by the stability detector.
+    // Under `cfg(test)` the crate's full parallel suite shares this one global
+    // ring with no drainer running, so concurrent producers can evict a test's
+    // own candidates before it asserts on them. Enlarge for the test binary only.
+    #[cfg(not(test))]
+    let capacity = 1024;
+    #[cfg(test)]
+    let capacity = 1 << 16;
+    GLOBAL_BUFFER.get_or_init(|| Buffer::new(capacity))
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
