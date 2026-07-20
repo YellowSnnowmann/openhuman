@@ -3,7 +3,14 @@
 //! The listener runs as a tiny Swift process that monitors `flagsChanged`
 //! events globally and reports `FN_DOWN` / `FN_UP` lines over stdout.
 
-use super::{detect_permissions, PermissionState};
+use super::detect_permissions;
+// `PermissionState` (the type) is named only by the macOS listener's permission
+// check; the non-macOS stubs read `detect_permissions().input_monitoring` without
+// naming the type. Gating the import keeps the Linux/Windows build warning-clean
+// (the `GlobeHotkey*` structs that referenced it unconditionally now live in
+// `super::types`).
+#[cfg(target_os = "macos")]
+use super::PermissionState;
 #[cfg(target_os = "macos")]
 use std::collections::VecDeque;
 
