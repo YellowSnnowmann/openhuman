@@ -1227,16 +1227,24 @@ pub(super) fn resolve_tool_config(
     base_config: &Arc<Config>,
     enabled_tools: &[String],
 ) -> Arc<Config> {
+    log::trace!(
+        "[session-builder] action=resolve_tool_config phase=enter enabled_tools_count={} base_ax_interact_mutations={}",
+        enabled_tools.len(),
+        base_config.computer_control.ax_interact_mutations
+    );
     if !base_config.computer_control.ax_interact_mutations
         && tools::enables_app_ui_control_mutations(enabled_tools)
     {
         let mut granted = (**base_config).clone();
         granted.computer_control.ax_interact_mutations = true;
         log::debug!(
-            "[session-builder] action=grant_app_ui_control_mutations source=features_toggle"
+            "[session-builder] action=resolve_tool_config phase=exit outcome=granted_app_ui_control_mutations source=features_toggle"
         );
         Arc::new(granted)
     } else {
+        log::debug!(
+            "[session-builder] action=resolve_tool_config phase=exit outcome=reused_base_config"
+        );
         Arc::clone(base_config)
     }
 }
