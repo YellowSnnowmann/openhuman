@@ -76,6 +76,9 @@ pub mod rpc {
     /// Real: `ops::accessibility_capture_image_ref`.
     pub async fn accessibility_capture_image_ref(
     ) -> Result<RpcOutcome<CaptureImageRefResult>, String> {
+        log::debug!(
+            "[screen_intelligence] capture_image_ref rejected: desktop-automation disabled at compile time"
+        );
         Ok(RpcOutcome::new(
             CaptureImageRefResult {
                 ok: false,
@@ -120,6 +123,9 @@ pub mod cli {
     /// Real: `cli::run_screen_intelligence_command`. Reports the build fact rather
     /// than running a no-op command.
     pub(crate) fn run_screen_intelligence_command(_args: &[String]) -> Result<()> {
+        log::debug!(
+            "[screen_intelligence] CLI command rejected: desktop-automation disabled at compile time"
+        );
         Err(anyhow::anyhow!(super::DISABLED))
     }
 }

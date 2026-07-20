@@ -972,6 +972,9 @@ fn all_tools_excludes_computer_control_when_disabled() {
     );
 }
 
+// The `mouse` / `keyboard` computer-control tools are gated behind
+// `desktop-automation` (#5049), so this test only applies when the feature is on.
+#[cfg(feature = "desktop-automation")]
 #[test]
 fn all_tools_includes_computer_control_when_enabled() {
     let tmp = TempDir::new().unwrap();
@@ -2230,7 +2233,9 @@ const DESKTOP_TOOLS: &[&str] = &[
 ];
 
 const DESKTOP_DEFAULT_OFF: &[&str] = &[
+    #[cfg(feature = "desktop-automation")]
     "screen_intelligence_request_permissions",
+    #[cfg(feature = "desktop-automation")]
     "screen_intelligence_request_permission",
     #[cfg(feature = "mcp")]
     "mcp_registry_install",
@@ -2242,7 +2247,9 @@ const DESKTOP_DEFAULT_OFF: &[&str] = &[
 ];
 
 const DESKTOP_ALWAYS_ON: &[&str] = &[
+    #[cfg(feature = "desktop-automation")]
     "screen_intelligence_status",
+    #[cfg(feature = "desktop-automation")]
     "screen_intelligence_capture_now",
     #[cfg(feature = "mcp")]
     "mcp_registry_search",

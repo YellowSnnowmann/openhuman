@@ -59,11 +59,14 @@ pub fn is_terminal_app(_app_name: Option<&str>) -> bool {
 
 /// Real: `paste::apply_text_to_focused_field`.
 pub fn apply_text_to_focused_field(_text: &str) -> Result<(), String> {
+    // Grep-friendly: never logs the text itself (PII).
+    log::debug!("[accessibility] apply_text_to_focused_field disabled: desktop-automation off");
     Err(DISABLED.to_string())
 }
 
 /// Real: `paste::send_backspace`.
 pub fn send_backspace(_count: usize) -> Result<(), String> {
+    log::debug!("[accessibility] send_backspace disabled: desktop-automation off");
     Err(DISABLED.to_string())
 }
 
@@ -95,6 +98,7 @@ pub fn quit_overlay() -> Result<(), String> {
 /// Real: `globe::globe_listener_start`. Re-exports the carved `GlobeHotkey*`
 /// types; the listener helper is compiled out, so report unsupported.
 pub fn globe_listener_start() -> Result<GlobeHotkeyStatus, String> {
+    log::debug!("[accessibility] globe_listener_start disabled: desktop-automation off");
     Ok(disabled_globe_status())
 }
 
@@ -221,6 +225,8 @@ pub mod automate {
         _backend: &B,
         _opts: AutomateOptions,
     ) -> AutomateOutcome {
+        // Grep-friendly: never logs `_app` / `_goal` (may carry user content).
+        log::debug!("[accessibility] automate::run disabled: desktop-automation off");
         AutomateOutcome {
             success: false,
             summary: DISABLED.to_string(),

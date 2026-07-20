@@ -107,6 +107,9 @@ pub fn maybe_handle_namespace_start(
     if namespace != "autocomplete" || function != "start" {
         return Ok(None);
     }
+    log::debug!(
+        "[autocomplete] `autocomplete start` rejected: desktop-automation disabled at compile time"
+    );
     Err(anyhow::anyhow!(
         "autocomplete is disabled in this build (rebuild with --features desktop-automation)"
     ))
