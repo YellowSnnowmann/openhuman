@@ -128,10 +128,16 @@ fn disabled_globe_status() -> GlobeHotkeyStatus {
 // ── permissions ──────────────────────────────────────────────────────────
 
 /// Real: `permissions::detect_microphone_permission`. Microphone capture lives in
-/// the `voice` domain but reads its permission through here; without the platform
-/// backend the state is unknown.
+/// the `voice` domain, which reads its permission through here — so this stub is
+/// load-bearing when `voice` is enabled but `desktop-automation` is not.
+///
+/// The real Linux / non-macOS implementation cpal-probes and returns `Granted`
+/// when an input device is available; the voice recorder treats `Unknown` as
+/// "request then re-check, else fail", so returning `Unknown` here would break
+/// dictation before it ever opens the mic. Match the permissive non-desktop arm
+/// (`Granted`) so voice proceeds and any real capture error surfaces from cpal.
 pub fn detect_microphone_permission() -> PermissionState {
-    PermissionState::Unknown
+    PermissionState::Granted
 }
 
 /// Real: `permissions::request_microphone_access`. No-op when disabled.
@@ -152,13 +158,16 @@ pub fn permission_to_str(permission: PermissionKind) -> &'static str {
     }
 }
 
-/// Real: `permissions::detect_permissions`. Everything unknown when disabled.
+/// Real: `permissions::detect_permissions`. The desktop-automation permissions
+/// (screen-recording / accessibility / input-monitoring) are unknown when the
+/// gate is off; microphone mirrors `detect_microphone_permission` above so the
+/// `voice`-on / `desktop-automation`-off build keeps a usable mic state.
 pub fn detect_permissions() -> PermissionStatus {
     PermissionStatus {
         screen_recording: PermissionState::Unknown,
         accessibility: PermissionState::Unknown,
         input_monitoring: PermissionState::Unknown,
-        microphone: PermissionState::Unknown,
+        microphone: PermissionState::Granted,
     }
 }
 
