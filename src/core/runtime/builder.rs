@@ -407,9 +407,16 @@ impl CoreRuntime {
         // `http-server`; this keeps slim / headless-embedding builds linkable.
         #[cfg(not(feature = "http-server"))]
         {
-            // The bind inputs (`host`/`port`/`has_operator_token`) are only read
-            // by `serve_http`, which is compiled out here — touch them so they
-            // don't read as dead fields in the slim build.
+            // `rpc_http` was requested (we passed the guard above) but the HTTP +
+            // Socket.IO transport is compiled out of this slim build. Fail loudly
+            // rather than returning Ok with no listener bound — a supervisor / CLI
+            // (`openhuman run`, `serve`, `--headless-api`) would otherwise observe
+            // a clean start while the requested API is unavailable. Embedders that
+            // genuinely want no transport leave `ServiceSet::rpc_http` unset, which
+            // is handled by the early return above.
+            //
+            // The bind inputs are only read by the compiled-out `serve_http`; touch
+            // them so they don't read as dead fields in the slim build.
             let _ = (
                 ready_tx,
                 shutdown_token,
@@ -417,12 +424,12 @@ impl CoreRuntime {
                 self.host.as_ref(),
                 self.port,
             );
-            log::info!(
-                "[core] http-server feature disabled — starting selected background \
-                 services without an HTTP/Socket.IO transport"
+            anyhow::bail!(
+                "rpc_http transport was requested but this build was compiled \
+                 without the `http-server` feature; rebuild with the default \
+                 `http-server` feature, or use an embedding that does not set \
+                 `ServiceSet::rpc_http`"
             );
-            self.start_selected_services();
-            return Ok(());
         }
 
         #[cfg(feature = "http-server")]

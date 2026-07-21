@@ -340,10 +340,30 @@ pub const BUILTINS: &[BuiltinAgent] = &[
 /// baked into the binary and therefore must always be valid. Unit tests
 /// below keep that invariant honest.
 pub fn load_builtins() -> Result<Vec<AgentDefinition>> {
-    let defs: Vec<AgentDefinition> = BUILTINS.iter().map(parse_builtin).collect::<Result<_>>()?;
+    let defs: Vec<AgentDefinition> = BUILTINS
+        .iter()
+        .filter(|b| builtin_enabled(b))
+        .map(parse_builtin)
+        .collect::<Result<_>>()?;
     validate_tier_hierarchy(&defs)
         .context("built-in agents violate the spawn-hierarchy contract")?;
     Ok(defs)
+}
+
+/// Compile-time gate for built-ins whose deck/document tool is feature-gated.
+///
+/// `presentation_agent` delegates deck creation to `generate_presentation`,
+/// which only registers under the `documents` feature (see `tools::ops`). In a
+/// slim build without `documents`, the agent would still be advertised as
+/// `make_presentation` while its filtered tool surface no longer contains any
+/// tool able to produce a deck, so it is dropped from the registry in lockstep
+/// with its tool.
+fn builtin_enabled(_b: &BuiltinAgent) -> bool {
+    #[cfg(not(feature = "documents"))]
+    if _b.id == "presentation_agent" {
+        return false;
+    }
+    true
 }
 
 /// Validate the cross-agent spawn-hierarchy contract documented on

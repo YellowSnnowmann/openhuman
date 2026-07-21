@@ -1129,8 +1129,9 @@ fn meet_controllers_absent_when_feature_off() {
 
 /// With the `http-server` feature on (the default), the HTTP + Socket.IO
 /// transport is compiled in — `HTTP_SERVER_COMPILED_IN` reflects that, and
-/// `axum` + `socketioxide` are linked (dependency shed proven separately by
-/// `cargo tree -i axum` / `cargo tree -i socketioxide`).
+/// `socketioxide` is linked. `socketioxide` is the only dependency this gate
+/// actually sheds (proven by `cargo tree -i socketioxide`); `axum` stays in the
+/// graph either way because `tinychannels` pulls it transitively.
 #[test]
 #[cfg(feature = "http-server")]
 fn http_server_compiled_in_when_feature_on() {
@@ -1138,10 +1139,11 @@ fn http_server_compiled_in_when_feature_on() {
 }
 
 /// With the `http-server` feature off, the transport is compiled out: the
-/// marker flips, `serve()` returns without binding a listener, and `axum` +
-/// `socketioxide` leave the dependency graph. The desktop shell's compile-time
-/// assert on this marker (`app/src-tauri/src/lib.rs`) turns a silent
-/// listener-less core into a build failure (cf. voice #4901).
+/// marker flips, `serve()` returns without binding a listener, and the
+/// exclusive `socketioxide` dependency leaves the graph (`axum` remains, pulled
+/// transitively by `tinychannels`). The desktop shell's compile-time assert on
+/// this marker (`app/src-tauri/src/lib.rs`) turns a silent listener-less core
+/// into a build failure (cf. voice #4901).
 #[test]
 #[cfg(not(feature = "http-server"))]
 fn http_server_compiled_out_when_feature_off() {
