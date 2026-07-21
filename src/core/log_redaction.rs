@@ -42,8 +42,10 @@ static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
             Regex::new(r"sk-(?:proj|org)-[A-Za-z0-9\-_]{12,}").unwrap(),
             "[REDACTED]",
         ),
-        // Generic catch-all for any sk- format not covered above.
-        (Regex::new(r"sk-[a-zA-Z0-9]{20,}").unwrap(), "[REDACTED]"),
+        // Generic catch-all for any sk- format not covered above. Includes `-`
+        // and `_` in the suffix so a separator mid-token can't leave a trailing
+        // fragment unredacted (e.g. `sk-…_uv` → `[REDACTED]_uv`).
+        (Regex::new(r"sk-[A-Za-z0-9_-]{20,}").unwrap(), "[REDACTED]"),
     ]
 });
 
@@ -88,6 +90,13 @@ mod tests {
     #[test]
     fn scrubs_bare_generic_sk_key() {
         assert_eq!(scrub_secrets("sk-abcdefghijklmnopqrstuvwx"), "[REDACTED]");
+    }
+
+    #[test]
+    fn scrubs_generic_sk_key_with_separators() {
+        // A `_` or `-` mid-suffix must not leave a trailing fragment unredacted.
+        assert_eq!(scrub_secrets("sk-abcdefghijklmnopqrst_uv"), "[REDACTED]");
+        assert_eq!(scrub_secrets("sk-abcdefghij-klmnopqrst_uv"), "[REDACTED]");
     }
 
     #[test]
