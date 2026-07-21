@@ -35,7 +35,7 @@ pub fn all_screen_intelligence_controller_schemas() -> Vec<ControllerSchema> {
 }
 
 /// Real: `state::AccessibilityEngine`. Inert handle exposing only the methods the
-/// always-on callers (`app_state`, `emergency_stop`, `config::ops::ui`) reach.
+/// always-on callers (`app_state`, `config::ops::ui`) reach.
 pub struct AccessibilityEngine;
 
 impl AccessibilityEngine {
