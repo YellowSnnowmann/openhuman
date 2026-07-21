@@ -159,14 +159,17 @@ pub fn permission_to_str(permission: PermissionKind) -> &'static str {
 }
 
 /// Real: `permissions::detect_permissions`. The desktop-automation permissions
-/// (screen-recording / accessibility / input-monitoring) are unknown when the
-/// gate is off; microphone mirrors `detect_microphone_permission` above so the
-/// `voice`-on / `desktop-automation`-off build keeps a usable mic state.
+/// (screen-recording / accessibility / input-monitoring) are `Unsupported` when
+/// the gate is off — matching the real non-macOS `detect_permissions`, which
+/// reports these as `Unsupported` so the disabled build "behaves like a
+/// non-desktop platform". Microphone mirrors `detect_microphone_permission`
+/// above so the `voice`-on / `desktop-automation`-off build keeps a usable mic
+/// state.
 pub fn detect_permissions() -> PermissionStatus {
     PermissionStatus {
-        screen_recording: PermissionState::Unknown,
-        accessibility: PermissionState::Unknown,
-        input_monitoring: PermissionState::Unknown,
+        screen_recording: PermissionState::Unsupported,
+        accessibility: PermissionState::Unsupported,
+        input_monitoring: PermissionState::Unsupported,
         microphone: PermissionState::Granted,
     }
 }
