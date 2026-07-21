@@ -491,6 +491,30 @@ mod tests {
         assert_eq!(defs.len(), expected);
     }
 
+    /// Pins the `presentation_agent` compile-time gate, both directions: it is
+    /// registered under the `documents` feature (its `generate_presentation`
+    /// deck tool lives there) and filtered out of the registry without it, so
+    /// slim builds never advertise `make_presentation` with no tool to fulfil it.
+    #[cfg(feature = "documents")]
+    #[test]
+    fn presentation_agent_registered_when_documents_on() {
+        let defs = load_builtins().expect("built-in TOML must parse");
+        assert!(
+            defs.iter().any(|d| d.id == "presentation_agent"),
+            "presentation_agent must register when the `documents` feature is on"
+        );
+    }
+
+    #[cfg(not(feature = "documents"))]
+    #[test]
+    fn presentation_agent_absent_when_documents_off() {
+        let defs = load_builtins().expect("built-in TOML must parse");
+        assert!(
+            !defs.iter().any(|d| d.id == "presentation_agent"),
+            "presentation_agent must be filtered from the registry when `documents` is off"
+        );
+    }
+
     #[test]
     fn automatic_memory_agents_do_not_expose_call_memory_agent() {
         for def in load_builtins().expect("built-in TOML must parse") {
