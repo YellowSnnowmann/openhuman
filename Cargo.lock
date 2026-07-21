@@ -4741,6 +4741,7 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "uiautomation",
+ "unicode-width",
  "url",
  "urlencoding",
  "uuid 1.23.1",
