@@ -509,17 +509,31 @@ mod tests {
         // suite other tests publish to it too, so take THIS subscriber's next
         // `automation_halt` event rather than whatever happens to be first in the
         // buffer (which flaked as an "event name mismatch").
+        // `automation_halt` is emitted for BOTH engaged=true (halted) and
+        // engaged=false (resumed), so filter on the payload too — otherwise a
+        // concurrent test's halt/resume in the shared bus could be returned in
+        // place of the one we published (the residual flake window CodeGhost21
+        // flagged on #5061).
         fn next_automation_halt(
             rx: &mut tokio::sync::broadcast::Receiver<WebChannelEvent>,
+            expected_engaged: bool,
         ) -> WebChannelEvent {
             use tokio::sync::broadcast::error::TryRecvError;
             loop {
                 match rx.try_recv() {
-                    Ok(ev) if ev.event == "automation_halt" => return ev,
-                    Ok(_) => {} // foreign event from a concurrent test
+                    Ok(ev)
+                        if ev.event == "automation_halt"
+                            && ev
+                                .args
+                                .as_ref()
+                                .is_some_and(|a| a["engaged"] == expected_engaged) =>
+                    {
+                        return ev
+                    }
+                    Ok(_) => {} // foreign event or the other halt phase
                     Err(TryRecvError::Lagged(_)) => {} // skipped some; keep draining
                     Err(TryRecvError::Empty) => {
-                        panic!("expected an automation_halt WebChannelEvent but none was published")
+                        panic!("expected an automation_halt WebChannelEvent (engaged={expected_engaged}) but none was published")
                     }
                     Err(TryRecvError::Closed) => panic!("web-channel bus closed"),
                 }
@@ -540,7 +554,7 @@ mod tests {
         })
         .await;
 
-        let halted = next_automation_halt(&mut rx);
+        let halted = next_automation_halt(&mut rx, true);
         assert_eq!(
             halted.event, "automation_halt",
             "event name mismatch for halted"
@@ -572,7 +586,7 @@ mod tests {
         })
         .await;
 
-        let resumed = next_automation_halt(&mut rx);
+        let resumed = next_automation_halt(&mut rx, false);
         assert_eq!(
             resumed.event, "automation_halt",
             "event name mismatch for resumed"
