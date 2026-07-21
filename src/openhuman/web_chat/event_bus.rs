@@ -40,30 +40,6 @@ pub fn register_approval_surface_subscriber() {
     }
 }
 
-static AUTOMATION_HALT_HANDLE: OnceLock<SubscriptionHandle> = OnceLock::new();
-
-/// Register the emergency-stop bridge: `AutomationHalted`/`AutomationResumed`
-/// (domain `system`) → the `automation_halt` socket event, broadcast to every
-/// client via the `"system"` room. Idempotent (OnceLock-guarded).
-pub fn register_automation_halt_subscriber() {
-    if AUTOMATION_HALT_HANDLE.get().is_some() {
-        return;
-    }
-    match crate::core::event_bus::subscribe_global(Arc::new(AutomationHaltSubscriber)) {
-        Some(handle) => {
-            let _ = AUTOMATION_HALT_HANDLE.set(handle);
-            log::info!(
-                "[web-channel] automation-halt subscriber registered (domain=system) — bridges AutomationHalted/AutomationResumed → automation_halt socket event"
-            );
-        }
-        None => {
-            log::warn!(
-                "[web-channel] failed to register automation-halt subscriber — bus not initialized"
-            );
-        }
-    }
-}
-
 static ARTIFACT_SURFACE_HANDLE: OnceLock<SubscriptionHandle> = OnceLock::new();
 
 pub fn register_artifact_surface_subscriber() {
@@ -406,60 +382,9 @@ impl EventHandler for ApprovalSurfaceSubscriber {
     }
 }
 
-struct AutomationHaltSubscriber;
-
-#[async_trait]
-impl EventHandler for AutomationHaltSubscriber {
-    fn name(&self) -> &str {
-        "web_chat::automation_halt"
-    }
-
-    fn domains(&self) -> Option<&[&str]> {
-        Some(&["system"])
-    }
-
-    async fn handle(&self, event: &DomainEvent) {
-        match event {
-            DomainEvent::AutomationHalted { reason, source } => {
-                log::info!(
-                    "[web-channel] automation-halt emitting automation_halt engaged=true source={source}"
-                );
-                publish_web_channel_event(WebChannelEvent {
-                    event: "automation_halt".to_string(),
-                    // Broadcast room: every connected client auto-joins "system".
-                    client_id: "system".to_string(),
-                    args: Some(serde_json::json!({
-                        "engaged": true,
-                        "reason": reason,
-                        "source": source,
-                    })),
-                    ..Default::default()
-                });
-            }
-            DomainEvent::AutomationResumed { source } => {
-                log::info!(
-                    "[web-channel] automation-halt emitting automation_halt engaged=false source={source}"
-                );
-                publish_web_channel_event(WebChannelEvent {
-                    event: "automation_halt".to_string(),
-                    // Broadcast room: every connected client auto-joins "system".
-                    client_id: "system".to_string(),
-                    args: Some(serde_json::json!({
-                        "engaged": false,
-                        "source": source,
-                    })),
-                    ..Default::default()
-                });
-            }
-            _ => {}
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::event_bus::{DomainEvent, EventHandler};
 
     /// `fresh_approval_surface_subscription` returns `Some` when the global event bus has
     /// been initialised and `None` otherwise (bus not started).  It must never return `None`
@@ -490,125 +415,6 @@ mod tests {
         // Both handles are alive — drop explicitly to show they're independent.
         drop(h1);
         drop(h2);
-    }
-
-    /// `AutomationHaltSubscriber::handle` publishes a correctly-shaped
-    /// `WebChannelEvent` to the web-channel broadcast bus for both
-    /// `AutomationHalted` and `AutomationResumed` domain events.
-    ///
-    /// This test exercises the payload contract directly by calling `handle`
-    /// on a freshly-constructed `AutomationHaltSubscriber` and asserting the
-    /// event fields the socket bridge relies on:
-    /// - `event == "automation_halt"` (the wire event name)
-    /// - `client_id == "system"` (the broadcast room every client auto-joins)
-    /// - `args.engaged` toggled correctly
-    /// - `args.reason` and `args.source` echoed from the domain event
-    #[tokio::test]
-    async fn automation_halt_subscriber_handle_publishes_correct_payload() {
-        // The web-channel bus is a process-shared broadcast; under the parallel test
-        // suite other tests publish to it too, so take THIS subscriber's next
-        // `automation_halt` event rather than whatever happens to be first in the
-        // buffer (which flaked as an "event name mismatch").
-        fn next_automation_halt(
-            rx: &mut tokio::sync::broadcast::Receiver<WebChannelEvent>,
-        ) -> WebChannelEvent {
-            use tokio::sync::broadcast::error::TryRecvError;
-            loop {
-                match rx.try_recv() {
-                    Ok(ev) if ev.event == "automation_halt" => return ev,
-                    Ok(_) => {} // foreign event from a concurrent test
-                    Err(TryRecvError::Lagged(_)) => {} // skipped some; keep draining
-                    Err(TryRecvError::Empty) => {
-                        panic!("expected an automation_halt WebChannelEvent but none was published")
-                    }
-                    Err(TryRecvError::Closed) => panic!("web-channel bus closed"),
-                }
-            }
-        }
-
-        // Subscribe BEFORE calling handle so the broadcast receiver is created
-        // before any event is sent (broadcast channels only buffer messages
-        // sent AFTER the receiver subscribed).
-        let mut rx = subscribe_web_channel_events();
-
-        let sub = AutomationHaltSubscriber;
-
-        // --- AutomationHalted ---
-        sub.handle(&DomainEvent::AutomationHalted {
-            reason: Some("test".into()),
-            source: "user".into(),
-        })
-        .await;
-
-        let halted = next_automation_halt(&mut rx);
-        assert_eq!(
-            halted.event, "automation_halt",
-            "event name mismatch for halted"
-        );
-        assert_eq!(
-            halted.client_id, "system",
-            "automation_halt must broadcast via the 'system' room (critical: every client auto-joins this room)"
-        );
-        let args = halted
-            .args
-            .as_ref()
-            .expect("AutomationHalted args must be Some");
-        assert_eq!(
-            args["engaged"], true,
-            "AutomationHalted must set engaged=true"
-        );
-        assert_eq!(
-            args["reason"], "test",
-            "AutomationHalted must echo the reason"
-        );
-        assert_eq!(
-            args["source"], "user",
-            "AutomationHalted must echo the source"
-        );
-
-        // --- AutomationResumed ---
-        sub.handle(&DomainEvent::AutomationResumed {
-            source: "user".into(),
-        })
-        .await;
-
-        let resumed = next_automation_halt(&mut rx);
-        assert_eq!(
-            resumed.event, "automation_halt",
-            "event name mismatch for resumed"
-        );
-        assert_eq!(
-            resumed.client_id, "system",
-            "automation_halt (resumed) must broadcast via the 'system' room"
-        );
-        let args = resumed
-            .args
-            .as_ref()
-            .expect("AutomationResumed args must be Some");
-        assert_eq!(
-            args["engaged"], false,
-            "AutomationResumed must set engaged=false"
-        );
-        assert_eq!(
-            args["source"], "user",
-            "AutomationResumed must echo the source"
-        );
-    }
-
-    /// `register_automation_halt_subscriber` is OnceLock-guarded: after the bus
-    /// is initialised the first call installs the subscriber and subsequent
-    /// calls are no-ops (they must not panic or re-subscribe).
-    #[tokio::test]
-    async fn register_automation_halt_subscriber_is_idempotent() {
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-        register_automation_halt_subscriber();
-        assert!(
-            AUTOMATION_HALT_HANDLE.get().is_some(),
-            "first registration must install the subscriber handle"
-        );
-        // Second call is a no-op — must not panic.
-        register_automation_halt_subscriber();
-        assert!(AUTOMATION_HALT_HANDLE.get().is_some());
     }
 
     /// Drain the web-channel receiver until an `external_transfer_pending` event
