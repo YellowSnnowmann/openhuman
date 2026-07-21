@@ -20,6 +20,18 @@ const CODING_SESSION_TO_BACKEND: Option<CapabilityPrivacy> = Some(CapabilityPriv
     destinations: &["Configured OpenHuman inference provider"],
 });
 
+// AGENTS.md instruction layers are injected verbatim into the agent's system
+// prompt, which is sent to whichever inference provider is configured (the
+// managed cloud default or a user-selected remote model). The raw file content
+// therefore leaves the device whenever a remote provider is active —
+// `LOCAL_RAW` (leaves_device: false) under-reported this. Same shape as
+// `CODING_SESSION_TO_BACKEND`: raw payload to the configured provider.
+const AGENTS_MD_TO_INFERENCE_PROVIDER: Option<CapabilityPrivacy> = Some(CapabilityPrivacy {
+    leaves_device: true,
+    data_kind: PrivacyDataKind::Raw,
+    destinations: &["Configured OpenHuman inference provider"],
+});
+
 // Vision sub-agent ships the attached image (raw pixels) to the managed
 // multimodal model for analysis.
 const IMAGE_TO_BACKEND: Option<CapabilityPrivacy> = Some(CapabilityPrivacy {
@@ -228,6 +240,23 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
+        id: "conversation.terminal_chat",
+        name: "Terminal Chat (TUI)",
+        domain: "tui",
+        category: CapabilityCategory::Conversation,
+        description: "Chat with the assistant from a terminal instead of the desktop UI. \
+                      `openhuman tui` (alias `chat`) opens a ratatui full-screen chat onto the \
+                      same conversation surface the app uses, running the core in-process. \
+                      Streams replies, thinking, and tool activity live; supports scrollback, \
+                      cancelling a turn, and starting a new thread. Ships only in the standalone \
+                      `openhuman-core` binary (the desktop app has its own UI).",
+        how_to: "Run `openhuman tui` (or `openhuman chat`) from a terminal. Flags: \
+                 `--thread <id>` to resume a thread, `--new` for a fresh one. Keys: Enter send, \
+                 Esc cancel, Ctrl+N new thread, PgUp/PgDn scroll, Ctrl+C quit.",
+        status: CapabilityStatus::Beta,
+        privacy: DERIVED_TO_BACKEND,
+    },
+    Capability {
         id: "conversation.suggested_questions",
         name: "Suggested Questions",
         domain: "conversation",
@@ -401,6 +430,25 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         how_to: "Settings > Memory Debug",
         status: CapabilityStatus::Beta,
         privacy: None,
+    },
+    Capability {
+        id: "intelligence.agents_md_instructions",
+        name: "AGENTS.md Project Instructions",
+        domain: "intelligence",
+        category: CapabilityCategory::Intelligence,
+        description: "Load configurable standing instructions from AGENTS.md files into the agent's \
+            system prompt — OpenHuman's analog of Claude Code's CLAUDE.md / Codex's AGENTS.md. Two \
+            layers are read once at session start: a global layer from the OpenHuman workspace \
+            (<workspace_dir>/AGENTS.md) and a project layer from the folder the agent is operating \
+            in (<action_dir>/AGENTS.md, or a sub-agent's isolated worktree). The global layer is \
+            injected first, the project layer second (project instructions take precedence). \
+            Missing or empty files are silently skipped, and each layer is capped so a large file \
+            can't crowd out the rest of the prompt. On by default; disable via \
+            `agent.agents_md_enabled = false`.",
+        how_to: "Create an AGENTS.md file in your OpenHuman workspace and/or your project's action \
+            directory. Toggle off with `agent.agents_md_enabled = false` in config.toml.",
+        status: CapabilityStatus::Stable,
+        privacy: AGENTS_MD_TO_INFERENCE_PROVIDER,
     },
     Capability {
         id: "intelligence.tool_scoped_memory",
