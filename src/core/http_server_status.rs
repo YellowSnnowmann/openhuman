@@ -18,9 +18,10 @@
 /// The shell asserts this at compile time (`const _: () = assert!(...)` in
 /// `app/src-tauri/src/lib.rs`), turning that silent runtime failure (every RPC
 /// unreachable — the frontend can't talk to a core that never bound a socket)
-/// into a build failure. When `false`, `axum` and `socketioxide` are dropped
-/// from the dependency graph (verify with `cargo tree -i axum` /
-/// `cargo tree -i socketioxide`).
+/// into a build failure. When `false`, the direct `socketioxide` dependency is
+/// dropped from the graph (verify with `cargo tree -i socketioxide`); `axum`
+/// stays linked transitively via `tinychannels`, so only the gated HTTP +
+/// Socket.IO transport surface — not `axum` itself — leaves the slim build.
 pub const HTTP_SERVER_COMPILED_IN: bool = cfg!(feature = "http-server");
 
 #[cfg(test)]

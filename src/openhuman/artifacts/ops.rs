@@ -254,6 +254,9 @@ async fn regenerate_presentation(
     _thread_id: &str,
     _client_id: &str,
 ) -> Result<RpcOutcome<Value>, String> {
+    log::debug!(
+        "[artifacts] presentation regeneration rejected for id={artifact_id}: built without the `documents` feature"
+    );
     Err(format!(
         "[artifacts] presentation regeneration is unavailable for id={artifact_id}: built without the `documents` feature"
     ))

@@ -5,13 +5,6 @@
 //! - Setting up secret scrubbing for outgoing error reports.
 //! - Dispatching command-line arguments to the core logic in `openhuman_core`.
 
-// Only used by the sentry secret-scrubbing path, which is compiled out when
-// the `crash-reporting` feature is disabled.
-#[cfg(feature = "crash-reporting")]
-use once_cell::sync::Lazy;
-#[cfg(feature = "crash-reporting")]
-use regex::Regex;
-
 /// Main application entry point.
 ///
 /// It initializes the Sentry SDK for error monitoring, ensuring that sensitive
@@ -303,52 +296,13 @@ fn resolve_environment() -> String {
 // Secret scrubbing
 // ---------------------------------------------------------------------------
 
-/// Ordered most-specific → least-specific. Keep in sync with
-/// `src/openhuman/memory/safety/mod.rs`.
-#[cfg(feature = "crash-reporting")]
-static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
-    vec![
-        // Matches "Bearer <token>" and redacts the token.
-        (Regex::new(r"(?i)(bearer\s+)\S+").unwrap(), "${1}[REDACTED]"),
-        // Matches "api-key: <key>" or "api_key=<key>" and redacts the key.
-        (
-            Regex::new(r"(?i)(api[_-]?key[=:\s]+)\S+").unwrap(),
-            "${1}[REDACTED]",
-        ),
-        // \b anchor prevents matching `cancellation_token=` etc.
-        (
-            Regex::new(r"(?i)\b(token[=:\s]+)\S+").unwrap(),
-            "${1}[REDACTED]",
-        ),
-        // Anthropic keys (sk-ant-api03-...) contain hyphens the generic
-        // sk- pattern below won't match.
-        (
-            Regex::new(r"sk-ant-[A-Za-z0-9\-_]{16,}").unwrap(),
-            "[REDACTED]",
-        ),
-        // OpenAI admin keys (sk-admin-...).
-        (
-            Regex::new(r"sk-admin-[A-Za-z0-9\-_]{12,}").unwrap(),
-            "[REDACTED]",
-        ),
-        // OpenAI project-scoped and org-scoped keys (sk-proj-... / sk-org-...).
-        (
-            Regex::new(r"sk-(?:proj|org)-[A-Za-z0-9\-_]{12,}").unwrap(),
-            "[REDACTED]",
-        ),
-        // Generic catch-all for any sk- format not covered above.
-        (Regex::new(r"sk-[a-zA-Z0-9]{20,}").unwrap(), "[REDACTED]"),
-    ]
-});
-
-/// Replaces patterns that look like secrets with `[REDACTED]`.
+/// Sentry `before_send` secret scrubbing. Delegates to the shared, always-on
+/// [`openhuman_core::core::log_redaction::scrub_secrets`] so the redaction
+/// patterns stay a single source of truth (the same pass also runs on the
+/// always-on diagnostic logs in `core::observability`).
 #[cfg(feature = "crash-reporting")]
 fn scrub_secrets(input: &str) -> String {
-    let mut result = input.to_string();
-    for (re, replacement) in SECRET_PATTERNS.iter() {
-        result = re.replace_all(&result, *replacement).into_owned();
-    }
-    result
+    openhuman_core::core::log_redaction::scrub_secrets(input)
 }
 
 #[cfg(all(test, feature = "crash-reporting"))]

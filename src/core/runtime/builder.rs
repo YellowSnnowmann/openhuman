@@ -389,6 +389,12 @@ impl CoreRuntime {
     /// When `rpc_http` is not selected this returns immediately (a harness-only
     /// embedder has no transport to run); background services selected in the
     /// [`ServiceSet`] are still spawned.
+    ///
+    /// In a slim build compiled without the `http-server` feature an `rpc_http`
+    /// request cannot be honoured — the axum / Socket.IO transport is compiled
+    /// out — so `serve` returns a build-feature `Err` rather than binding no
+    /// listener and reporting success. The no-transport (`!rpc_http`) path above
+    /// is unaffected and still returns `Ok(())`.
     pub async fn serve(
         &self,
         ready_tx: Option<tokio::sync::oneshot::Sender<EmbeddedReadySignal>>,

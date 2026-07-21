@@ -2394,6 +2394,12 @@ pub(crate) fn report_error_message(
     operation: &str,
     extra: &[Tag<'_>],
 ) {
+    // Redact secret-looking spans (bearer tokens, API keys, `sk-` keys) before
+    // `message` reaches any log sink or Sentry event. The parallel `tracing`
+    // log line below is emitted in every build — including slim builds with no
+    // `crash-reporting` `before_send` hook — so scrub once, up front.
+    let scrubbed = crate::core::log_redaction::scrub_secrets(message);
+    let message = scrubbed.as_str();
     // Sentry-touching behaviour is gated behind `crash-reporting`. The
     // diagnostic `tracing::error!` stays compiled in both builds (see the
     // `#[cfg(not(...))]` companion below) so stderr / file appenders keep the
@@ -2465,6 +2471,10 @@ pub(crate) fn report_warning_message(
     operation: &str,
     extra: &[Tag<'_>],
 ) {
+    // Redact secret-looking spans before `message` reaches any log sink or
+    // Sentry event — see the note in `report_error_message`.
+    let scrubbed = crate::core::log_redaction::scrub_secrets(message);
+    let message = scrubbed.as_str();
     // Sentry-touching behaviour is gated behind `crash-reporting`; the
     // diagnostic `tracing::warn!` stays compiled in both builds (see the
     // `#[cfg(not(...))]` companion below).

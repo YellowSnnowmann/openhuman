@@ -58,9 +58,10 @@ async fn run_hooks() {
 ///
 /// This is intended to be used with `axum::serve`'s `with_graceful_shutdown`
 /// method or in the main loop to handle clean exits. (Plain code span, not an
-/// intra-doc link: `axum` is optional under the `http-server` feature (#5048)
-/// and absent from slim builds, where an intra-doc link to it would fail
-/// rustdoc.)
+/// intra-doc link: the direct `axum` dependency/API surface is unavailable in
+/// slim builds — the `http-server` feature (#5048) gates it, and it remains
+/// only transitively via `tinychannels` — where an intra-doc link to it would
+/// fail rustdoc.)
 pub async fn signal() {
     // Wait for the OS to send a termination signal.
     wait_for_signal().await;

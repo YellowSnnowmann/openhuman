@@ -1573,6 +1573,7 @@ async fn extract_pdf_text(bytes: Vec<u8>) -> Result<String, String> {
 /// [`FilePayload::Reference`] — the same path a parse error / timeout takes.
 #[cfg(not(feature = "documents"))]
 async fn extract_pdf_text(_bytes: Vec<u8>) -> Result<String, String> {
+    log::debug!("[multimodal] pdf text extraction skipped: built without the `documents` feature");
     Err("pdf text extraction disabled (built without the `documents` feature)".to_string())
 }
 

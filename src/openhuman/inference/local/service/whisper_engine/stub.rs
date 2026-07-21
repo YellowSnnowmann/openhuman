@@ -57,6 +57,7 @@ pub fn transcribe_pcm_f32(
     _language: Option<&str>,
     _initial_prompt: Option<&str>,
 ) -> Result<TranscriptionResult, String> {
+    log::debug!("[whisper] transcribe_pcm_f32 unavailable: built without the `inference` feature");
     Err(DISABLED.to_string())
 }
 
@@ -66,6 +67,7 @@ pub fn transcribe_pcm_i16(
     _language: Option<&str>,
     _initial_prompt: Option<&str>,
 ) -> Result<TranscriptionResult, String> {
+    log::debug!("[whisper] transcribe_pcm_i16 unavailable: built without the `inference` feature");
     Err(DISABLED.to_string())
 }
 
@@ -75,6 +77,7 @@ pub fn transcribe_wav_file(
     _language: Option<&str>,
     _initial_prompt: Option<&str>,
 ) -> Result<TranscriptionResult, String> {
+    log::debug!("[whisper] transcribe_wav_file unavailable: built without the `inference` feature");
     Err(DISABLED.to_string())
 }
 
@@ -90,6 +93,9 @@ pub(crate) fn transcribe_wav_bytes(
     _language: Option<&str>,
     _initial_prompt: Option<&str>,
 ) -> Result<TranscriptionResult, String> {
+    log::debug!(
+        "[whisper] transcribe_wav_bytes unavailable: built without the `inference` feature"
+    );
     Err(DISABLED.to_string())
 }
 

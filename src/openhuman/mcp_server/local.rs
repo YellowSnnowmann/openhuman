@@ -105,6 +105,24 @@ pub async fn ensure_local_http() -> anyhow::Result<LocalMcpEndpoint> {
     ))
 }
 
+// The real-server tests below are `http-server`-gated; this pins the slim
+// build's disabled fallback so both feature branches are covered by the matrix.
+#[cfg(all(test, not(feature = "http-server")))]
+mod disabled_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn ensure_local_http_reports_unavailable_without_http_server() {
+        let err = ensure_local_http()
+            .await
+            .expect_err("slim build without `http-server` must not start a server");
+        assert!(
+            err.to_string().contains("http-server feature"),
+            "error must name the missing feature, got: {err}"
+        );
+    }
+}
+
 // Every test here starts the real HTTP server (`ensure_local_http`) or mints a
 // token, both gated, so the module gates in lockstep (#5048).
 #[cfg(all(test, feature = "http-server"))]

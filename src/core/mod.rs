@@ -20,6 +20,7 @@ pub mod event_bus;
 pub mod http_server_status;
 pub mod jsonrpc;
 pub mod legacy_aliases;
+pub mod log_redaction;
 pub mod logging;
 pub mod memory_cli;
 pub mod observability;
