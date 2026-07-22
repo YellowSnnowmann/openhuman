@@ -94,22 +94,23 @@ def _run_job(job):
         else:
             exit_code = 1
             extra_err = str(e.code) + "\n"
-    except BaseException:  # noqa: B036 - surface any job failure to the caller
+    except BaseException:  # noqa: BLE001 - surface any job failure to the caller
         exit_code = 1
         extra_err = traceback.format_exc()
     finally:
         if armed:
             signal.setitimer(signal.ITIMER_REAL, 0)
         # Flush Python's buffers to the redirected fds, then restore the real
-        # stdout/stderr before reading the captures.
+        # stdout/stderr before reading the captures. A flush failure is surfaced
+        # in the job's stderr rather than silently discarded.
         try:
             sys.stdout.flush()
-        except Exception:
-            pass
+        except Exception as flush_err:  # noqa: BLE001
+            extra_err += f"[harness] stdout flush failed: {flush_err!r}\n"
         try:
             sys.stderr.flush()
-        except Exception:
-            pass
+        except Exception as flush_err:  # noqa: BLE001
+            extra_err += f"[harness] stderr flush failed: {flush_err!r}\n"
         os.dup2(saved_out, 1)
         os.dup2(saved_err, 2)
         os.close(saved_out)
