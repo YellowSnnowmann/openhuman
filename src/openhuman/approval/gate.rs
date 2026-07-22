@@ -358,6 +358,23 @@ impl ApprovalGate {
             .any(|t| t == tool_name)
     }
 
+    /// Whether the user has opted into "auto-approve everything" — a
+    /// blanket bypass of the human approval prompt. Mirrors
+    /// [`Self::tool_is_auto_approved`]'s live-policy-first, boot-config-
+    /// fallback pattern so a toggle made this session (config save + live
+    /// policy reload) takes effect on the very next tool call.
+    ///
+    /// Callers MUST still exclude `TrustedAutomationSource::SubconsciousTainted`
+    /// and `AgentTurnOrigin::Unknown` before trusting this flag — see the
+    /// `matches!` guard at the call site below. This method only reports the
+    /// user's setting; it does not know about origin.
+    fn is_auto_approve_all_enabled(&self) -> bool {
+        if let Some(policy) = crate::openhuman::security::live_policy::current() {
+            return policy.auto_approve_all;
+        }
+        self.config.autonomy.auto_approve_all
+    }
+
     /// Intercept a tool call. Blocks until the user decides or the
     /// TTL elapses (timeout → `Deny`).
     ///
@@ -532,6 +549,45 @@ impl ApprovalGate {
                 ..
             }
         );
+
+        // Blanket "auto-approve everything" bypass (opt-in, off by default).
+        // Sits ABOVE the origin match below so it prevents parking entirely
+        // for every origin except the two that must never be silently
+        // allowed: a subconscious tick whose memory context is tainted by
+        // external-sync content (indirect prompt injection defense) and an
+        // unlabelled call site (fail-closed default). Both are excluded here
+        // so they still fall through to the origin match and hit their Deny
+        // arms unchanged. This check is independent of — and does not
+        // weaken — `is_always_forbidden`, `is_workspace_internal_path`, or
+        // `ToolPolicyMiddleware`, which all run inside the tool
+        // implementation itself, not the approval gate.
+        let auto_all = self.is_auto_approve_all_enabled()
+            && !matches!(
+                &origin,
+                AgentTurnOrigin::TrustedAutomation {
+                    source: TrustedAutomationSource::SubconsciousTainted,
+                    ..
+                } | AgentTurnOrigin::Unknown
+            );
+
+        if auto_all {
+            // `origin_class` is the sanitized variant label (no thread/client
+            // ids, channel sender, reply target, or message id) — safe at
+            // `info`. The full `?origin` (with those identifiers) is still
+            // available at `debug` for local troubleshooting.
+            tracing::info!(
+                tool = tool_name,
+                origin_class = %origin.class(),
+                auto_approved = true,
+                "[approval::gate] auto_approve_all enabled — auto-approving without prompt"
+            );
+            tracing::debug!(
+                tool = tool_name,
+                origin = ?origin,
+                "[approval::gate] auto_approve_all full origin (debug-only)"
+            );
+            return (GateOutcome::Allow, None);
+        }
 
         // "Always allow" allowlist shortcut — the user's persisted
         // `autonomy.auto_approve` set. Read from the live policy first so a
@@ -779,7 +835,8 @@ impl ApprovalGate {
 
         if let Err(err) = store::insert_pending(&self.config, &pending, &self.session_id) {
             self.evict_waiter(&request_id);
-            self.clear_thread(&chat_thread_id);
+            self.clear_thread(&chat_thread_id, &request_id);
+            self.clear_meeting(&in_call_ctx, &request_id);
             tracing::error!(
                 error = %err,
                 tool = tool_name,
@@ -904,7 +961,7 @@ impl ApprovalGate {
                     "[approval::gate] decision received"
                 );
                 if decision.is_approve() {
-                    (GateOutcome::Allow, Some(request_id))
+                    (GateOutcome::Allow, Some(request_id.clone()))
                 } else {
                     (
                         GateOutcome::Deny {
@@ -998,7 +1055,7 @@ impl ApprovalGate {
                     // on this path too — otherwise the stale thread→request
                     // mapping survives and the next yes/no on the thread could be
                     // routed to this already-finished request.
-                    (GateOutcome::Allow, Some(request_id))
+                    (GateOutcome::Allow, Some(request_id.clone()))
                 } else {
                     tracing::warn!(
                         request_id = %request_id,
@@ -1026,8 +1083,8 @@ impl ApprovalGate {
         waiter_guard.disarm();
         // The routing mappings are only needed while parked; clear them on
         // every exit (decision, channel drop, or timeout).
-        self.clear_thread(&chat_thread_id);
-        self.clear_meeting(&in_call_ctx);
+        self.clear_thread(&chat_thread_id, &request_id);
+        self.clear_meeting(&in_call_ctx, &request_id);
         outcome
     }
 
@@ -1196,17 +1253,17 @@ impl ApprovalGate {
         self.meeting_to_request.lock().get(meeting_key).cloned()
     }
 
-    /// Drop the thread → request mapping (best-effort; no-op when absent).
-    fn clear_thread(&self, thread_id: &Option<String>) {
+    /// Drop the thread → request mapping when it still belongs to this request.
+    fn clear_thread(&self, thread_id: &Option<String>, request_id: &str) {
         if let Some(t) = thread_id {
-            self.thread_to_request.lock().remove(t);
+            self.clear_thread_route_if_owned(t, request_id);
         }
     }
 
-    /// Drop the meeting → request mapping (best-effort; no-op when absent).
-    fn clear_meeting(&self, ctx: &Option<InCallApprovalContext>) {
+    /// Drop the meeting → request mapping when it still belongs to this request.
+    fn clear_meeting(&self, ctx: &Option<InCallApprovalContext>, request_id: &str) {
         if let Some(ic) = ctx {
-            self.meeting_to_request.lock().remove(&ic.meeting_key);
+            self.clear_meeting_route_if_owned(&ic.meeting_key, request_id);
         }
     }
 
@@ -1575,6 +1632,220 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn aborting_older_chat_waiter_preserves_newer_thread_route() {
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        let old_gate = gate.clone();
+        let old_handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                web_origin(),
+                APPROVAL_CHAT_CONTEXT.scope(
+                    chat_ctx(),
+                    old_gate.intercept("composio", "old action", serde_json::json!({})),
+                ),
+            )
+            .await
+        });
+
+        let mut tries = 0;
+        let old_request_id = loop {
+            if let Some(request_id) = gate.pending_for_thread("t-test") {
+                break request_id;
+            }
+            tries += 1;
+            assert!(tries < 1_000, "old chat approval route never appeared");
+            tokio::task::yield_now().await;
+        };
+
+        let new_gate = gate.clone();
+        let new_handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                web_origin(),
+                APPROVAL_CHAT_CONTEXT.scope(
+                    chat_ctx(),
+                    new_gate.intercept("composio", "new action", serde_json::json!({})),
+                ),
+            )
+            .await
+        });
+
+        let mut tries = 0;
+        let new_request_id = loop {
+            if let Some(request_id) = gate.pending_for_thread("t-test") {
+                if request_id != old_request_id {
+                    break request_id;
+                }
+            }
+            tries += 1;
+            assert!(tries < 1_000, "new chat approval route never appeared");
+            tokio::task::yield_now().await;
+        };
+
+        old_handle.abort();
+        assert!(old_handle.await.unwrap_err().is_cancelled());
+
+        assert_eq!(
+            gate.pending_for_thread("t-test").as_deref(),
+            Some(new_request_id.as_str())
+        );
+        assert!(!gate.waiters.lock().contains_key(&old_request_id));
+        assert!(gate.waiters.lock().contains_key(&new_request_id));
+        assert_eq!(
+            store::get_decision(&gate.config, &old_request_id).unwrap(),
+            Some(ApprovalDecision::Deny)
+        );
+
+        gate.decide(&new_request_id, ApprovalDecision::ApproveOnce)
+            .unwrap();
+        assert!(matches!(new_handle.await.unwrap(), GateOutcome::Allow));
+        assert!(gate.pending_for_thread("t-test").is_none());
+    }
+
+    #[tokio::test]
+    async fn pending_store_failure_clears_in_call_meeting_route() {
+        let dir = TempDir::new().unwrap();
+        let blocked_workspace = dir.path().join("workspace-file");
+        std::fs::write(&blocked_workspace, b"not a directory").unwrap();
+        let config = Config {
+            workspace_dir: blocked_workspace,
+            ..Config::default()
+        };
+        let gate = ApprovalGate::new(
+            config,
+            format!("session-{}", uuid::Uuid::new_v4()),
+            Duration::from_secs(2),
+        );
+
+        let outcome = turn_origin::with_origin(
+            meet_origin(),
+            APPROVAL_IN_CALL_CONTEXT.scope(
+                in_call_ctx(),
+                gate.intercept("composio", "send email", serde_json::json!({})),
+            ),
+        )
+        .await;
+
+        assert!(matches!(
+            outcome,
+            GateOutcome::Deny { reason } if reason.contains("could not persist")
+        ));
+        assert!(gate.waiters.lock().is_empty());
+        assert!(gate.pending_for_meeting("meet-1").is_none());
+    }
+
+    #[tokio::test]
+    async fn externally_aborted_in_call_waiter_cleans_meeting_route() {
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        let g = gate.clone();
+        let handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                meet_origin(),
+                APPROVAL_IN_CALL_CONTEXT.scope(
+                    in_call_ctx(),
+                    g.intercept("composio", "send email", serde_json::json!({})),
+                ),
+            )
+            .await
+        });
+
+        let mut tries = 0;
+        let request_id = loop {
+            if let Some(request_id) = gate.pending_for_meeting("meet-1") {
+                break request_id;
+            }
+            tries += 1;
+            assert!(tries < 1_000, "meeting approval route never appeared");
+            tokio::task::yield_now().await;
+        };
+        assert!(gate.waiters.lock().contains_key(&request_id));
+
+        handle.abort();
+        assert!(handle.await.unwrap_err().is_cancelled());
+
+        assert!(gate.pending_for_meeting("meet-1").is_none());
+        assert!(!gate.waiters.lock().contains_key(&request_id));
+        assert!(gate.list_pending().unwrap().is_empty());
+        assert_eq!(
+            store::get_decision(&gate.config, &request_id).unwrap(),
+            Some(ApprovalDecision::Deny)
+        );
+    }
+
+    #[tokio::test]
+    async fn aborting_older_in_call_waiter_preserves_newer_meeting_route() {
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        let old_gate = gate.clone();
+        let old_handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                meet_origin(),
+                APPROVAL_IN_CALL_CONTEXT.scope(
+                    in_call_ctx(),
+                    old_gate.intercept("composio", "old action", serde_json::json!({})),
+                ),
+            )
+            .await
+        });
+
+        let mut tries = 0;
+        let old_request_id = loop {
+            if let Some(request_id) = gate.pending_for_meeting("meet-1") {
+                break request_id;
+            }
+            tries += 1;
+            assert!(tries < 1_000, "old meeting approval route never appeared");
+            tokio::task::yield_now().await;
+        };
+
+        let new_gate = gate.clone();
+        let new_handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                meet_origin(),
+                APPROVAL_IN_CALL_CONTEXT.scope(
+                    in_call_ctx(),
+                    new_gate.intercept("composio", "new action", serde_json::json!({})),
+                ),
+            )
+            .await
+        });
+
+        let mut tries = 0;
+        let new_request_id = loop {
+            if let Some(request_id) = gate.pending_for_meeting("meet-1") {
+                if request_id != old_request_id {
+                    break request_id;
+                }
+            }
+            tries += 1;
+            assert!(tries < 1_000, "new meeting approval route never appeared");
+            tokio::task::yield_now().await;
+        };
+
+        old_handle.abort();
+        assert!(old_handle.await.unwrap_err().is_cancelled());
+
+        assert_eq!(
+            gate.pending_for_meeting("meet-1").as_deref(),
+            Some(new_request_id.as_str())
+        );
+        assert!(!gate.waiters.lock().contains_key(&old_request_id));
+        assert!(gate.waiters.lock().contains_key(&new_request_id));
+        assert_eq!(
+            store::get_decision(&gate.config, &old_request_id).unwrap(),
+            Some(ApprovalDecision::Deny)
+        );
+
+        gate.decide(&new_request_id, ApprovalDecision::ApproveOnce)
+            .unwrap();
+        assert!(matches!(new_handle.await.unwrap(), GateOutcome::Allow));
+        assert!(gate.pending_for_meeting("meet-1").is_none());
+    }
+
+    #[tokio::test]
     async fn auto_approve_tool_skips_prompt() {
         // The gate reads the "Always allow" allowlist from the process-global
         // live policy. Serialize with the other tests that install/reload it
@@ -1614,6 +1885,234 @@ mod tests {
         assert!(
             gate.list_pending().unwrap().is_empty(),
             "an auto-approved call must not create a pending approval row"
+        );
+    }
+
+    /// With `auto_approve_all: true`, a WebChat-origin call resolves to
+    /// `Allow` immediately — no pending row is created and the chat context
+    /// is never consulted, proving the short-circuit fires above the park.
+    #[tokio::test]
+    async fn auto_approve_all_resolves_allow() {
+        let _env = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (gate, dir) = test_gate();
+        let policy = crate::openhuman::security::SecurityPolicy {
+            auto_approve_all: true,
+            ..crate::openhuman::security::SecurityPolicy::default()
+        };
+        // Scoped: restores whatever live_policy held before this test on drop
+        // (including on panic), so a leaked `auto_approve_all: true` can never
+        // reach a sibling gate test that doesn't hold `TEST_ENV_LOCK`.
+        let _policy_guard = crate::openhuman::security::live_policy::install_scoped(
+            Arc::new(policy),
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+        );
+
+        let outcome = turn_origin::with_origin(
+            web_origin(),
+            gate.intercept("openhuman_test_aaa_webchat", "noop", serde_json::json!({})),
+        )
+        .await;
+
+        assert!(matches!(outcome, GateOutcome::Allow));
+        assert!(
+            gate.list_pending().unwrap().is_empty(),
+            "auto_approve_all must short-circuit before any pending row is persisted"
+        );
+    }
+
+    /// Control test: with `auto_approve_all: false` (the default), a
+    /// WebChat-origin call parks normally — it does NOT resolve to `Allow`
+    /// until a decision is sent on the oneshot.
+    #[tokio::test]
+    async fn auto_approve_all_off_still_parks() {
+        let _env = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (gate, dir) = test_gate();
+        let policy = crate::openhuman::security::SecurityPolicy {
+            auto_approve_all: false,
+            ..crate::openhuman::security::SecurityPolicy::default()
+        };
+        let _policy_guard = crate::openhuman::security::live_policy::install_scoped(
+            Arc::new(policy),
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+        );
+        let gate = Arc::new(gate);
+
+        let g = gate.clone();
+        let handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                web_origin(),
+                APPROVAL_CHAT_CONTEXT.scope(
+                    chat_ctx(),
+                    g.intercept("openhuman_test_aaa_off", "noop", serde_json::json!({})),
+                ),
+            )
+            .await
+        });
+
+        // The call must actually park: poll for the pending row instead of
+        // racing an immediate result.
+        let mut tries = 0;
+        let pending = loop {
+            let rows = gate.list_pending().unwrap();
+            if let Some(p) = rows.into_iter().next() {
+                break p;
+            }
+            tries += 1;
+            assert!(
+                tries < 50,
+                "pending row never appeared — call resolved without parking"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        };
+
+        gate.decide(&pending.request_id, ApprovalDecision::ApproveOnce)
+            .unwrap();
+        let outcome = handle.await.unwrap();
+        assert!(matches!(outcome, GateOutcome::Allow));
+    }
+
+    /// `auto_approve_all: true` must NOT override a `SubconsciousTainted`
+    /// origin — the gate still hard-denies it (indirect prompt injection
+    /// defense).
+    #[tokio::test]
+    async fn auto_approve_all_does_not_override_subconscioustainted() {
+        let _env = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (gate, dir) = test_gate();
+        let policy = crate::openhuman::security::SecurityPolicy {
+            auto_approve_all: true,
+            ..crate::openhuman::security::SecurityPolicy::default()
+        };
+        let _policy_guard = crate::openhuman::security::live_policy::install_scoped(
+            Arc::new(policy),
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+        );
+
+        let origin = AgentTurnOrigin::TrustedAutomation {
+            job_id: "job-tainted".into(),
+            source: TrustedAutomationSource::SubconsciousTainted,
+        };
+        let outcome = turn_origin::with_origin(
+            origin,
+            gate.intercept("openhuman_test_aaa_tainted", "noop", serde_json::json!({})),
+        )
+        .await;
+
+        match outcome {
+            GateOutcome::Deny { reason } => assert!(reason.contains("external-sync")),
+            other => panic!("expected deny, got {other:?}"),
+        }
+    }
+
+    /// `auto_approve_all: true` must NOT override an `Unknown` origin — the
+    /// gate still fails closed for unlabelled call sites.
+    #[tokio::test]
+    async fn auto_approve_all_does_not_override_unknown() {
+        let _env = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (gate, dir) = test_gate();
+        let policy = crate::openhuman::security::SecurityPolicy {
+            auto_approve_all: true,
+            ..crate::openhuman::security::SecurityPolicy::default()
+        };
+        let _policy_guard = crate::openhuman::security::live_policy::install_scoped(
+            Arc::new(policy),
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+        );
+
+        // No `with_origin` scope at all — mirrors an unlabelled call site,
+        // which `turn_origin::current()` maps to `AgentTurnOrigin::Unknown`.
+        let outcome = gate
+            .intercept("openhuman_test_aaa_unknown", "noop", serde_json::json!({}))
+            .await;
+
+        match outcome {
+            GateOutcome::Deny { reason } => assert!(reason.contains("no origin label")),
+            other => panic!("expected deny, got {other:?}"),
+        }
+    }
+
+    /// `auto_approve_all: true` overrides the `GoalContinuation` bypass —
+    /// normally that origin skips the per-tool allowlist and always parks,
+    /// but the blanket bypass sits above that check and allows immediately.
+    #[tokio::test]
+    async fn auto_approve_all_overrides_bypass_shortcut() {
+        let _env = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (gate, dir) = test_gate();
+        let policy = crate::openhuman::security::SecurityPolicy {
+            auto_approve_all: true,
+            ..crate::openhuman::security::SecurityPolicy::default()
+        };
+        let _policy_guard = crate::openhuman::security::live_policy::install_scoped(
+            Arc::new(policy),
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+        );
+
+        let origin = AgentTurnOrigin::TrustedAutomation {
+            job_id: "goal-1".into(),
+            source: TrustedAutomationSource::GoalContinuation,
+        };
+        let outcome = turn_origin::with_origin(
+            origin,
+            gate.intercept("openhuman_test_aaa_goal", "noop", serde_json::json!({})),
+        )
+        .await;
+
+        assert!(matches!(outcome, GateOutcome::Allow));
+        assert!(
+            gate.list_pending().unwrap().is_empty(),
+            "auto_approve_all must short-circuit before any pending row is persisted"
+        );
+    }
+
+    /// `auto_approve_all: true` overrides a `Workflow { require_approval: true }`
+    /// origin — normally the user's per-flow "gate every action" choice forces
+    /// a park, but the blanket bypass sits above that check too.
+    #[tokio::test]
+    async fn auto_approve_all_overrides_require_approval_workflow() {
+        let _env = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (gate, dir) = test_gate();
+        let policy = crate::openhuman::security::SecurityPolicy {
+            auto_approve_all: true,
+            ..crate::openhuman::security::SecurityPolicy::default()
+        };
+        let _policy_guard = crate::openhuman::security::live_policy::install_scoped(
+            Arc::new(policy),
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+        );
+
+        let origin = AgentTurnOrigin::TrustedAutomation {
+            job_id: "flow-1".into(),
+            source: TrustedAutomationSource::Workflow {
+                require_approval: true,
+            },
+        };
+        let outcome = turn_origin::with_origin(
+            origin,
+            gate.intercept("openhuman_test_aaa_workflow", "noop", serde_json::json!({})),
+        )
+        .await;
+
+        assert!(matches!(outcome, GateOutcome::Allow));
+        assert!(
+            gate.list_pending().unwrap().is_empty(),
+            "auto_approve_all must short-circuit before any pending row is persisted"
         );
     }
 

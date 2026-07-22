@@ -82,6 +82,7 @@ pub enum DomainGroup {
     Web3,
     Voice,
     Media,
+    DesktopAutomation,
     // Everything not in a named family — always on in `full()`, off otherwise.
     Platform,
 }
@@ -336,12 +337,6 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         DomainGroup::Security,
         crate::openhuman::approval::all_approval_registered_controllers(),
     );
-    // Emergency stop kill switch (#4255 — fail-closed halt for desktop automation)
-    push(
-        &mut controllers,
-        DomainGroup::Security,
-        crate::openhuman::emergency_stop::all_emergency_registered_controllers(),
-    );
     // Interactive plan-review gate — parks a live turn on a thread-scoped plan
     push(
         &mut controllers,
@@ -360,7 +355,10 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         DomainGroup::Platform,
         crate::openhuman::heartbeat::all_heartbeat_registered_controllers(),
     );
-    // Ad-hoc static directory HTTP hosting for local file sharing / previews
+    // Ad-hoc static directory HTTP hosting for local file sharing / previews.
+    // Gated with the `http-server` feature (#5048): the domain is an axum server,
+    // so a slim build has no `http_host.*` controllers to register.
+    #[cfg(feature = "http-server")]
     push(
         &mut controllers,
         DomainGroup::Platform,
@@ -381,7 +379,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Inline autocomplete settings
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::DesktopAutomation,
         crate::openhuman::autocomplete::all_autocomplete_registered_controllers(),
     );
     // External messaging channels (Web, Telegram, etc.)
@@ -470,7 +468,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Screen capture and UI analysis
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::DesktopAutomation,
         crate::openhuman::screen_intelligence::all_screen_intelligence_registered_controllers(),
     );
     // Sandbox execution backends (Docker, local jail, policy, cleanup)
@@ -580,12 +578,6 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         &mut controllers,
         DomainGroup::Memory,
         crate::openhuman::memory_diff::all_memory_diff_registered_controllers(),
-    );
-    // Link shortener for long tracking URLs — saves LLM tokens
-    push(
-        &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::redirect_links::all_redirect_links_registered_controllers(),
     );
     // Referral and growth tracking
     push(
@@ -747,7 +739,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Desktop companion — Clicky-style interaction loop.
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::DesktopAutomation,
         crate::openhuman::desktop_companion::all_desktop_companion_registered_controllers(),
     );
     // Structured WhatsApp Web data — agent-facing read-only controllers (list/search).
@@ -956,9 +948,6 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         ),
         "memory_diff" => Some(
             "Snapshot-based change tracking for memory sources — capture state, compute diffs, and surface changes to agents.",
-        ),
-        "redirect_links" => Some(
-            "Shorten long tracking URLs to `openhuman://link/<id>` placeholders (SQLite-backed) to save tokens in prompts, with round-trip rewrite helpers.",
         ),
         "referral" => Some("Referral codes, stats, and apply flows via the hosted backend API."),
         "run_ledger" => Some(

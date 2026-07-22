@@ -520,6 +520,18 @@ const messages: TranslationMap = {
   'agentWorld.directory.profile.loadError': 'Não foi possível carregar o perfil completo.',
   'agentWorld.identities': 'Identidades',
   'agentWorld.profiles': 'Perfis',
+  'agentWorld.transferHandle.action': 'Transferir',
+  'agentWorld.transferHandle.title': 'Transferir handle',
+  'agentWorld.transferHandle.warning':
+    'Transferir um handle é permanente e não pode ser desfeito. O destinatário torna-se o seu único proprietário.',
+  'agentWorld.transferHandle.recipientPlaceholder': '@handle do destinatário',
+  'agentWorld.transferHandle.confirm': 'Transferir handle',
+  'agentWorld.transferHandle.submitting': 'A transferir…',
+  'agentWorld.transferHandle.recipientRequired': 'Introduza o handle do destinatário.',
+  'agentWorld.transferHandle.confirmLabel': 'Digite o handle para confirmar',
+  'agentWorld.transferHandle.confirmMismatch': 'O handle digitado não corresponde.',
+  'agentWorld.transferHandle.primaryLocked':
+    'Um identificador principal não pode ser transferido. Ative outro identificador primeiro.',
   'agentWorld.profile.edit': 'Editar perfil',
   'agentWorld.profile.displayName': 'Nome de exibição',
   'agentWorld.profile.bio': 'Bio',
@@ -576,7 +588,7 @@ const messages: TranslationMap = {
   'brain.goals.actionError': 'Algo deu errado. Tente novamente.',
   'brain.tabs.sources': 'Fontes',
   'brain.tabs.sync': 'Sincronização',
-  'brain.tabs.tinyplaceOrchestration': 'TinyPlace',
+  'brain.tabs.orchestration': 'Orquestração',
   'tinyplaceOrchestration.title': 'Relay TinyPlace',
   'tinyplaceOrchestration.subtitle': 'Canais de agentes fixados e chats de sessões do app',
   'tinyplaceOrchestration.refresh': 'Atualizar',
@@ -1879,6 +1891,12 @@ const messages: TranslationMap = {
   'mcp.catalog.searchAria': 'Pesquisar catálogo de servidores MCP',
   'mcp.catalog.searchPlaceholder': 'Pesquisar servidores MCP...',
   'mcp.catalog.loadFailed': 'Falha ao carregar o catálogo',
+  'mcp.registry.error.notFound':
+    'Servidor não encontrado no registro. Confira o nome do servidor e tente novamente, navegue pelos servidores MCP disponíveis ou adicione o servidor manualmente por URL.',
+  'mcp.registry.error.network':
+    'Não foi possível acessar o registro MCP. Verifique sua conexão e tente novamente, ou adicione o servidor manualmente por URL.',
+  'mcp.registry.error.unavailable':
+    'O registro MCP está indisponível no momento. Tente novamente mais tarde, navegue pelos servidores MCP disponíveis ou adicione o servidor manualmente por URL.',
   'mcp.catalog.noResults': 'Nenhum servidor encontrado.',
   'mcp.catalog.noResultsFor': 'Nenhum servidor encontrado para "{query}".',
   'mcp.catalog.loadMore': 'Carregar mais',
@@ -3550,6 +3568,17 @@ const messages: TranslationMap = {
   'chat.flowProposal.error': 'Não foi possível salvar o fluxo de trabalho. Tente novamente.',
   'chat.flowProposal.enableError':
     'Fluxo de trabalho salvo, mas não foi possível ativá-lo. Tente novamente ou ative-o na página Workflows.',
+  'chat.flowProposal.stepKind.agent': 'Agente',
+  'chat.flowProposal.stepKind.toolCall': 'Ação',
+  'chat.flowProposal.stepKind.httpRequest': 'Pedido web',
+  'chat.flowProposal.stepKind.code': 'Executar código',
+  'chat.flowProposal.stepKind.condition': 'Condição',
+  'chat.flowProposal.stepKind.switch': 'Seletor',
+  'chat.flowProposal.stepKind.merge': 'Mesclar',
+  'chat.flowProposal.stepKind.splitOut': 'Dividir',
+  'chat.flowProposal.stepKind.transform': 'Transformar',
+  'chat.flowProposal.stepKind.outputParser': 'Analisar resultado',
+  'chat.flowProposal.stepKind.subWorkflow': 'Subfluxo de trabalho',
   'channels.authMode.managed_dm': 'Faça login com OpenHuman',
   'channels.authMode.oauth': 'OAuth Faça login',
   'channels.authMode.bot_token': 'Use seu próprio token de bot',
@@ -4248,7 +4277,11 @@ const messages: TranslationMap = {
   'flows.copilot.noChanges': 'Esta proposta não altera nenhum nó.',
   'flows.copilot.accept': 'Aplicar ao rascunho',
   'flows.copilot.acceptAndSave': 'Aceitar e salvar',
+  'flows.copilot.saveAndEnable': 'Salvar e ativar',
   'flows.copilot.saving': 'Salvando…',
+  'flows.copilot.enabling': 'Ativando…',
+  'flows.copilot.enableError':
+    'Salvo, mas não foi possível ativar o fluxo de trabalho. Tente ativá-lo pela lista.',
   'flows.copilot.reject': 'Descartar',
   'flows.copilot.previewHint': 'Revisando um rascunho proposto: nada foi salvo ainda.',
   'flows.copilot.repairDisplay': 'Uma execução falhou; analise-a e proponha uma correção.',
@@ -5616,6 +5649,9 @@ const messages: TranslationMap = {
   'settings.agentAccess.requireTaskPlanApproval.label': 'Exigir aprovação do plano de tarefas',
   'settings.agentAccess.requireTaskPlanApproval.desc':
     'Pausa antes que um agente designado execute um briefing de tarefa elaborado pelo agente.',
+  'settings.agentAccess.autoApproveAll.label': 'Aprovar automaticamente todas as ações',
+  'settings.agentAccess.autoApproveAll.desc':
+    'Quando ativado, o agente executará todas as ações sem pedir sua aprovação antes. Isso inclui gravação de arquivos, comandos de shell, solicitações de rede e qualquer outro efeito colateral. Os bloqueios de segurança rígidos (diretórios de credenciais, caminhos internos do espaço de trabalho) continuam em vigor.',
   'settings.agentAccess.tinyplaceAutopilot.title': 'Agente autônomo do tiny.place',
   'settings.agentAccess.tinyplaceAutopilot.desc':
     'Deixe o OpenHuman agir sozinho no tiny.place. De forma agendada, ele busca trabalhos relevantes (priorizando recompensas abertas), executa o que combina com suas habilidades e age com a sua identidade. Funciona sem supervisão e pode gastar, então mantenha-o na devnet durante os testes. Desativado por padrão.',
@@ -7495,13 +7531,6 @@ const messages: TranslationMap = {
   'flows.canvas.sidePanelToggle': 'Painel lateral',
   'flows.canvas.legendTab': 'Manual',
 
-  // Emergency stop (#4255)
-  'safety.emergencyStop': 'Parada de emergência',
-  'safety.stopFailed': 'Não foi possível parar a automação. Tente novamente.',
-  'safety.resume': 'Retomar automação',
-  'safety.resumeFailed': 'Não foi possível retomar. Automação ainda pausada. Tente novamente.',
-  'safety.haltedTitle': 'Automação pausada',
-  'safety.haltedBody': 'Toda a automação do desktop está parada. Retome quando estiver pronto.',
   // Privacy status pill + per-action egress disclosure (#4437 / S3)
   'privacy.status.ariaLabel': 'Estado de privacidade',
   'privacy.status.external': 'Fora do dispositivo',
