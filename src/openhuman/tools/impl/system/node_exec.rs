@@ -416,12 +416,31 @@ impl NodeExecTool {
                 );
                 Some(pool_outcome_to_result(outcome, timeout))
             }
-            Err(error) => {
+            // Job never ran → safe to fall back to a per-call spawn.
+            Err(crate::openhuman::runtime_pool::PoolRunError::PreDispatch(error)) => {
                 tracing::warn!(
                     error = %error,
-                    "[node_exec] pool: run failed; falling back to legacy spawn"
+                    "[node_exec] pool: pre-dispatch failure; falling back to legacy spawn"
                 );
                 None
+            }
+            // Load-shed: do NOT spawn (that reintroduces the per-run RSS the pool
+            // caps). Surface a retryable busy error instead.
+            Err(crate::openhuman::runtime_pool::PoolRunError::Saturated) => {
+                tracing::warn!("[node_exec] pool: saturated; shedding load");
+                Some(ToolResult::error(
+                    "Node runtime pool is at capacity; retry shortly.",
+                ))
+            }
+            // The job may already have executed → terminal, never re-run it.
+            Err(crate::openhuman::runtime_pool::PoolRunError::PostDispatch(error)) => {
+                tracing::warn!(
+                    error = %error,
+                    "[node_exec] pool: post-dispatch failure; not retried to avoid duplicate execution"
+                );
+                Some(ToolResult::error(format!(
+                    "node_exec failed after the code was dispatched to a pooled worker; not retried to avoid running it twice: {error}"
+                )))
             }
         }
     }

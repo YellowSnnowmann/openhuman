@@ -33,10 +33,10 @@ pub struct RuntimePoolConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// Node.js worker pool.
-    #[serde(default = "RuntimePoolLangConfig::node_default")]
+    #[serde(default)]
     pub node: RuntimePoolLangConfig,
     /// Python worker pool.
-    #[serde(default = "RuntimePoolLangConfig::python_default")]
+    #[serde(default)]
     pub python: RuntimePoolLangConfig,
 }
 
@@ -44,10 +44,14 @@ pub struct RuntimePoolConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct RuntimePoolLangConfig {
-    /// Whether this language routes through the pool. When `false`, callers for
-    /// this language use the legacy per-call spawn path.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
+    /// Whether this language routes through the pool. `None` (unset) means
+    /// "use the per-language default" — resolved via [`Self::is_enabled`]:
+    /// **node defaults on** (worker_thread isolation makes reuse safe),
+    /// **python defaults off** (in-process reuse can leak globals across jobs,
+    /// so it stays opt-in until stronger isolation lands). `false`/`true`
+    /// override explicitly.
+    #[serde(default)]
+    pub enabled: Option<bool>,
     /// Maximum number of concurrently-resident worker processes. Concurrent
     /// jobs beyond this bound **queue** rather than fork a new interpreter —
     /// this is the whole point of the pool. Clamped to at least 1 at read time.
@@ -71,6 +75,13 @@ pub struct RuntimePoolLangConfig {
 }
 
 impl RuntimePoolLangConfig {
+    /// Whether this language routes through the pool, resolving an unset
+    /// `enabled` to the caller-supplied per-language default (node → `true`,
+    /// python → `false`). An explicit `enabled = true/false` always wins.
+    pub fn is_enabled(&self, default: bool) -> bool {
+        self.enabled.unwrap_or(default)
+    }
+
     /// Effective worker count, never zero.
     pub fn effective_max_workers(&self) -> usize {
         self.max_workers.max(1)
@@ -79,14 +90,6 @@ impl RuntimePoolLangConfig {
     /// Effective queue depth, never zero.
     pub fn effective_max_queue_depth(&self) -> usize {
         self.max_queue_depth.max(1)
-    }
-
-    fn node_default() -> Self {
-        Self::default()
-    }
-
-    fn python_default() -> Self {
-        Self::default()
     }
 }
 
@@ -123,7 +126,7 @@ impl Default for RuntimePoolConfig {
 impl Default for RuntimePoolLangConfig {
     fn default() -> Self {
         Self {
-            enabled: default_true(),
+            enabled: None,
             max_workers: default_max_workers(),
             idle_ttl_secs: default_idle_ttl_secs(),
             recycle_after_jobs: default_recycle_after_jobs(),
@@ -137,11 +140,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_are_bounded_and_enabled() {
+    fn defaults_master_on_node_on_python_off() {
         let cfg = RuntimePoolConfig::default();
-        assert!(cfg.enabled);
-        assert!(cfg.node.enabled);
-        assert!(cfg.python.enabled);
+        assert!(cfg.enabled, "master switch defaults on");
+        // Per-language `enabled` is unset by default; node resolves on, python off.
+        assert_eq!(cfg.node.enabled, None);
+        assert_eq!(cfg.python.enabled, None);
+        assert!(cfg.node.is_enabled(true), "node default is on");
+        assert!(!cfg.python.is_enabled(false), "python default is off");
         assert_eq!(cfg.node.max_workers, 2);
         assert_eq!(cfg.node.idle_ttl_secs, 60);
         assert_eq!(cfg.node.recycle_after_jobs, 100);
@@ -151,7 +157,7 @@ mod tests {
     #[test]
     fn effective_getters_never_zero() {
         let cfg = RuntimePoolLangConfig {
-            enabled: true,
+            enabled: Some(true),
             max_workers: 0,
             idle_ttl_secs: 0,
             recycle_after_jobs: 0,
@@ -159,6 +165,25 @@ mod tests {
         };
         assert_eq!(cfg.effective_max_workers(), 1);
         assert_eq!(cfg.effective_max_queue_depth(), 1);
+    }
+
+    #[test]
+    fn explicit_enabled_overrides_language_default() {
+        // A partial python table without `enabled` keeps the python-off default.
+        let cfg: RuntimePoolConfig =
+            toml::from_str("[python]\nmax_workers = 4\n").expect("partial parses");
+        assert_eq!(cfg.python.enabled, None);
+        assert!(
+            !cfg.python.is_enabled(false),
+            "python stays off on a partial table"
+        );
+        // Explicit opt-in wins.
+        let on: RuntimePoolConfig =
+            toml::from_str("[python]\nenabled = true\n").expect("explicit parses");
+        assert!(
+            on.python.is_enabled(false),
+            "explicit enabled=true turns python on"
+        );
     }
 
     #[test]

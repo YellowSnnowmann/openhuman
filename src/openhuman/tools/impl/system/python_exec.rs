@@ -383,9 +383,30 @@ impl PythonExecTool {
                 );
                 Some(pool_outcome_to_result(outcome, timeout))
             }
-            Err(error) => {
-                tracing::warn!(error = %error, "[python_exec] pool: run failed; falling back to legacy spawn");
+            // Job never ran → safe to fall back to a per-call spawn.
+            Err(crate::openhuman::runtime_pool::PoolRunError::PreDispatch(error)) => {
+                tracing::warn!(
+                    error = %error,
+                    "[python_exec] pool: pre-dispatch failure; falling back to legacy spawn"
+                );
                 None
+            }
+            // Load-shed: do NOT spawn (that reintroduces per-run RSS). Surface busy.
+            Err(crate::openhuman::runtime_pool::PoolRunError::Saturated) => {
+                tracing::warn!("[python_exec] pool: saturated; shedding load");
+                Some(ToolResult::error(
+                    "Python runtime pool is at capacity; retry shortly.",
+                ))
+            }
+            // The job may already have executed → terminal, never re-run it.
+            Err(crate::openhuman::runtime_pool::PoolRunError::PostDispatch(error)) => {
+                tracing::warn!(
+                    error = %error,
+                    "[python_exec] pool: post-dispatch failure; not retried to avoid duplicate execution"
+                );
+                Some(ToolResult::error(format!(
+                    "python_exec failed after the code was dispatched to a pooled worker; not retried to avoid running it twice: {error}"
+                )))
             }
         }
     }

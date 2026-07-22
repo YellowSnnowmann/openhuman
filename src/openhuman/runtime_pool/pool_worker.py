@@ -17,13 +17,17 @@
 
 import sys
 import os
-import io
 import json
 import time
-import contextlib
+import tempfile
 import traceback
 
 PROTOCOL_VERSION = 1
+
+# Private duplicate of the original stdout fd, reserved for NDJSON protocol
+# frames. Per-job code redirects fd 1/2 to capture buffers (below), so protocol
+# output stays isolated from — and is never corrupted by — job output.
+_PROTO = os.fdopen(os.dup(1), "w", buffering=1)
 
 try:
     import signal
@@ -43,10 +47,9 @@ def _run_job(job):
     cwd = job.get("cwd")
     timeout_ms = job.get("timeout_ms")
     start = time.time()
-    out = io.StringIO()
-    err = io.StringIO()
     exit_code = 0
     timed_out = False
+    extra_err = ""
 
     old_cwd = None
     if cwd:
@@ -55,6 +58,18 @@ def _run_job(job):
             os.chdir(cwd)
         except Exception:
             old_cwd = None
+
+    # Capture at the FILE-DESCRIPTOR level (not just `sys.stdout`) so
+    # `os.write(1, ...)`, subprocesses, and native extensions are captured too —
+    # otherwise they would leak onto the real stdout, which is the NDJSON
+    # protocol channel. Temp files (vs pipes) avoid buffer-deadlock on large
+    # output.
+    out_f = tempfile.TemporaryFile(mode="w+b")
+    err_f = tempfile.TemporaryFile(mode="w+b")
+    saved_out = os.dup(1)
+    saved_err = os.dup(2)
+    os.dup2(out_f.fileno(), 1)
+    os.dup2(err_f.fileno(), 2)
 
     armed = False
     if _HAVE_ALARM and timeout_ms and timeout_ms > 0:
@@ -66,10 +81,9 @@ def _run_job(job):
         armed = True
 
     try:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            # Fresh globals per job so top-level names don't leak between runs.
-            g = {"__name__": "__main__", "__builtins__": __builtins__}
-            exec(compile(code, "<inline>", "exec"), g, g)
+        # Fresh globals per job so top-level names don't leak between runs.
+        g = {"__name__": "__main__", "__builtins__": __builtins__}
+        exec(compile(code, "<inline>", "exec"), g, g)
     except _JobTimeout:
         timed_out = True
     except SystemExit as e:  # honour sys.exit(n)
@@ -79,24 +93,45 @@ def _run_job(job):
             exit_code = e.code
         else:
             exit_code = 1
-            err.write(str(e.code) + "\n")
+            extra_err = str(e.code) + "\n"
     except BaseException:  # noqa: B036 - surface any job failure to the caller
         exit_code = 1
-        err.write(traceback.format_exc())
+        extra_err = traceback.format_exc()
     finally:
         if armed:
             signal.setitimer(signal.ITIMER_REAL, 0)
+        # Flush Python's buffers to the redirected fds, then restore the real
+        # stdout/stderr before reading the captures.
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os.dup2(saved_out, 1)
+        os.dup2(saved_err, 2)
+        os.close(saved_out)
+        os.close(saved_err)
         if old_cwd is not None:
             try:
                 os.chdir(old_cwd)
             except Exception:
                 pass
 
+    out_f.seek(0)
+    err_f.seek(0)
+    stdout = out_f.read().decode("utf-8", "replace")
+    stderr = err_f.read().decode("utf-8", "replace") + extra_err
+    out_f.close()
+    err_f.close()
+
     return {
         "id": job.get("id"),
         "ok": True,
-        "stdout": out.getvalue(),
-        "stderr": err.getvalue(),
+        "stdout": stdout,
+        "stderr": stderr,
         "exit_code": None if timed_out else exit_code,
         "timed_out": timed_out,
         "elapsed_ms": int((time.time() - start) * 1000),
@@ -105,8 +140,8 @@ def _run_job(job):
 
 
 def _reply(obj):
-    sys.stdout.write(json.dumps(obj) + "\n")
-    sys.stdout.flush()
+    _PROTO.write(json.dumps(obj) + "\n")
+    _PROTO.flush()
 
 
 def main():

@@ -34,6 +34,37 @@ pub struct WorkerLaunch {
     pub env: Vec<(String, String)>,
 }
 
+/// Failure from [`PoolWorker::submit`], tagged with whether the job was already
+/// dispatched to the worker. A retry / legacy fallback is only safe when the job
+/// was **not** dispatched (it never ran); a post-dispatch failure is terminal so
+/// the same job is never executed twice.
+#[derive(Debug)]
+pub struct SubmitError {
+    pub err: anyhow::Error,
+    pub dispatched: bool,
+}
+
+impl SubmitError {
+    fn pre(err: anyhow::Error) -> Self {
+        Self {
+            err,
+            dispatched: false,
+        }
+    }
+    fn post(err: anyhow::Error) -> Self {
+        Self {
+            err,
+            dispatched: true,
+        }
+    }
+}
+
+impl std::fmt::Display for SubmitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#}", self.err)
+    }
+}
+
 /// A warm interpreter child plus its bookkeeping.
 pub struct PoolWorker {
     launch: WorkerLaunch,
@@ -138,31 +169,48 @@ impl PoolWorker {
         &mut self,
         req: &PoolJobRequest,
         hard_timeout: Option<Duration>,
-    ) -> Result<PoolJobResponse> {
-        let mut line = serde_json::to_string(req).context("serialising pool job")?;
+    ) -> std::result::Result<PoolJobResponse, SubmitError> {
+        let mut line = serde_json::to_string(req)
+            .map_err(|e| SubmitError::pre(anyhow::Error::new(e).context("serialising pool job")))?;
         line.push('\n');
-        self.stdin
-            .write_all(line.as_bytes())
-            .await
-            .context("writing pool job request")?;
-        self.stdin
-            .flush()
-            .await
-            .context("flushing pool job request")?;
+        // A write failure means the bytes never reached the worker (e.g. a
+        // reused idle worker died) → the job did not run → safe to retry.
+        self.stdin.write_all(line.as_bytes()).await.map_err(|e| {
+            SubmitError::pre(anyhow::Error::new(e).context("writing pool job request"))
+        })?;
+        // Past this point the request bytes are in the pipe: the job may execute,
+        // so any later failure is terminal (never re-run the same job).
+        self.stdin.flush().await.map_err(|e| {
+            SubmitError::post(anyhow::Error::new(e).context("flushing pool job request"))
+        })?;
 
+        // Fixed deadline: `continue`ing over unparseable / mismatched-id lines
+        // must NOT reset the wedged-worker timeout, so it bounds the total wait.
+        let deadline = hard_timeout.map(|t| tokio::time::Instant::now() + t);
         loop {
-            let next = match hard_timeout {
-                Some(timeout) => match tokio::time::timeout(timeout, self.stdout.next_line()).await
-                {
+            let next = match deadline {
+                Some(dl) => match tokio::time::timeout_at(dl, self.stdout.next_line()).await {
                     Ok(inner) => inner,
-                    Err(_) => bail!("pool worker job timed out (hard deadline; worker wedged)"),
+                    Err(_) => {
+                        return Err(SubmitError::post(anyhow::anyhow!(
+                            "pool worker job timed out (hard deadline; worker wedged)"
+                        )))
+                    }
                 },
                 None => self.stdout.next_line().await,
             };
             let line = match next {
                 Ok(Some(line)) => line,
-                Ok(None) => bail!("pool worker closed stdout"),
-                Err(error) => return Err(error).context("reading pool job response"),
+                Ok(None) => {
+                    return Err(SubmitError::post(anyhow::anyhow!(
+                        "pool worker closed stdout"
+                    )))
+                }
+                Err(error) => {
+                    return Err(SubmitError::post(
+                        anyhow::Error::new(error).context("reading pool job response"),
+                    ))
+                }
             };
             let response: PoolJobResponse = match serde_json::from_str(&line) {
                 Ok(response) => response,
@@ -190,12 +238,12 @@ impl PoolWorker {
 
     /// Whether this worker has served enough jobs to be recycled. `0` disables.
     pub fn should_recycle(&self, recycle_after: u64) -> bool {
-        recycle_after > 0 && self.jobs_done >= recycle_after
+        recycle_due(self.jobs_done, recycle_after)
     }
 
     /// Whether this worker has been idle at least `ttl`.
     pub fn idle_expired(&self, ttl: Duration) -> bool {
-        self.last_used.elapsed() >= ttl
+        idle_due(self.last_used.elapsed(), ttl)
     }
 
     /// Signal the child to exit. Best-effort; `kill_on_drop` is the backstop.
@@ -218,4 +266,50 @@ fn drain_stderr(lang: PoolLang, stderr: ChildStderr) {
             tracing::trace!(lang = lang.id(), "[runtime_pool] worker stderr: {line}");
         }
     });
+}
+
+/// Pure recycle predicate: a worker is due for recycling once it has served
+/// `recycle_after` jobs (`0` disables recycling).
+fn recycle_due(jobs_done: u64, recycle_after: u64) -> bool {
+    recycle_after > 0 && jobs_done >= recycle_after
+}
+
+/// Pure idle-expiry predicate: idle for at least `ttl`.
+fn idle_due(idle_elapsed: Duration, ttl: Duration) -> bool {
+    idle_elapsed >= ttl
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recycle_due_respects_budget_and_disable() {
+        assert!(!recycle_due(0, 0), "recycle_after=0 disables recycling");
+        assert!(!recycle_due(100, 0), "recycle_after=0 never recycles");
+        assert!(!recycle_due(4, 5), "below budget");
+        assert!(recycle_due(5, 5), "at budget");
+        assert!(recycle_due(6, 5), "past budget");
+    }
+
+    #[test]
+    fn idle_due_is_inclusive_at_ttl() {
+        assert!(!idle_due(Duration::from_secs(4), Duration::from_secs(5)));
+        assert!(idle_due(Duration::from_secs(5), Duration::from_secs(5)));
+        assert!(idle_due(Duration::from_secs(6), Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn submit_error_tags_dispatch_state() {
+        let pre = SubmitError::pre(anyhow::anyhow!("write failed"));
+        assert!(
+            !pre.dispatched,
+            "write failures are pre-dispatch (retryable)"
+        );
+        let post = SubmitError::post(anyhow::anyhow!("read timed out"));
+        assert!(
+            post.dispatched,
+            "read failures are post-dispatch (terminal)"
+        );
+    }
 }

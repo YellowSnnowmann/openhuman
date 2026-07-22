@@ -26,27 +26,33 @@ const PROTOCOL_VERSION = 1;
 // ---------------------------------------------------------------------------
 if (!isMainThread) {
   const path = require('path');
+  const vm = require('vm');
   const { createRequire } = require('module');
+  const { pathToFileURL } = require('url');
 
   async function runUserCode(code, cwd) {
     // NOTE: do NOT `process.chdir()` here — it throws ERR_WORKER_UNSUPPORTED_
     // OPERATION inside a worker thread. The host chdirs before spawning this
     // worker (jobs serialize per worker process), so `process.cwd()` is already
-    // the job's directory; `cwd` is used only to root require/__dirname.
+    // the job's directory; `cwd` roots require/__dirname and the import base.
     const dir = cwd || process.cwd();
     const filename = path.join(dir, 'inline.js');
     const req = createRequire(filename);
+    const base = pathToFileURL(filename).href;
     // Mimic `node -e`: CommonJS-ish sloppy scope with require/__dirname, wrapped
-    // in an async IIFE so top-level `await` works. `new Function` gives the code
-    // a fresh scope so its top-level declarations don't leak into the harness.
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(
-      'require',
-      '__filename',
-      '__dirname',
-      'module',
-      'exports',
-      'return (async () => {\n' + code + '\n})();'
+    // in an async IIFE so top-level `await` works. `vm.compileFunction` (over a
+    // bare `new Function`) lets us root dynamic `import()` at the job cwd via
+    // `importModuleDynamically`, so `await import('./rel.mjs')` resolves like
+    // `node -e` instead of relative to this harness file. Needs
+    // `--experimental-vm-modules` (passed on the worker launch).
+    const fn = vm.compileFunction(
+      'return (async () => {\n' + code + '\n})();',
+      ['require', '__filename', '__dirname', 'module', 'exports'],
+      {
+        filename,
+        importModuleDynamically: (specifier) =>
+          import(new URL(specifier, base).href),
+      }
     );
     const mod = { exports: {} };
     await fn(req, filename, dir, mod, mod.exports);
@@ -91,8 +97,11 @@ function runJob(job) {
     const start = Date.now();
     // Set the job's working directory on the HOST before spawning the worker:
     // a worker thread inherits the parent's cwd at creation and cannot chdir
-    // itself. Jobs are serialized one-at-a-time per worker process, so this is
-    // race-free within a process; separate pool workers are separate processes.
+    // itself. The worker captures cwd synchronously at construction, so we
+    // restore the host's prior cwd immediately after — otherwise a later job
+    // without `cwd` (or whose chdir failed) would silently inherit this job's
+    // directory instead of the worker's original one.
+    const priorCwd = process.cwd();
     if (job.cwd) {
       try {
         process.chdir(job.cwd);
@@ -106,8 +115,16 @@ function runJob(job) {
         workerData: { code: job.code || '', cwd: job.cwd || null },
         stdout: true,
         stderr: true,
+        // Propagate host node flags (e.g. --experimental-vm-modules) so the
+        // worker's vm.compileFunction dynamic-import hook is enabled.
+        execArgv: process.execArgv,
       });
     } catch (e) {
+      try {
+        process.chdir(priorCwd);
+      } catch (_e) {
+        /* best-effort restore */
+      }
       resolve({
         id: job.id,
         ok: false,
@@ -142,6 +159,16 @@ function runJob(job) {
 
     worker.on('exit', async (code) => {
       if (timer) clearTimeout(timer);
+      // Restore the host cwd only now: a worker thread reads its cwd
+      // asynchronously as it initializes, so the host must stay at `job.cwd`
+      // for the worker's whole life. Jobs are serialized, so the next job
+      // starts from this restored (prior) directory rather than inheriting
+      // this one's.
+      try {
+        process.chdir(priorCwd);
+      } catch (_e) {
+        /* best-effort restore */
+      }
       if (code && !exitCode) exitCode = code;
       const stdout = await outP;
       const stderr = (await errP) + extraErr;

@@ -456,13 +456,23 @@ impl Config {
             }
         }
         if let Some(raw) = env.get("OPENHUMAN_RUNTIME_POOL_NODE_MAX_WORKERS") {
-            if let Ok(n) = raw.trim().parse::<usize>() {
-                self.runtime_pool.node.max_workers = n;
+            match raw.trim().parse::<usize>() {
+                Ok(n) => self.runtime_pool.node.max_workers = n,
+                Err(e) => tracing::warn!(
+                    value = %raw,
+                    error = %e,
+                    "[config] ignoring invalid OPENHUMAN_RUNTIME_POOL_NODE_MAX_WORKERS"
+                ),
             }
         }
         if let Some(raw) = env.get("OPENHUMAN_RUNTIME_POOL_PYTHON_MAX_WORKERS") {
-            if let Ok(n) = raw.trim().parse::<usize>() {
-                self.runtime_pool.python.max_workers = n;
+            match raw.trim().parse::<usize>() {
+                Ok(n) => self.runtime_pool.python.max_workers = n,
+                Err(e) => tracing::warn!(
+                    value = %raw,
+                    error = %e,
+                    "[config] ignoring invalid OPENHUMAN_RUNTIME_POOL_PYTHON_MAX_WORKERS"
+                ),
             }
         }
 

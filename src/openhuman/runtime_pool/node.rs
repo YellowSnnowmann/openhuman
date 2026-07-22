@@ -23,7 +23,9 @@ static NODE_SCRIPT: OnceCell<PathBuf> = OnceCell::const_new();
 /// already implied by the tool only being constructed when the node runtime is
 /// enabled, so only the pool switches are checked here.
 pub fn enabled(pool: &RuntimePoolConfig) -> bool {
-    pool.enabled && pool.node.enabled
+    // Node defaults ON: each job runs in an isolated worker_thread, so reuse is
+    // safe (fresh module graph + globals per job).
+    pool.enabled && pool.node.is_enabled(true)
 }
 
 /// Run inline JavaScript on a pooled, warm `node` worker.
@@ -41,10 +43,11 @@ pub async fn run_inline(
     code: String,
     cwd: Option<PathBuf>,
     timeout: Option<Duration>,
-) -> Result<PoolExecOutcome> {
+) -> Result<PoolExecOutcome, super::pool::PoolRunError> {
     let script =
         super::ensure_worker_script(&NODE_SCRIPT, workspace_dir, "pool_worker.js", WORKER_JS)
-            .await?
+            .await
+            .map_err(super::pool::PoolRunError::PreDispatch)?
             .to_string_lossy()
             .into_owned();
 
@@ -56,7 +59,10 @@ pub async fn run_inline(
     let launch = WorkerLaunch {
         lang: PoolLang::Node,
         bin: node_bin.to_path_buf(),
-        args: vec![script],
+        // `--experimental-vm-modules` lets the harness root dynamic `import()` at
+        // the job cwd (parity with `node -e`); the flag propagates to the per-job
+        // worker_thread via inherited `execArgv`.
+        args: vec!["--experimental-vm-modules".to_string(), script],
         env,
     };
     let settings = PoolSettings::from_lang_config(lang_cfg);

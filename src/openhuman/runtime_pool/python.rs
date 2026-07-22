@@ -28,7 +28,12 @@ static PYTHON_SCRIPT: OnceCell<PathBuf> = OnceCell::const_new();
 /// enabled` is already implied by the tool only being constructed when the
 /// python runtime is enabled, so only the pool switches are checked here.
 pub fn enabled(pool: &RuntimePoolConfig) -> bool {
-    pool.enabled && pool.python.enabled
+    // Python defaults OFF: jobs share one interpreter (no worker_thread
+    // equivalent), so reuse can leak process-global state (`sys.modules`,
+    // `os.environ`, logging handlers, threads) across otherwise-unrelated runs.
+    // Opt in explicitly (`[runtime_pool.python] enabled = true`) to accept that
+    // in exchange for the warm-worker memory win.
+    pool.enabled && pool.python.is_enabled(false)
 }
 
 /// Run inline Python on a pooled, warm `python` worker.
@@ -46,10 +51,11 @@ pub async fn run_inline(
     code: String,
     cwd: Option<PathBuf>,
     timeout: Option<Duration>,
-) -> Result<PoolExecOutcome> {
+) -> Result<PoolExecOutcome, super::pool::PoolRunError> {
     let script =
         super::ensure_worker_script(&PYTHON_SCRIPT, workspace_dir, "pool_worker.py", WORKER_PY)
-            .await?
+            .await
+            .map_err(super::pool::PoolRunError::PreDispatch)?
             .to_string_lossy()
             .into_owned();
 

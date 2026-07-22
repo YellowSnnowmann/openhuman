@@ -12,12 +12,39 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use tokio::sync::{Mutex, Semaphore};
 
-use super::protocol::PoolJobRequest;
+use super::protocol::{PoolJobRequest, PoolJobResponse};
 use super::types::{PoolExecOutcome, PoolLang, PoolSettings};
 use super::worker::{PoolWorker, WorkerLaunch};
+
+/// Why a pooled run failed, classified so callers know whether a retry or a
+/// legacy per-call-spawn fallback is safe.
+#[derive(Debug)]
+pub enum PoolRunError {
+    /// In-flight work exceeded `max_workers + max_queue_depth`; the pool shed
+    /// load rather than buffering unbounded. Callers must **not** fall back to a
+    /// per-call spawn — that reintroduces the very RSS the pool caps (#5106) —
+    /// but surface a busy error or retry later.
+    Saturated,
+    /// Failure before the job reached a worker (serialise / spawn / write). The
+    /// job never ran, so a retry or a legacy-spawn fallback is safe.
+    PreDispatch(anyhow::Error),
+    /// Failure after the job was dispatched (it may have executed). Terminal —
+    /// the caller must not re-run it (would duplicate side effects).
+    PostDispatch(anyhow::Error),
+}
+
+impl std::fmt::Display for PoolRunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PoolRunError::Saturated => write!(f, "runtime pool at capacity"),
+            PoolRunError::PreDispatch(e) => write!(f, "pre-dispatch pool failure: {e:#}"),
+            PoolRunError::PostDispatch(e) => write!(f, "post-dispatch pool failure: {e:#}"),
+        }
+    }
+}
 
 /// Extra grace added to a job's soft deadline before the Rust side treats the
 /// worker as wedged and kills it. The worker should always self-abort first.
@@ -93,7 +120,7 @@ impl LangPool {
         code: String,
         cwd: Option<String>,
         timeout: Option<Duration>,
-    ) -> Result<PoolExecOutcome> {
+    ) -> Result<PoolExecOutcome, PoolRunError> {
         // Saturation guard: bound total in-flight (running + queued) work so a
         // stampede queues up to a point, then sheds load instead of buffering
         // unbounded. Capacity = worker slots + allowed queue depth.
@@ -102,14 +129,13 @@ impl LangPool {
         if inflight_now > capacity {
             self.inflight.fetch_sub(1, Ordering::AcqRel);
             self.rejected_saturated.fetch_add(1, Ordering::Relaxed);
-            bail!(
-                "{} runtime pool saturated: {} in flight exceeds capacity {} (max_workers={} + max_queue_depth={})",
-                self.launch.lang.id(),
-                inflight_now,
+            tracing::warn!(
+                lang = self.launch.lang.id(),
+                inflight = inflight_now,
                 capacity,
-                self.settings.max_workers,
-                self.settings.max_queue_depth
+                "[runtime_pool] saturated; shedding load (no spawn fallback)"
             );
+            return Err(PoolRunError::Saturated);
         }
         // Ensure the in-flight counter is released on every exit path below.
         let _inflight_guard = InflightGuard(&self.inflight);
@@ -151,7 +177,12 @@ impl LangPool {
         }
 
         if let Some(err) = response.error {
-            bail!("{} worker error: {err}", self.launch.lang.id());
+            // The worker replied with a harness-level error: the job was
+            // dispatched (and may have run), so this is terminal.
+            return Err(PoolRunError::PostDispatch(anyhow::anyhow!(
+                "{} worker error: {err}",
+                self.launch.lang.id()
+            )));
         }
         Ok(PoolExecOutcome {
             stdout: response.stdout,
@@ -163,26 +194,45 @@ impl LangPool {
         })
     }
 
-    /// Submit on a warm-or-fresh worker; a single I/O failure respawns once
-    /// (the warm worker may have died between jobs). Returns the surviving
-    /// worker so the caller can recycle or re-pool it.
+    /// Submit on a warm-or-fresh worker. A **pre-dispatch** failure (e.g. a
+    /// reused idle worker that died on write) respawns once — the job never ran,
+    /// so that is safe. A **post-dispatch** failure is terminal: the job may have
+    /// executed, so it is never re-run (no duplicate side effects). Returns the
+    /// surviving worker so the caller can recycle or re-pool it.
     async fn submit_with_retry(
         &self,
         req: &PoolJobRequest,
         hard_timeout: Option<Duration>,
-    ) -> Result<(super::protocol::PoolJobResponse, PoolWorker)> {
-        let mut worker = self.take_or_spawn().await?;
+    ) -> Result<(PoolJobResponse, PoolWorker), PoolRunError> {
+        let mut worker = self
+            .take_or_spawn()
+            .await
+            .map_err(PoolRunError::PreDispatch)?;
         match worker.submit(req, hard_timeout).await {
             Ok(resp) => Ok((resp, worker)),
-            Err(first) => {
+            Err(e) if !e.dispatched => {
                 tracing::warn!(
                     lang = self.launch.lang.id(),
-                    "[runtime_pool] worker submit failed ({first:#}); respawning once"
+                    "[runtime_pool] pre-dispatch submit failure ({e}); respawning once"
                 );
                 worker.shutdown();
-                let mut fresh = self.spawn_worker().await?;
-                let resp = fresh.submit(req, hard_timeout).await?;
-                Ok((resp, fresh))
+                let mut fresh = self
+                    .spawn_worker()
+                    .await
+                    .map_err(PoolRunError::PreDispatch)?;
+                match fresh.submit(req, hard_timeout).await {
+                    Ok(resp) => Ok((resp, fresh)),
+                    Err(e2) if !e2.dispatched => Err(PoolRunError::PreDispatch(e2.err)),
+                    Err(e2) => Err(PoolRunError::PostDispatch(e2.err)),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    lang = self.launch.lang.id(),
+                    "[runtime_pool] post-dispatch submit failure ({e}); terminal, not retrying"
+                );
+                worker.shutdown();
+                Err(PoolRunError::PostDispatch(e.err))
             }
         }
     }

@@ -85,13 +85,21 @@ fn require_system_node() -> Result<String> {
     }
 }
 
-/// Read a `>= 1` usize from the environment, or fall back to `default`.
-fn env_usize(key: &str, default: usize) -> usize {
-    std::env::var(key)
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .filter(|n| *n >= 1)
-        .unwrap_or(default)
+/// Read a `>= 1` usize from the environment. Absent ⇒ `default`; present but not
+/// a positive integer ⇒ a hard error (silently coercing a bad `0`/garbage value
+/// would change the workload and bypass the `K > 1` pool gate).
+fn env_usize(key: &str, default: usize) -> Result<usize> {
+    match std::env::var(key) {
+        Err(_) => Ok(default),
+        Ok(raw) => {
+            let n: usize = raw
+                .trim()
+                .parse()
+                .with_context(|| format!("{key}={raw:?} is not a valid integer"))?;
+            anyhow::ensure!(n >= 1, "{key}={raw:?} must be >= 1");
+            Ok(n)
+        }
+    }
 }
 
 /// Apply the `[runtime_pool]` settings to the in-memory fixture config. The exec
@@ -109,11 +117,11 @@ pub async fn run() -> Result<ProfileResult> {
     // Hard requirement: a system node must be present (no download).
     require_system_node()?;
 
-    let concurrency = env_usize("OPENHUMAN_PROFILE_SKILL_RUN_CONCURRENCY", 1);
+    let concurrency = env_usize("OPENHUMAN_PROFILE_SKILL_RUN_CONCURRENCY", 1)?;
     let pool_enabled = std::env::var("OPENHUMAN_PROFILE_SKILL_RUN_POOL")
         .map(|v| !v.trim().eq_ignore_ascii_case("off"))
         .unwrap_or(true);
-    let pool_workers = env_usize("OPENHUMAN_PROFILE_SKILL_RUN_POOL_WORKERS", 1);
+    let pool_workers = env_usize("OPENHUMAN_PROFILE_SKILL_RUN_POOL_WORKERS", 1)?;
 
     // `node_exec` is a Write-class acting tool. Full autonomy keeps the gate
     // from parking the turn on approval; the gate is also opted out explicitly.
@@ -202,21 +210,34 @@ pub async fn run() -> Result<ProfileResult> {
     // interpreters — the tree grows by ~one pooled worker. A regression that
     // reintroduces per-run forking makes child_count scale with K and fails here.
     if pool_enabled && concurrency > 1 {
-        if let Some(tree) = result.tree.as_ref() {
-            anyhow::ensure!(
-                tree.child_count <= pool_workers,
-                "runtime pool failed to bound interpreters: child_count={} exceeds max_workers={} \
-                 at concurrency K={} — expected warm-worker reuse, not K forked children",
-                tree.child_count,
-                pool_workers,
-                concurrency
-            );
-            eprintln!(
-                "[library-profile] skill-run: POOL OK — {} node worker(s) served {concurrency} \
-                 concurrent skill runs (would be ~{concurrency} interpreters unpooled)",
-                tree.child_count
-            );
-        }
+        // Require a real measurement: a missing tree or zero children would let
+        // the gate "pass" without ever observing an interpreter. With the
+        // scenario's 300 s idle TTL the pooled worker is resident at sample time,
+        // so this must hold.
+        let tree = result.tree.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "pool gate: no process-tree sample captured for K={concurrency}; cannot verify \
+                 the pooled worker (tree sampling is required for this gate)"
+            )
+        })?;
+        anyhow::ensure!(
+            tree.child_count >= 1,
+            "pool gate: process tree captured zero interpreter children at K={concurrency}; \
+             the pooled worker was not observed"
+        );
+        anyhow::ensure!(
+            tree.child_count <= pool_workers,
+            "runtime pool failed to bound interpreters: child_count={} exceeds max_workers={} \
+             at concurrency K={} — expected warm-worker reuse, not K forked children",
+            tree.child_count,
+            pool_workers,
+            concurrency
+        );
+        eprintln!(
+            "[library-profile] skill-run: POOL OK — {} node worker(s) served {concurrency} \
+             concurrent skill runs (would be ~{concurrency} interpreters unpooled)",
+            tree.child_count
+        );
     }
 
     // Fold in scenario-visible fields (schema stays additive).

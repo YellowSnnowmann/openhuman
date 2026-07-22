@@ -38,7 +38,7 @@ stderr). Each models a distinct embedding use case:
 
 ## How to run
 
-Five scripts under `scripts/profile/` (each has `-h`/`--help`):
+Six scripts under `scripts/profile/` (each has `-h`/`--help`):
 
 - **`library-bench.sh`** — the primary RSS/duration benchmark. Builds the
   binaries, runs each scenario N fresh-process repeats (default 5), and
@@ -86,6 +86,14 @@ Five scripts under `scripts/profile/` (each has `-h`/`--help`):
 
   ```bash
   ./scripts/profile/library-instances.sh --instances "10,25,50" --hold-secs 30
+  ```
+
+- **`library-pool-gate.sh`** — the runtime-pool regression gate (#5106). Runs
+  `skill-run` with K parallel skill runs and asserts the process tree grows by
+  ~one pooled worker, not K interpreters; reports pooled vs unpooled.
+
+  ```bash
+  ./scripts/profile/library-pool-gate.sh --concurrency 8 --workers 1
   ```
 
 ### Default vs slim builds
