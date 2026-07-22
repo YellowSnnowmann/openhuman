@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn settings_disable_idle_reap_on_zero() {
         let cfg = RuntimePoolLangConfig {
-            enabled: true,
+            enabled: Some(true),
             max_workers: 3,
             idle_ttl_secs: 0,
             recycle_after_jobs: 5,
