@@ -411,4 +411,23 @@ mod tests {
         assert_ne!(launch_key(&launch, &a), launch_key(&launch, &b));
         assert_eq!(launch_key(&launch, &a), launch_key(&launch, &a));
     }
+
+    #[test]
+    fn pool_run_error_display_is_classified() {
+        // The three arms drive distinct caller behaviour (retry / fall back /
+        // give up), so their rendered messages must stay distinguishable.
+        assert_eq!(
+            PoolRunError::Saturated.to_string(),
+            "runtime pool at capacity"
+        );
+        let pre = PoolRunError::PreDispatch(anyhow::anyhow!("spawn failed")).to_string();
+        assert!(pre.starts_with("pre-dispatch pool failure:"), "got {pre}");
+        assert!(pre.contains("spawn failed"));
+        let post = PoolRunError::PostDispatch(anyhow::anyhow!("read wedged")).to_string();
+        assert!(
+            post.starts_with("post-dispatch pool failure:"),
+            "got {post}"
+        );
+        assert!(post.contains("read wedged"));
+    }
 }
