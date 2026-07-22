@@ -115,6 +115,9 @@ behavior, not linked code size.
 | `OPENHUMAN_PROFILE_FORCE_UTC=1` | Skip `iana_time_zone`/CoreFoundation timezone resolution. |
 | `OPENHUMAN_PROFILE_HOLD_SECS` / `HOLD_BEFORE_SECS` | Pause the process at settled/baseline state for external inspection (`vmmap`, `heap`, `malloc_history`, Instruments). |
 | `OPENHUMAN_PROFILE_DHAT_OUT` | Output path for dhat JSON (set by `library-heap.sh`). |
+| `OPENHUMAN_PROFILE_SKILL_RUN_CONCURRENCY` | `skill-run`: number of parallel `code_executor` turns (K), each spawning a `node_exec` job (default 1). |
+| `OPENHUMAN_PROFILE_SKILL_RUN_POOL` | `skill-run`: `off` disables the shared runtime pool (legacy per-call spawn; tree then shows ~K resident `node` children). Default on. |
+| `OPENHUMAN_PROFILE_SKILL_RUN_POOL_WORKERS` | `skill-run`: pool size W when pooling is on (default 1). The scenario asserts `child_count <= W` for K > 1 — the #5106 regression gate. |
 
 ## Metrics and interpretation
 
@@ -333,6 +336,28 @@ Runtime/subagent scenarios: `skill-run` measures a real `node` child at
 ~72-75 MB RSS (~121 MB process tree vs ~51 MB self) — the basis of the
 runtime-pooling issue (tinyhumansai/openhuman#5106); `subagent-storm` shows
 ~0.78 MiB marginal per additional parallel subagent (K=8→32 cross-width).
+
+Runtime pool (#5106): with the shared pool on (the default), a batch of K
+concurrent `skill-run` turns shares a bounded set of warm `node` workers, so
+the process tree grows by ~one pooled worker instead of K interpreters.
+Measured at **K=8** (`max_workers=1`, system node v24): pooled tree
+`child_count=1` at **~202 MiB**, vs unpooled `child_count=8` at **~690 MiB**
+(eight `node` children of ~73–75 MB each) — a ~490 MiB / 3.4× reduction that
+grows with K. Compare the two regimes directly:
+
+```bash
+# Legacy: K interpreters resident at peak.
+OPENHUMAN_PROFILE_SKILL_RUN_CONCURRENCY=8 OPENHUMAN_PROFILE_SKILL_RUN_POOL=off \
+  target/release/library-profile skill-run
+# Pooled: child_count stays at the pool size (asserted), not K.
+OPENHUMAN_PROFILE_SKILL_RUN_CONCURRENCY=8 OPENHUMAN_PROFILE_SKILL_RUN_POOL_WORKERS=1 \
+  target/release/library-profile skill-run
+```
+
+The pool is configured in `[runtime_pool]` (master switch + per-language
+`node`/`python` `max_workers`, `idle_ttl_secs`, `recycle_after_jobs`,
+`max_queue_depth`); `enabled = false` reverts every caller to the legacy
+per-call spawn.
 
 Watch-items from the sweep: thread count grows ~0.35/agent (needs
 attribution + cap before real 1000-agent runs), and p95 latency at N=500 on

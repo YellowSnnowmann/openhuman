@@ -1023,6 +1023,8 @@ pub fn all_tools_with_runtime(
             security.clone(),
             Arc::clone(&runtime),
             Arc::clone(bootstrap),
+            root_config.runtime_pool.clone(),
+            root_config.workspace_dir.clone(),
         )));
         tools.push(Box::new(NpmExecTool::new(
             security.clone(),
@@ -1030,6 +1032,20 @@ pub fn all_tools_with_runtime(
             Arc::clone(bootstrap),
         )));
         tracing::debug!("[tools::ops] registered node_exec + npm_exec");
+    }
+
+    // Managed Python exec tool — gated on `root_config.runtime_python.enabled`.
+    // Shares the same `PythonBootstrap` as ShellTool. Inline code routes through
+    // the shared runtime pool (#5106) when enabled.
+    if let Some(bootstrap) = python_bootstrap.as_ref() {
+        tools.push(Box::new(PythonExecTool::new(
+            security.clone(),
+            Arc::clone(&runtime),
+            Arc::clone(bootstrap),
+            root_config.runtime_pool.clone(),
+            root_config.workspace_dir.clone(),
+        )));
+        tracing::debug!("[tools::ops] registered python_exec");
     }
 
     // Vision tools are always available

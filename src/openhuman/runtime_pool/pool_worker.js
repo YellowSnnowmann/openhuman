@@ -1,0 +1,202 @@
+// OpenHuman runtime-pool Node worker harness (issue #5106).
+//
+// A single long-lived `node` process that executes inline JavaScript jobs for
+// many skill runs / node_exec calls, so the fleet pays one warm interpreter
+// instead of one child per run.
+//
+// Protocol (newline-delimited JSON over stdio, see runtime_pool/protocol.rs):
+//   1. Print exactly one ready line:  {"ready":true,"protocol":1,"lang":"node"}
+//   2. For each request line {id,kind:"inline",code,cwd,timeout_ms} reply with
+//      {id,ok,stdout,stderr,exit_code,timed_out,elapsed_ms,error}.
+//
+// Each job runs in its own `worker_thread` for isolation (fresh module graph +
+// globals per run) and safe termination (a runaway or process.exit()-y job is
+// killed with worker.terminate() without taking down this host process). The
+// job's stdout/stderr are isolated pipes (stdout:true/stderr:true) so user
+// `console.log` can never corrupt the protocol stream on fd 1.
+
+'use strict';
+
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+
+const PROTOCOL_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Worker-thread mode: execute one job's code, then exit (flushing its pipes).
+// ---------------------------------------------------------------------------
+if (!isMainThread) {
+  const path = require('path');
+  const { createRequire } = require('module');
+
+  async function runUserCode(code, cwd) {
+    // NOTE: do NOT `process.chdir()` here — it throws ERR_WORKER_UNSUPPORTED_
+    // OPERATION inside a worker thread. The host chdirs before spawning this
+    // worker (jobs serialize per worker process), so `process.cwd()` is already
+    // the job's directory; `cwd` is used only to root require/__dirname.
+    const dir = cwd || process.cwd();
+    const filename = path.join(dir, 'inline.js');
+    const req = createRequire(filename);
+    // Mimic `node -e`: CommonJS-ish sloppy scope with require/__dirname, wrapped
+    // in an async IIFE so top-level `await` works. `new Function` gives the code
+    // a fresh scope so its top-level declarations don't leak into the harness.
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'require',
+      '__filename',
+      '__dirname',
+      'module',
+      'exports',
+      'return (async () => {\n' + code + '\n})();'
+    );
+    const mod = { exports: {} };
+    await fn(req, filename, dir, mod, mod.exports);
+  }
+
+  const code = (workerData && workerData.code) || '';
+  const cwd = (workerData && workerData.cwd) || null;
+  runUserCode(code, cwd).then(
+    () => {
+      // Resolve → let the thread exit naturally once its loop drains, which
+      // flushes the stdout/stderr pipes before the 'exit' event fires.
+    },
+    (err) => {
+      const msg = err && err.stack ? err.stack : String(err);
+      process.stderr.write(msg + '\n');
+      process.exitCode = 1;
+    }
+  );
+  return;
+}
+
+// ---------------------------------------------------------------------------
+// Main (host) mode: read jobs, run each in a worker thread, reply per job.
+// ---------------------------------------------------------------------------
+
+function collect(stream) {
+  return new Promise((resolve) => {
+    let buf = '';
+    stream.setEncoding('utf8');
+    stream.on('data', (d) => {
+      buf += d;
+    });
+    const done = () => resolve(buf);
+    stream.on('end', done);
+    stream.on('close', done);
+    stream.on('error', done);
+  });
+}
+
+function runJob(job) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    // Set the job's working directory on the HOST before spawning the worker:
+    // a worker thread inherits the parent's cwd at creation and cannot chdir
+    // itself. Jobs are serialized one-at-a-time per worker process, so this is
+    // race-free within a process; separate pool workers are separate processes.
+    if (job.cwd) {
+      try {
+        process.chdir(job.cwd);
+      } catch (_e) {
+        // Non-fatal: fall back to the inherited directory.
+      }
+    }
+    let worker;
+    try {
+      worker = new Worker(__filename, {
+        workerData: { code: job.code || '', cwd: job.cwd || null },
+        stdout: true,
+        stderr: true,
+      });
+    } catch (e) {
+      resolve({
+        id: job.id,
+        ok: false,
+        stdout: '',
+        stderr: '',
+        exit_code: null,
+        timed_out: false,
+        elapsed_ms: Date.now() - start,
+        error: 'failed to spawn worker thread: ' + (e && e.stack ? e.stack : String(e)),
+      });
+      return;
+    }
+
+    const outP = collect(worker.stdout);
+    const errP = collect(worker.stderr);
+    let exitCode = 0;
+    let timedOut = false;
+    let extraErr = '';
+
+    let timer = null;
+    if (job.timeout_ms && job.timeout_ms > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        worker.terminate();
+      }, job.timeout_ms);
+    }
+
+    worker.on('error', (e) => {
+      extraErr += (e && e.stack ? e.stack : String(e)) + '\n';
+      if (!exitCode) exitCode = 1;
+    });
+
+    worker.on('exit', async (code) => {
+      if (timer) clearTimeout(timer);
+      if (code && !exitCode) exitCode = code;
+      const stdout = await outP;
+      const stderr = (await errP) + extraErr;
+      resolve({
+        id: job.id,
+        ok: true,
+        stdout,
+        stderr,
+        exit_code: timedOut ? null : exitCode,
+        timed_out: timedOut,
+        elapsed_ms: Date.now() - start,
+        error: null,
+      });
+    });
+  });
+}
+
+function reply(obj) {
+  process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+// Announce readiness, then serve jobs one at a time (the Rust pool already
+// sends at most one outstanding job per worker; the chain keeps ordering).
+reply({ ready: true, protocol: PROTOCOL_VERSION, lang: 'node' });
+
+const readline = require('readline');
+const rl = readline.createInterface({ input: process.stdin });
+let chain = Promise.resolve();
+rl.on('line', (line) => {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  let job;
+  try {
+    job = JSON.parse(trimmed);
+  } catch (_e) {
+    return; // ignore unparseable lines
+  }
+  chain = chain
+    .then(() => runJob(job))
+    .then((res) => reply(res))
+    .catch((e) => {
+      reply({
+        id: job && job.id,
+        ok: false,
+        stdout: '',
+        stderr: '',
+        exit_code: null,
+        timed_out: false,
+        elapsed_ms: 0,
+        error: String((e && e.stack) || e),
+      });
+    });
+});
+rl.on('close', () => {
+  // Drain any in-flight job before exiting so a closed stdin doesn't drop work
+  // that was already accepted onto the chain.
+  Promise.resolve(chain).finally(() => process.exit(0));
+});

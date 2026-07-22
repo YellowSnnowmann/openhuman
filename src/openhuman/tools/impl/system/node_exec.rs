@@ -73,6 +73,10 @@ pub struct NodeExecTool {
     security: Arc<SecurityPolicy>,
     runtime: Arc<dyn RuntimeAdapter>,
     bootstrap: Arc<NodeBootstrap>,
+    /// Runtime-pool config + workspace, snapshotted at construction so the hot
+    /// inline path never re-reads config from disk (#5106 is a perf feature).
+    pool_cfg: crate::openhuman::config::RuntimePoolConfig,
+    workspace_dir: std::path::PathBuf,
 }
 
 impl NodeExecTool {
@@ -80,11 +84,15 @@ impl NodeExecTool {
         security: Arc<SecurityPolicy>,
         runtime: Arc<dyn RuntimeAdapter>,
         bootstrap: Arc<NodeBootstrap>,
+        pool_cfg: crate::openhuman::config::RuntimePoolConfig,
+        workspace_dir: std::path::PathBuf,
     ) -> Self {
         Self {
             security,
             runtime,
             bootstrap,
+            pool_cfg,
+            workspace_dir,
         }
     }
 }
@@ -276,6 +284,20 @@ impl NodeExecTool {
                 .await);
         }
 
+        // Route inline JS through the shared runtime pool when enabled (#5106):
+        // a warm, bounded set of `node` workers replaces one `node -e` child per
+        // call, so a fleet pays ~one interpreter instead of one per skill run.
+        // `script_path` and sandboxed runs keep the legacy per-call spawn; a
+        // pool infrastructure failure also transparently falls back below.
+        if let Some(code) = inline_code.as_deref() {
+            if let Some(result) = self
+                .try_pool_inline(code, &resolved, &path_policy.action_dir, explicit_timeout)
+                .await
+            {
+                return Ok(result);
+            }
+        }
+
         let mut cmd = match self
             .runtime
             .build_shell_command(&command, &path_policy.action_dir)
@@ -353,6 +375,54 @@ impl NodeExecTool {
                 "node_exec timed out after {}s and was killed",
                 explicit_timeout.map(|d| d.as_secs()).unwrap_or(0)
             ))),
+        }
+    }
+}
+
+impl NodeExecTool {
+    /// Attempt to run inline JS on the shared runtime pool (#5106).
+    ///
+    /// Returns `Some(result)` when the pool handled the job — success, non-zero
+    /// exit, or timeout, all mapped to the same `ToolResult` shape as the legacy
+    /// path. Returns `None` when pooling is disabled or the pool infrastructure
+    /// failed, so the caller transparently falls back to a per-call spawn.
+    async fn try_pool_inline(
+        &self,
+        code: &str,
+        resolved: &crate::openhuman::runtime_node::ResolvedNode,
+        action_dir: &std::path::Path,
+        timeout: Option<Duration>,
+    ) -> Option<ToolResult> {
+        if !crate::openhuman::runtime_pool::node::enabled(&self.pool_cfg) {
+            return None;
+        }
+        match crate::openhuman::runtime_pool::node::run_inline(
+            &self.workspace_dir,
+            &self.pool_cfg.node,
+            &resolved.node_bin,
+            &resolved.bin_dir,
+            code.to_string(),
+            Some(action_dir.to_path_buf()),
+            timeout,
+        )
+        .await
+        {
+            Ok(outcome) => {
+                tracing::info!(
+                    queue_wait_ms = outcome.queue_wait.as_millis() as u64,
+                    elapsed_ms = outcome.elapsed.as_millis() as u64,
+                    timed_out = outcome.timed_out,
+                    "[node_exec] pool: inline job completed on a warm worker"
+                );
+                Some(pool_outcome_to_result(outcome, timeout))
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "[node_exec] pool: run failed; falling back to legacy spawn"
+                );
+                None
+            }
         }
     }
 }
@@ -465,6 +535,50 @@ impl NodeExecTool {
             }
             Err(e) => ToolResult::error(format!("Sandbox execution failed: {e}")),
         }
+    }
+}
+
+/// Map a runtime-pool outcome onto the same `ToolResult` shape the legacy
+/// `node -e` path produces: 1 MB stdout/stderr caps, exit-code surfacing on
+/// failure, and the identical timeout message. Keeps pooled and legacy runs
+/// indistinguishable to the agent.
+fn pool_outcome_to_result(
+    outcome: crate::openhuman::runtime_pool::PoolExecOutcome,
+    timeout: Option<Duration>,
+) -> ToolResult {
+    if outcome.timed_out {
+        return ToolResult::error(format!(
+            "node_exec timed out after {}s and was killed",
+            timeout.map(|d| d.as_secs()).unwrap_or(0)
+        ));
+    }
+
+    let mut stdout = outcome.stdout;
+    let mut stderr = outcome.stderr;
+    if stdout.len() > MAX_OUTPUT_BYTES {
+        stdout.truncate(crate::openhuman::util::floor_char_boundary(
+            &stdout,
+            MAX_OUTPUT_BYTES,
+        ));
+        stdout.push_str("\n... [stdout truncated at 1MB]");
+    }
+    if stderr.len() > MAX_OUTPUT_BYTES {
+        stderr.truncate(crate::openhuman::util::floor_char_boundary(
+            &stderr,
+            MAX_OUTPUT_BYTES,
+        ));
+        stderr.push_str("\n... [stderr truncated at 1MB]");
+    }
+
+    let success = matches!(outcome.exit_code, None | Some(0));
+    if success {
+        if stderr.is_empty() {
+            ToolResult::success(stdout)
+        } else {
+            ToolResult::success(format!("{stdout}\n[stderr]\n{stderr}"))
+        }
+    } else {
+        super::command_output::command_failure(outcome.exit_code, &stdout, &stderr)
     }
 }
 
