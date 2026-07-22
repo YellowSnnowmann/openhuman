@@ -111,7 +111,7 @@ pub async fn run() -> Result<ProfileResult> {
 
     let concurrency = env_usize("OPENHUMAN_PROFILE_SKILL_RUN_CONCURRENCY", 1);
     let pool_enabled = std::env::var("OPENHUMAN_PROFILE_SKILL_RUN_POOL")
-        .map(|v| v.trim().to_ascii_lowercase() != "off")
+        .map(|v| !v.trim().eq_ignore_ascii_case("off"))
         .unwrap_or(true);
     let pool_workers = env_usize("OPENHUMAN_PROFILE_SKILL_RUN_POOL_WORKERS", 1);
 

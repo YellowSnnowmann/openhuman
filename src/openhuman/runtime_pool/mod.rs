@@ -117,9 +117,10 @@ pub(crate) async fn ensure_worker_script(
     filename: &str,
     contents: &str,
 ) -> Result<PathBuf> {
-    cell.get_or_try_init(|| write_worker_script(workspace_dir, filename, contents))
-        .await
-        .map(|path| path.clone())
+    Ok(cell
+        .get_or_try_init(|| write_worker_script(workspace_dir, filename, contents))
+        .await?
+        .clone())
 }
 
 #[cfg(test)]

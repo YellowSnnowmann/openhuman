@@ -29,10 +29,10 @@ pub fn enabled(pool: &RuntimePoolConfig) -> bool {
 /// Run inline JavaScript on a pooled, warm `node` worker.
 ///
 /// `node_bin` / `bin_dir` come from the caller's already-resolved
-/// [`ResolvedNode`](crate::openhuman::runtime_node::ResolvedNode); `workspace_dir`
-/// + `lang_cfg` are injected at tool construction so this hot path never re-reads
-/// config or re-writes the harness. `cwd` is the job's working directory;
-/// `timeout` is the soft per-job deadline (`None` ⇒ run to completion).
+/// [`ResolvedNode`](crate::openhuman::runtime_node::ResolvedNode). `workspace_dir`
+/// and `lang_cfg` are injected at tool construction so this hot path never
+/// re-reads config or re-writes the harness. `cwd` is the job's working
+/// directory; `timeout` is the soft per-job deadline (`None` ⇒ run to completion).
 pub async fn run_inline(
     workspace_dir: &Path,
     lang_cfg: &RuntimePoolLangConfig,

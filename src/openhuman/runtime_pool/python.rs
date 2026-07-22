@@ -34,8 +34,8 @@ pub fn enabled(pool: &RuntimePoolConfig) -> bool {
 /// Run inline Python on a pooled, warm `python` worker.
 ///
 /// `python_bin` / `bin_dir` come from the caller's already-resolved
-/// [`ResolvedPython`](crate::openhuman::runtime_python::ResolvedPython);
-/// `workspace_dir` + `lang_cfg` are injected at tool construction so this hot
+/// [`ResolvedPython`](crate::openhuman::runtime_python::ResolvedPython).
+/// `workspace_dir` and `lang_cfg` are injected at tool construction so this hot
 /// path never re-reads config or re-writes the harness. `timeout` is the soft
 /// per-job deadline (best-effort on Unix, hard-enforced by the Rust side).
 pub async fn run_inline(
