@@ -56,8 +56,20 @@ def _run_job(job):
         try:
             old_cwd = os.getcwd()
             os.chdir(cwd)
-        except Exception:
-            old_cwd = None
+        except Exception as exc:
+            # Match subprocess cwd semantics: if the requested action root
+            # cannot be entered, user code must not run in this long-lived
+            # worker's inherited directory.
+            return {
+                "id": job.get("id"),
+                "ok": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": None,
+                "timed_out": False,
+                "elapsed_ms": int((time.time() - start) * 1000),
+                "error": f"failed to set worker cwd: {exc!r}",
+            }
 
     # Capture at the FILE-DESCRIPTOR level (not just `sys.stdout`) so
     # `os.write(1, ...)`, subprocesses, and native extensions are captured too —

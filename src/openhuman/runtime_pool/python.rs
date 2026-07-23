@@ -175,10 +175,44 @@ mod tests {
         assert!(out3.success(), "cwd read should succeed: {out3:?}");
         assert_eq!(out3.stdout, "PY_REL_OK");
 
+        // A missing cwd must fail before executing user code. Continuing in the
+        // worker's inherited cwd would escape the requested action root.
+        let missing_cwd = tmp.join("deleted-action-root");
+        let err = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &python_bin,
+            &bin_dir,
+            "open('must-not-exist.txt', 'w').write('bad')".to_string(),
+            Some(missing_cwd),
+            None,
+        )
+        .await
+        .expect_err("missing cwd must fail closed");
+        assert!(
+            err.to_string().contains("failed to set worker cwd"),
+            "unexpected missing-cwd error: {err}"
+        );
+        assert!(!tmp.join("must-not-exist.txt").exists());
+
+        // The harness-level error must not poison framing or worker reuse.
+        let out4 = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &python_bin,
+            &bin_dir,
+            "print('AFTER_CWD_ERROR')".to_string(),
+            Some(tmp.clone()),
+            None,
+        )
+        .await
+        .expect("job after cwd error runs");
+        assert_eq!(out4.stdout, "AFTER_CWD_ERROR\n");
+
         let spawns_after = python_spawns().await;
         assert!(
             spawns_after - spawns_before <= 1,
-            "expected warm-worker reuse: {} new spawns for 3 jobs",
+            "expected warm-worker reuse: {} new spawns",
             spawns_after - spawns_before
         );
 
