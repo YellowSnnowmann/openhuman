@@ -51,10 +51,7 @@ pub async fn run_inline(
             .to_string_lossy()
             .into_owned();
 
-    let mut env = super::base_env(bin_dir);
-    // Quieten Node's experimental/deprecation warnings on the protocol stream's
-    // sibling stderr; keeps worker logs readable.
-    env.push(("NODE_NO_WARNINGS".to_string(), "1".to_string()));
+    let env = super::base_env(bin_dir);
 
     let launch = WorkerLaunch {
         lang: PoolLang::Node,
@@ -258,6 +255,47 @@ console.log('REAL_RESPONSE');
             "ESM-only package import should succeed: {esm_out:?}"
         );
         assert_eq!(esm_out.stdout, "ESM_ONLY_OK\n");
+
+        // vm dynamic-import hooks receive attributes separately; forward them
+        // so JSON modules preserve legacy node -e behavior.
+        std::fs::write(tmp.join("data.json"), r#"{"answer":42}"#).unwrap();
+        let json_out = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            "const data = await import('./data.json', { with: { type: 'json' } }); console.log(data.default.answer)"
+                .to_string(),
+            Some(tmp.clone()),
+            None,
+        )
+        .await
+        .expect("JSON import with attributes runs");
+        assert!(
+            json_out.success(),
+            "JSON import with attributes should succeed: {json_out:?}"
+        );
+        assert_eq!(json_out.stdout, "42\n");
+
+        // User warnings are tool output, not harness noise. Never suppress them
+        // globally on the pooled worker.
+        let warning_out = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            "process.emitWarning('POOL_WARNING')".to_string(),
+            Some(tmp.clone()),
+            None,
+        )
+        .await
+        .expect("warning job runs");
+        assert!(warning_out.success(), "warning job failed: {warning_out:?}");
+        assert!(
+            warning_out.stderr.contains("POOL_WARNING"),
+            "user warning was hidden: {:?}",
+            warning_out.stderr
+        );
 
         // The protocol never shares fd 0 with user code. Legacy Command::output
         // supplies EOF on stdin, so pooled code must do the same rather than

@@ -46,16 +46,20 @@ if (!isMainThread) {
     const { default: resolveEsm } = await import(
       'data:text/javascript,export default (specifier, parent) => import.meta.resolve(specifier, parent)'
     );
-    const importFromJob = (specifier) => {
+    const importFromJob = (specifier, _referrer, importAttributes) => {
+      const options =
+        importAttributes && Object.keys(importAttributes).length > 0
+          ? { with: importAttributes }
+          : undefined;
       if (
         specifier.startsWith('.') ||
         specifier.startsWith('/') ||
         specifier.startsWith('file:') ||
         specifier.startsWith('data:')
       ) {
-        return import(new URL(specifier, base).href);
+        return import(new URL(specifier, base).href, options);
       }
-      return import(resolveEsm(specifier, base));
+      return import(resolveEsm(specifier, base), options);
     };
     // Mimic `node -e`: CommonJS-ish sloppy scope with require/__dirname, wrapped
     // in an async IIFE so top-level `await` works. `vm.compileFunction` (over a
