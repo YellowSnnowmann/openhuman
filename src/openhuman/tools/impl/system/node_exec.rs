@@ -396,6 +396,14 @@ impl NodeExecTool {
         if !crate::openhuman::runtime_pool::node::enabled(&self.pool_cfg) {
             return None;
         }
+        // Node forbids process.chdir() inside worker_threads. Preserve the
+        // legacy `node -e` contract for any statically apparent chdir use
+        // instead of dispatching code that the pooled worker cannot execute.
+        // False positives are safe: they only give up the pooling optimisation.
+        if inline_requires_process_chdir_compat(code) {
+            tracing::debug!("[node_exec] pool: process.chdir-compatible code uses legacy spawn");
+            return None;
+        }
         match crate::openhuman::runtime_pool::node::run_inline(
             &self.workspace_dir,
             &self.pool_cfg.node,
@@ -613,6 +621,17 @@ fn node_timeout_policy(args: &serde_json::Value) -> ToolTimeout {
     }
 }
 
+/// Whether inline JavaScript needs the legacy main-thread process so
+/// `process.chdir()` remains available.
+///
+/// Matching the property name anywhere deliberately catches direct calls,
+/// aliases, destructuring, and bracket notation. Comments or string literals
+/// may route an otherwise pool-safe snippet through the legacy path, which is
+/// preferable to executing a cwd-mutating snippet with changed semantics.
+fn inline_requires_process_chdir_compat(code: &str) -> bool {
+    code.contains("chdir")
+}
+
 /// POSIX-safe single-quote escaping. Wraps `s` in `'…'`, turning any embedded
 /// single-quote into the four-char sequence `'\''`. Node bin paths and user
 /// code pass through untouched semantically, but no shell metacharacter can
@@ -691,6 +710,24 @@ mod tests {
             node_timeout_policy(&json!({"timeout_secs": 99999})),
             ToolTimeout::Secs(NODE_TIMEOUT_MAX_SECS)
         );
+    }
+
+    #[test]
+    fn process_chdir_snippets_use_legacy_node_spawn() {
+        for code in [
+            "process.chdir('subdir'); console.log(process.cwd())",
+            "const move = process.chdir; move('subdir')",
+            "const { chdir } = process; chdir('subdir')",
+            "process['chdir']('subdir')",
+        ] {
+            assert!(
+                inline_requires_process_chdir_compat(code),
+                "expected legacy fallback for {code:?}"
+            );
+        }
+        assert!(!inline_requires_process_chdir_compat(
+            "console.log(process.cwd())"
+        ));
     }
 
     #[test]
