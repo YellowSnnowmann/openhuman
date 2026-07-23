@@ -341,10 +341,11 @@ fn registry() -> &'static Mutex<HashMap<PoolLangKey, CachedPool>> {
 /// the interpreter path, args, or tuning rebuilds the pool.
 fn launch_key(launch: &WorkerLaunch, settings: &PoolSettings) -> String {
     format!(
-        "{}|{}|{:?}|w={}|ttl={:?}|recycle={}|q={}",
+        "{}|{}|{:?}|isolated={}|w={}|ttl={:?}|recycle={}|q={}",
         launch.lang.id(),
         launch.bin.display(),
         launch.args,
+        launch.isolated_protocol,
         settings.max_workers,
         settings.idle_ttl,
         settings.recycle_after_jobs,
@@ -399,6 +400,7 @@ mod tests {
             bin: "/usr/bin/node".into(),
             args: vec!["worker.js".into()],
             env: vec![],
+            isolated_protocol: true,
         };
         let a = PoolSettings {
             max_workers: 2,

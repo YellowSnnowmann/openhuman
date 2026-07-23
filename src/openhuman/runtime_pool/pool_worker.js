@@ -12,8 +12,9 @@
 // Each job runs in its own `worker_thread` for isolation (fresh module graph +
 // globals per run) and safe termination (a runaway or process.exit()-y job is
 // killed with worker.terminate() without taking down this host process). The
-// job's stdout/stderr are isolated pipes (stdout:true/stderr:true) so user
-// `console.log` can never corrupt the protocol stream on fd 1.
+// job's stdout/stderr are isolated pipes (stdout:true/stderr:true). Protocol
+// replies use a separate authenticated loopback socket so fd-level writes
+// (`fs.writeSync`, inherited child stdio) cannot forge or corrupt frames.
 
 'use strict';
 
@@ -39,6 +40,20 @@ if (!isMainThread) {
     const filename = path.join(dir, 'inline.js');
     const req = createRequire(filename);
     const base = pathToFileURL(filename).href;
+    const importFromJob = (specifier) => {
+      if (
+        specifier.startsWith('.') ||
+        specifier.startsWith('/') ||
+        specifier.startsWith('file:') ||
+        specifier.startsWith('data:')
+      ) {
+        return import(new URL(specifier, base).href);
+      }
+      // Bare builtins/packages must retain Node resolution semantics. Resolve
+      // packages from the synthetic cwd-rooted module rather than this harness.
+      const resolved = req.resolve(specifier);
+      return import(path.isAbsolute(resolved) ? pathToFileURL(resolved).href : resolved);
+    };
     // Mimic `node -e`: CommonJS-ish sloppy scope with require/__dirname, wrapped
     // in an async IIFE so top-level `await` works. `vm.compileFunction` (over a
     // bare `new Function`) lets us root dynamic `import()` at the job cwd via
@@ -50,8 +65,7 @@ if (!isMainThread) {
       ['require', '__filename', '__dirname', 'module', 'exports'],
       {
         filename,
-        importModuleDynamically: (specifier) =>
-          import(new URL(specifier, base).href),
+        importModuleDynamically: importFromJob,
       }
     );
     const mod = { exports: {} };
@@ -105,14 +119,24 @@ function runJob(job) {
     if (job.cwd) {
       try {
         process.chdir(job.cwd);
-      } catch (_e) {
-        // Non-fatal: fall back to the inherited directory.
+      } catch (e) {
+        resolve({
+          id: job.id,
+          ok: false,
+          stdout: '',
+          stderr: '',
+          exit_code: null,
+          timed_out: false,
+          elapsed_ms: Date.now() - start,
+          error: 'failed to set worker cwd: ' + (e && e.stack ? e.stack : String(e)),
+        });
+        return;
       }
     }
     let worker;
     try {
       worker = new Worker(__filename, {
-        workerData: { code: job.code || '', cwd: job.cwd || null },
+        workerData: { id: job.id, code: job.code || '', cwd: job.cwd || null },
         stdout: true,
         stderr: true,
         // Propagate host node flags (e.g. --experimental-vm-modules) so the
@@ -186,44 +210,74 @@ function runJob(job) {
   });
 }
 
+let protocolStream = process.stdout;
+
 function reply(obj) {
-  process.stdout.write(JSON.stringify(obj) + '\n');
+  protocolStream.write(JSON.stringify(obj) + '\n');
 }
 
-// Announce readiness, then serve jobs one at a time (the Rust pool already
-// sends at most one outstanding job per worker; the chain keeps ordering).
-reply({ ready: true, protocol: PROTOCOL_VERSION, lang: 'node' });
+function serve() {
+  // Announce readiness, then serve jobs one at a time (the Rust pool already
+  // sends at most one outstanding job per worker; the chain keeps ordering).
+  reply({
+    ready: true,
+    protocol: PROTOCOL_VERSION,
+    lang: 'node',
+    protocol_token: process.env.OPENHUMAN_RUNTIME_POOL_PROTOCOL_TOKEN || null,
+  });
 
-const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin });
-let chain = Promise.resolve();
-rl.on('line', (line) => {
-  const trimmed = line.trim();
-  if (!trimmed) return;
-  let job;
-  try {
-    job = JSON.parse(trimmed);
-  } catch (_e) {
-    return; // ignore unparseable lines
-  }
-  chain = chain
-    .then(() => runJob(job))
-    .then((res) => reply(res))
-    .catch((e) => {
-      reply({
-        id: job && job.id,
-        ok: false,
-        stdout: '',
-        stderr: '',
-        exit_code: null,
-        timed_out: false,
-        elapsed_ms: 0,
-        error: String((e && e.stack) || e),
+  const readline = require('readline');
+  const rl = readline.createInterface({ input: process.stdin });
+  let chain = Promise.resolve();
+  rl.on('line', (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    let job;
+    try {
+      job = JSON.parse(trimmed);
+    } catch (_e) {
+      return; // ignore unparseable lines
+    }
+    chain = chain
+      .then(() => runJob(job))
+      .then((res) => reply(res))
+      .catch((e) => {
+        reply({
+          id: job && job.id,
+          ok: false,
+          stdout: '',
+          stderr: '',
+          exit_code: null,
+          timed_out: false,
+          elapsed_ms: 0,
+          error: String((e && e.stack) || e),
+        });
       });
-    });
-});
-rl.on('close', () => {
-  // Drain any in-flight job before exiting so a closed stdin doesn't drop work
-  // that was already accepted onto the chain.
-  Promise.resolve(chain).finally(() => process.exit(0));
-});
+  });
+  rl.on('close', () => {
+    // Drain any in-flight job before exiting so a closed stdin doesn't drop work
+    // that was already accepted onto the chain.
+    Promise.resolve(chain).finally(() => process.exit(0));
+  });
+}
+
+const protocolAddr = process.env.OPENHUMAN_RUNTIME_POOL_PROTOCOL_ADDR;
+if (protocolAddr) {
+  const net = require('net');
+  const split = protocolAddr.lastIndexOf(':');
+  const host = protocolAddr.slice(0, split);
+  const port = Number(protocolAddr.slice(split + 1));
+  const socket = net.createConnection({ host, port });
+  socket.once('connect', () => {
+    protocolStream = socket;
+    serve();
+  });
+  socket.once('error', (e) => {
+    process.stderr.write('runtime pool protocol connection failed: ' + String(e) + '\n');
+    process.exit(1);
+  });
+} else {
+  // Backward-compatible developer launch; production Node workers always use
+  // the isolated socket configured by Rust.
+  serve();
+}

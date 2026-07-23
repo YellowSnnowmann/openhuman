@@ -69,6 +69,7 @@ pub async fn run_inline(
         // `-u` unbuffered mirrors the runtime_python_server launch contract.
         args: vec!["-u".to_string(), script],
         env,
+        isolated_protocol: false,
     };
     let settings = PoolSettings::from_lang_config(lang_cfg);
     let pool = pool::ensure_pool(launch, settings).await;

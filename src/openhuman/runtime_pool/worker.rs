@@ -11,7 +11,8 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader, Lines};
+use tokio::net::TcpListener;
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 
 use super::protocol::{PoolJobRequest, PoolJobResponse, PoolReadyLine, PROTOCOL_VERSION};
@@ -32,6 +33,9 @@ pub struct WorkerLaunch {
     /// Full environment for the child (already allow-listed by the backend).
     /// The child's env is cleared first, so this is the complete set.
     pub env: Vec<(String, String)>,
+    /// Keep user fd 1/2 writes away from the NDJSON response stream by serving
+    /// protocol responses over a per-launch authenticated loopback socket.
+    pub isolated_protocol: bool,
 }
 
 /// Failure from [`PoolWorker::submit`], tagged with whether the job was already
@@ -70,7 +74,7 @@ pub struct PoolWorker {
     launch: WorkerLaunch,
     _child: Child,
     stdin: ChildStdin,
-    stdout: Lines<BufReader<ChildStdout>>,
+    responses: Lines<BufReader<Box<dyn AsyncRead + Send + Unpin>>>,
     jobs_done: u64,
     last_used: Instant,
 }
@@ -97,6 +101,20 @@ impl PoolWorker {
         for (key, value) in &launch.env {
             cmd.env(key, value);
         }
+        let isolated_protocol = if launch.isolated_protocol {
+            let listener = TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .context("binding isolated worker protocol listener")?;
+            let addr = listener
+                .local_addr()
+                .context("reading isolated worker protocol address")?;
+            let token = uuid::Uuid::new_v4().to_string();
+            cmd.env("OPENHUMAN_RUNTIME_POOL_PROTOCOL_ADDR", addr.to_string());
+            cmd.env("OPENHUMAN_RUNTIME_POOL_PROTOCOL_TOKEN", &token);
+            Some((listener, token))
+        } else {
+            None
+        };
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -117,7 +135,22 @@ impl PoolWorker {
         if let Some(stderr) = child.stderr.take() {
             drain_stderr(launch.lang, stderr);
         }
-        let mut lines = BufReader::new(stdout).lines();
+        let (reader, expected_token): (Box<dyn AsyncRead + Send + Unpin>, Option<String>) =
+            if let Some((listener, token)) = isolated_protocol {
+                // stdout is now exclusively user fd-level output. Drain it so
+                // chatty jobs cannot block; protocol frames use the socket.
+                drain_stdout(launch.lang, stdout);
+                let (stream, _) = tokio::time::timeout(HANDSHAKE_TIMEOUT, listener.accept())
+                    .await
+                    .map_err(|_| {
+                        anyhow::anyhow!("{} worker protocol connection timed out", launch.lang.id())
+                    })?
+                    .context("accepting isolated worker protocol connection")?;
+                (Box::new(stream), Some(token))
+            } else {
+                (Box::new(stdout), None)
+            };
+        let mut lines = BufReader::new(reader).lines();
 
         let ready_line = match tokio::time::timeout(HANDSHAKE_TIMEOUT, lines.next_line()).await {
             Ok(Ok(Some(line))) => line,
@@ -147,13 +180,16 @@ impl PoolWorker {
                 ready.protocol
             );
         }
+        if ready.protocol_token != expected_token {
+            bail!("{} worker protocol authentication failed", launch.lang.id());
+        }
         tracing::info!(lang = launch.lang.id(), "[runtime_pool] worker ready");
 
         Ok(Self {
             launch: launch.clone(),
             _child: child,
             stdin,
-            stdout: lines,
+            responses: lines,
             jobs_done: 0,
             last_used: Instant::now(),
         })
@@ -189,7 +225,7 @@ impl PoolWorker {
         let deadline = hard_timeout.map(|t| tokio::time::Instant::now() + t);
         loop {
             let next = match deadline {
-                Some(dl) => match tokio::time::timeout_at(dl, self.stdout.next_line()).await {
+                Some(dl) => match tokio::time::timeout_at(dl, self.responses.next_line()).await {
                     Ok(inner) => inner,
                     Err(_) => {
                         return Err(SubmitError::post(anyhow::anyhow!(
@@ -197,7 +233,7 @@ impl PoolWorker {
                         )))
                     }
                 },
-                None => self.stdout.next_line().await,
+                None => self.responses.next_line().await,
             };
             let line = match next {
                 Ok(Some(line)) => line,
@@ -264,6 +300,18 @@ fn drain_stderr(lang: PoolLang, stderr: ChildStderr) {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
             tracing::trace!(lang = lang.id(), "[runtime_pool] worker stderr: {line}");
+        }
+    });
+}
+
+/// Drain fd-level stdout from workers whose protocol uses an isolated socket.
+/// This output is deliberately never parsed as NDJSON, so user code cannot
+/// forge a response frame or desynchronise subsequent jobs.
+fn drain_stdout(lang: PoolLang, stdout: ChildStdout) {
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            tracing::trace!(lang = lang.id(), "[runtime_pool] worker fd stdout: {line}");
         }
     });
 }

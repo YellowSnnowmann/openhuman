@@ -27,6 +27,10 @@ pub struct PoolReadyLine {
     pub lang: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
+    /// Optional per-launch secret used when the protocol travels over an
+    /// isolated loopback socket instead of stdout.
+    #[serde(default)]
+    pub protocol_token: Option<String>,
 }
 
 /// A single unit of work sent to a worker.

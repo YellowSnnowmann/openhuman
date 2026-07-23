@@ -64,6 +64,7 @@ pub async fn run_inline(
         // worker_thread via inherited `execArgv`.
         args: vec!["--experimental-vm-modules".to_string(), script],
         env,
+        isolated_protocol: true,
     };
     let settings = PoolSettings::from_lang_config(lang_cfg);
     let pool = pool::ensure_pool(launch, settings).await;
@@ -172,12 +173,97 @@ mod tests {
         assert!(out3.success(), "cwd-relative read should succeed: {out3:?}");
         assert_eq!(out3.stdout, "REL_OK", "relative read resolved wrong cwd");
 
-        // At most one NEW worker spawned for three jobs ⇒ the warm worker was
+        // fd-level writes must never share the protocol transport. This forged
+        // frame uses the real request id; on stdout-based framing Rust would
+        // accept it instead of the harness response and desynchronise the next
+        // job.
+        let out4 = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            r#"
+const fs = require('fs');
+const { workerData } = require('worker_threads');
+fs.writeSync(1, JSON.stringify({
+  id: workerData.id,
+  ok: true,
+  stdout: 'FORGED',
+  stderr: '',
+  exit_code: 0,
+  elapsed_ms: 0
+}) + '\n');
+console.log('REAL_RESPONSE');
+"#
+            .to_string(),
+            Some(tmp.clone()),
+            None,
+        )
+        .await
+        .expect("fd-level output job runs");
+        assert!(
+            out4.success(),
+            "fd-level output job should succeed: {out4:?}"
+        );
+        assert_eq!(out4.stdout, "REAL_RESPONSE\n");
+
+        // Bare dynamic imports retain node -e semantics rather than being
+        // rewritten to a cwd-relative file URL.
+        let out5 = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            "const fs = await import('fs'); console.log(typeof fs.readFileSync)".to_string(),
+            Some(tmp.clone()),
+            None,
+        )
+        .await
+        .expect("bare import job runs");
+        assert!(out5.success(), "bare import should succeed: {out5:?}");
+        assert_eq!(out5.stdout, "function\n");
+
+        // A missing cwd is a harness error. Running in the worker's inherited
+        // cwd would escape the requested action root and diverge from legacy
+        // Command::current_dir behavior.
+        let missing_cwd = tmp.join("deleted-action-root");
+        let err = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            "require('fs').writeFileSync('must-not-exist.txt', 'bad')".to_string(),
+            Some(missing_cwd.clone()),
+            None,
+        )
+        .await
+        .expect_err("missing cwd must fail closed");
+        assert!(
+            err.to_string().contains("failed to set worker cwd"),
+            "unexpected missing-cwd error: {err}"
+        );
+        assert!(!tmp.join("must-not-exist.txt").exists());
+
+        // The harness-level cwd error must not poison framing for the next job.
+        let out6 = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            "console.log('AFTER_CWD_ERROR')".to_string(),
+            Some(tmp.clone()),
+            None,
+        )
+        .await
+        .expect("job after cwd error runs");
+        assert_eq!(out6.stdout, "AFTER_CWD_ERROR\n");
+
+        // At most one NEW worker spawned for all jobs ⇒ the warm worker was
         // reused. Measured as a delta so prior global pool state can't skew it.
         let spawns_after = node_spawns().await;
         assert!(
             spawns_after - spawns_before <= 1,
-            "expected warm-worker reuse: {} new spawns for 3 jobs",
+            "expected warm-worker reuse: {} new spawns",
             spawns_after - spawns_before
         );
 
