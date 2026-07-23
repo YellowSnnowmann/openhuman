@@ -1,13 +1,15 @@
 //! Wire protocol between the core and a pooled language worker.
 //!
-//! Newline-delimited JSON over the worker's stdin/stdout, mirroring the
-//! [`runtime_python_server`](crate::openhuman::runtime_python_server) protocol:
+//! Newline-delimited JSON over a per-worker duplex transport, mirroring the
+//! [`runtime_python_server`](crate::openhuman::runtime_python_server) protocol.
+//! Production workers use an authenticated loopback socket so job fd 0/1/2
+//! cannot consume or corrupt protocol traffic:
 //!
 //! 1. On startup the worker prints exactly one [`PoolReadyLine`].
 //! 2. The core writes one [`PoolJobRequest`] per line; the worker replies with
 //!    one [`PoolJobResponse`] per line, correlated by `id`.
 //!
-//! stderr is drained separately and never carries protocol frames.
+//! Child stdout/stderr are drained separately and never carry protocol frames.
 
 use serde::{Deserialize, Serialize};
 

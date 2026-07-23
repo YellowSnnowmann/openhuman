@@ -1,5 +1,6 @@
 //! A single pooled worker: one long-lived interpreter child speaking the
-//! newline-delimited JSON [`protocol`](super::protocol) over stdio.
+//! newline-delimited JSON [`protocol`](super::protocol) over an isolated
+//! loopback socket (with a stdio fallback for development harnesses).
 //!
 //! One worker runs **one job at a time**; concurrency comes from the
 //! [`LangPool`](super::pool::LangPool) holding several workers. A worker stays
@@ -11,9 +12,9 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
 use tokio::net::TcpListener;
-use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
 use super::protocol::{PoolJobRequest, PoolJobResponse, PoolReadyLine, PROTOCOL_VERSION};
 use super::types::PoolLang;
@@ -33,8 +34,8 @@ pub struct WorkerLaunch {
     /// Full environment for the child (already allow-listed by the backend).
     /// The child's env is cleared first, so this is the complete set.
     pub env: Vec<(String, String)>,
-    /// Keep user fd 1/2 writes away from the NDJSON response stream by serving
-    /// protocol responses over a per-launch authenticated loopback socket.
+    /// Keep user fd 0/1/2 away from the NDJSON request/response stream by
+    /// serving the protocol over a per-launch authenticated loopback socket.
     pub isolated_protocol: bool,
 }
 
@@ -73,7 +74,7 @@ impl std::fmt::Display for SubmitError {
 pub struct PoolWorker {
     launch: WorkerLaunch,
     _child: Child,
-    stdin: ChildStdin,
+    stdin: Box<dyn AsyncWrite + Send + Unpin>,
     responses: Lines<BufReader<Box<dyn AsyncRead + Send + Unpin>>>,
     jobs_done: u64,
     last_used: Instant,
@@ -115,8 +116,14 @@ impl PoolWorker {
         } else {
             None
         };
-        cmd.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
+        if isolated_protocol.is_some() {
+            // Jobs inherit EOF on fd 0, matching Command::output(), while the
+            // harness receives requests over the isolated duplex socket.
+            cmd.stdin(Stdio::null());
+        } else {
+            cmd.stdin(Stdio::piped());
+        }
+        cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         // Suppress the Windows console flash for each spawned worker.
@@ -130,26 +137,34 @@ impl PoolWorker {
         let mut child = cmd
             .spawn()
             .with_context(|| format!("spawning {} worker", launch.lang.id()))?;
-        let stdin = child.stdin.take().context("worker stdin missing")?;
+        let child_stdin = child.stdin.take();
         let stdout = child.stdout.take().context("worker stdout missing")?;
         if let Some(stderr) = child.stderr.take() {
             drain_stderr(launch.lang, stderr);
         }
-        let (reader, expected_token): (Box<dyn AsyncRead + Send + Unpin>, Option<String>) =
-            if let Some((listener, token)) = isolated_protocol {
-                // stdout is now exclusively user fd-level output. Drain it so
-                // chatty jobs cannot block; protocol frames use the socket.
-                drain_stdout(launch.lang, stdout);
-                let (stream, _) = tokio::time::timeout(HANDSHAKE_TIMEOUT, listener.accept())
-                    .await
-                    .map_err(|_| {
-                        anyhow::anyhow!("{} worker protocol connection timed out", launch.lang.id())
-                    })?
-                    .context("accepting isolated worker protocol connection")?;
-                (Box::new(stream), Some(token))
-            } else {
-                (Box::new(stdout), None)
-            };
+        let (stdin, reader, expected_token): (
+            Box<dyn AsyncWrite + Send + Unpin>,
+            Box<dyn AsyncRead + Send + Unpin>,
+            Option<String>,
+        ) = if let Some((listener, token)) = isolated_protocol {
+            // stdout is now exclusively user fd-level output. Drain it so
+            // chatty jobs cannot block; protocol frames use the socket.
+            drain_stdout(launch.lang, stdout);
+            let (stream, _) = tokio::time::timeout(HANDSHAKE_TIMEOUT, listener.accept())
+                .await
+                .map_err(|_| {
+                    anyhow::anyhow!("{} worker protocol connection timed out", launch.lang.id())
+                })?
+                .context("accepting isolated worker protocol connection")?;
+            let (reader, writer) = tokio::io::split(stream);
+            (Box::new(writer), Box::new(reader), Some(token))
+        } else {
+            (
+                Box::new(child_stdin.context("worker stdin missing")?),
+                Box::new(stdout),
+                None,
+            )
+        };
         let mut lines = BufReader::new(reader).lines();
 
         let ready_line = match tokio::time::timeout(HANDSHAKE_TIMEOUT, lines.next_line()).await {

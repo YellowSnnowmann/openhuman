@@ -4,7 +4,8 @@
 # skill runs, so the fleet pays one warm interpreter instead of one child per
 # run.
 #
-# Protocol (newline-delimited JSON over stdio, see runtime_pool/protocol.rs):
+# Protocol (newline-delimited JSON over an authenticated loopback socket,
+# see runtime_pool/protocol.rs):
 #   1. Print exactly one ready line: {"ready":true,"protocol":1,"lang":"python"}
 #   2. For each request line {id,kind:"inline",code,cwd,timeout_ms} reply with
 #      {id,ok,stdout,stderr,exit_code,timed_out,elapsed_ms,error}.
@@ -24,10 +25,23 @@ import traceback
 
 PROTOCOL_VERSION = 1
 
-# Private duplicate of the original stdout fd, reserved for NDJSON protocol
-# frames. Per-job code redirects fd 1/2 to capture buffers (below), so protocol
-# output stays isolated from — and is never corrupted by — job output.
-_PROTO = os.fdopen(os.dup(1), "w", buffering=1)
+# Production workers use one authenticated duplex socket for protocol traffic,
+# leaving fd 0 at EOF and fd 1/2 entirely available to job capture. The stdio
+# fallback keeps the harness convenient to launch by hand.
+_PROTOCOL_TOKEN = os.environ.get("OPENHUMAN_RUNTIME_POOL_PROTOCOL_TOKEN")
+_PROTOCOL_ADDR = os.environ.get("OPENHUMAN_RUNTIME_POOL_PROTOCOL_ADDR")
+_PROTOCOL_SOCKET = None
+if _PROTOCOL_ADDR:
+    import socket
+
+    _host, _port = _PROTOCOL_ADDR.rsplit(":", 1)
+    _PROTOCOL_SOCKET = socket.create_connection((_host, int(_port)))
+    _PROTO_IN = _PROTOCOL_SOCKET.makefile("r")
+    _PROTO = _PROTOCOL_SOCKET.makefile("w", buffering=1)
+else:
+    # Private duplicates prevent per-job fd redirection from touching protocol.
+    _PROTO_IN = os.fdopen(os.dup(0), "r", buffering=1)
+    _PROTO = os.fdopen(os.dup(1), "w", buffering=1)
 
 try:
     import signal
@@ -76,10 +90,13 @@ def _run_job(job):
     # otherwise they would leak onto the real stdout, which is the NDJSON
     # protocol channel. Temp files (vs pipes) avoid buffer-deadlock on large
     # output.
+    in_f = tempfile.TemporaryFile(mode="w+b")
     out_f = tempfile.TemporaryFile(mode="w+b")
     err_f = tempfile.TemporaryFile(mode="w+b")
+    saved_in = os.dup(0)
     saved_out = os.dup(1)
     saved_err = os.dup(2)
+    os.dup2(in_f.fileno(), 0)
     os.dup2(out_f.fileno(), 1)
     os.dup2(err_f.fileno(), 2)
 
@@ -123,8 +140,10 @@ def _run_job(job):
             sys.stderr.flush()
         except Exception as flush_err:  # noqa: BLE001
             extra_err += f"[harness] stderr flush failed: {flush_err!r}\n"
+        os.dup2(saved_in, 0)
         os.dup2(saved_out, 1)
         os.dup2(saved_err, 2)
+        os.close(saved_in)
         os.close(saved_out)
         os.close(saved_err)
         if old_cwd is not None:
@@ -133,6 +152,7 @@ def _run_job(job):
             except Exception:
                 pass
 
+    in_f.close()
     out_f.seek(0)
     err_f.seek(0)
     stdout = out_f.read().decode("utf-8", "replace")
@@ -158,8 +178,13 @@ def _reply(obj):
 
 
 def main():
-    _reply({"ready": True, "protocol": PROTOCOL_VERSION, "lang": "python"})
-    for line in sys.stdin:
+    _reply({
+        "ready": True,
+        "protocol": PROTOCOL_VERSION,
+        "lang": "python",
+        "protocol_token": _PROTOCOL_TOKEN,
+    })
+    for line in _PROTO_IN:
         line = line.strip()
         if not line:
             continue

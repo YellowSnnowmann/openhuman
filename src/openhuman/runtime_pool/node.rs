@@ -62,7 +62,11 @@ pub async fn run_inline(
         // `--experimental-vm-modules` lets the harness root dynamic `import()` at
         // the job cwd (parity with `node -e`); the flag propagates to the per-job
         // worker_thread via inherited `execArgv`.
-        args: vec!["--experimental-vm-modules".to_string(), script],
+        args: vec![
+            "--experimental-vm-modules".to_string(),
+            "--experimental-import-meta-resolve".to_string(),
+            script,
+        ],
         env,
         isolated_protocol: true,
     };
@@ -222,6 +226,56 @@ console.log('REAL_RESPONSE');
         .expect("bare import job runs");
         assert!(out5.success(), "bare import should succeed: {out5:?}");
         assert_eq!(out5.stdout, "function\n");
+
+        // ESM-only packages expose an `import` condition but no CommonJS
+        // `require` condition. Bare imports must therefore use Node's ESM
+        // resolver rooted at the job cwd.
+        let esm_package = tmp.join("node_modules/esm-only");
+        std::fs::create_dir_all(&esm_package).unwrap();
+        std::fs::write(
+            esm_package.join("package.json"),
+            r#"{"name":"esm-only","type":"module","exports":{"import":"./index.mjs"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            esm_package.join("index.mjs"),
+            "export const marker = 'ESM_ONLY_OK';",
+        )
+        .unwrap();
+        let esm_out = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            "const { marker } = await import('esm-only'); console.log(marker)".to_string(),
+            Some(tmp.clone()),
+            None,
+        )
+        .await
+        .expect("ESM-only package import runs");
+        assert!(
+            esm_out.success(),
+            "ESM-only package import should succeed: {esm_out:?}"
+        );
+        assert_eq!(esm_out.stdout, "ESM_ONLY_OK\n");
+
+        // The protocol never shares fd 0 with user code. Legacy Command::output
+        // supplies EOF on stdin, so pooled code must do the same rather than
+        // blocking on or consuming the next NDJSON request.
+        let stdin_out = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &node_bin,
+            &bin_dir,
+            "const fs=require('fs'); console.log(JSON.stringify(fs.readFileSync(0,'utf8')))"
+                .to_string(),
+            Some(tmp.clone()),
+            Some(Duration::from_secs(2)),
+        )
+        .await
+        .expect("stdin EOF job runs");
+        assert!(stdin_out.success(), "stdin should be EOF: {stdin_out:?}");
+        assert_eq!(stdin_out.stdout, "\"\"\n");
 
         // A missing cwd is a harness error. Running in the worker's inherited
         // cwd would escape the requested action root and diverge from legacy

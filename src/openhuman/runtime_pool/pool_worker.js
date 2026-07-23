@@ -4,7 +4,8 @@
 // many skill runs / node_exec calls, so the fleet pays one warm interpreter
 // instead of one child per run.
 //
-// Protocol (newline-delimited JSON over stdio, see runtime_pool/protocol.rs):
+// Protocol (newline-delimited JSON over an authenticated loopback socket,
+// see runtime_pool/protocol.rs):
 //   1. Print exactly one ready line:  {"ready":true,"protocol":1,"lang":"node"}
 //   2. For each request line {id,kind:"inline",code,cwd,timeout_ms} reply with
 //      {id,ok,stdout,stderr,exit_code,timed_out,elapsed_ms,error}.
@@ -40,6 +41,11 @@ if (!isMainThread) {
     const filename = path.join(dir, 'inline.js');
     const req = createRequire(filename);
     const base = pathToFileURL(filename).href;
+    // Use the ESM resolver (not createRequire.resolve) for bare dynamic
+    // imports so import-only package exports retain `node -e` semantics.
+    const { default: resolveEsm } = await import(
+      'data:text/javascript,export default (specifier, parent) => import.meta.resolve(specifier, parent)'
+    );
     const importFromJob = (specifier) => {
       if (
         specifier.startsWith('.') ||
@@ -49,10 +55,7 @@ if (!isMainThread) {
       ) {
         return import(new URL(specifier, base).href);
       }
-      // Bare builtins/packages must retain Node resolution semantics. Resolve
-      // packages from the synthetic cwd-rooted module rather than this harness.
-      const resolved = req.resolve(specifier);
-      return import(path.isAbsolute(resolved) ? pathToFileURL(resolved).href : resolved);
+      return import(resolveEsm(specifier, base));
     };
     // Mimic `node -e`: CommonJS-ish sloppy scope with require/__dirname, wrapped
     // in an async IIFE so top-level `await` works. `vm.compileFunction` (over a
@@ -210,6 +213,7 @@ function runJob(job) {
   });
 }
 
+let protocolInput = process.stdin;
 let protocolStream = process.stdout;
 
 function reply(obj) {
@@ -227,7 +231,7 @@ function serve() {
   });
 
   const readline = require('readline');
-  const rl = readline.createInterface({ input: process.stdin });
+  const rl = readline.createInterface({ input: protocolInput });
   let chain = Promise.resolve();
   rl.on('line', (line) => {
     const trimmed = line.trim();
@@ -269,6 +273,7 @@ if (protocolAddr) {
   const port = Number(protocolAddr.slice(split + 1));
   const socket = net.createConnection({ host, port });
   socket.once('connect', () => {
+    protocolInput = socket;
     protocolStream = socket;
     serve();
   });

@@ -69,7 +69,7 @@ pub async fn run_inline(
         // `-u` unbuffered mirrors the runtime_python_server launch contract.
         args: vec!["-u".to_string(), script],
         env,
-        isolated_protocol: false,
+        isolated_protocol: true,
     };
     let settings = PoolSettings::from_lang_config(lang_cfg);
     let pool = pool::ensure_pool(launch, settings).await;
@@ -174,6 +174,25 @@ mod tests {
         .expect("py job 3 runs");
         assert!(out3.success(), "cwd read should succeed: {out3:?}");
         assert_eq!(out3.stdout, "PY_REL_OK");
+
+        // User stdin is an isolated EOF stream, not the long-lived worker's
+        // NDJSON request pipe.
+        let stdin_out = run_inline(
+            &config.workspace_dir,
+            &lang,
+            &python_bin,
+            &bin_dir,
+            "import os, sys\nprint(repr(sys.stdin.read()))\nprint(os.read(0, 1))".to_string(),
+            Some(tmp.clone()),
+            Some(Duration::from_secs(2)),
+        )
+        .await
+        .expect("stdin EOF job runs");
+        assert!(
+            stdin_out.success(),
+            "python stdin should be EOF: {stdin_out:?}"
+        );
+        assert_eq!(stdin_out.stdout, "''\nb''\n");
 
         // A missing cwd must fail before executing user code. Continuing in the
         // worker's inherited cwd would escape the requested action root.
