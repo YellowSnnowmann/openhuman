@@ -64,6 +64,9 @@ describe('CORE_CONFIG_UNREADABLE_I18N_KEY', () => {
   it('resolves to real English copy so the UI never renders a bare key', () => {
     const copy = (en as Record<string, string>)[CORE_CONFIG_UNREADABLE_I18N_KEY];
     expect(copy).toBeTruthy();
+    // `toBeTruthy` alone would pass on a value that is literally the key, which
+    // is exactly the "bare key reached the UI" case this test exists to rule out.
+    expect(copy).not.toBe(CORE_CONFIG_UNREADABLE_I18N_KEY);
     // The person reading the sign-in screen cannot act on a container path, a
     // uid, or an errno, and the path is the runtime host's, not theirs.
     expect(copy).not.toMatch(/\/home\/openhuman|os error|uid=/);
