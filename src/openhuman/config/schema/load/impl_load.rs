@@ -254,7 +254,7 @@ impl Config {
                 );
             }
 
-            let contents = crate::openhuman::util::retry_with_backoff_async(
+            let read_result = crate::openhuman::util::retry_with_backoff_async(
                 "read config file",
                 5,
                 20,
@@ -270,12 +270,6 @@ impl Config {
                             // `is_transient_fs_error` can still downcast it and
                             // `{:#}` still renders the underlying cause.
                             let ownership = describe_config_ownership(&config_path).await;
-                            tracing::warn!(
-                                path = %config_path.display(),
-                                detail = %ownership.trim(),
-                                error = %error,
-                                "[config] failed to read config file"
-                            );
                             Err(anyhow::Error::new(error).context(format!(
                                 "Failed to read config file: {}{ownership}",
                                 config_path.display()
@@ -284,7 +278,23 @@ impl Config {
                     }
                 },
             )
-            .await?;
+            .await;
+            // Logged once, after the retry loop resolves, rather than inside
+            // the closure: on Windows a sharing violation is retry-eligible
+            // (`is_transient_fs_error`), so a per-attempt warn would emit up to
+            // five lines for a single failure. The ownership detail is already
+            // embedded in the chain, so `{:#}` carries it into this one line.
+            let contents = match read_result {
+                Ok(contents) => contents,
+                Err(error) => {
+                    tracing::warn!(
+                        path = %config_path.display(),
+                        error = %format!("{error:#}"),
+                        "[config] failed to read config file"
+                    );
+                    return Err(error);
+                }
+            };
             let (mut config, config_was_corrupted) =
                 parse_config_with_recovery(&config_path, &contents).await;
             config.config_path = config_path.clone();

@@ -36,6 +36,19 @@ describe('isCoreConfigUnreadableError', () => {
     ).toBe(true);
   });
 
+  it('does not match an unrelated errno that merely shares a prefix', () => {
+    // `os error 13` unanchored also matches `os error 130`, and `os error 5`
+    // matches `os error 50`/`512`. The loader always emits the parenthesised
+    // form, so the classifier keys on that.
+    for (const errno of ['os error 130', 'os error 50', 'os error 512']) {
+      expect(
+        isCoreConfigUnreadableError(
+          `Failed to read config file: /home/openhuman/.openhuman/config.toml: Some other failure (${errno})`
+        )
+      ).toBe(false);
+    }
+  });
+
   it('requires BOTH the config-read context and a denial signal', () => {
     // Permission failure from another subsystem keeps its own message.
     expect(isCoreConfigUnreadableError('opening keychain failed: Permission denied')).toBe(false);

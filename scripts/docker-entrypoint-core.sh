@@ -40,12 +40,6 @@ OPENHUMAN_USER="openhuman"
 OPENHUMAN_UID="$(id -u "${OPENHUMAN_USER}" 2>/dev/null || echo '')"
 OPENHUMAN_GID="$(id -g "${OPENHUMAN_USER}" 2>/dev/null || echo '')"
 
-if [ -z "${OPENHUMAN_UID}" ] || [ -z "${OPENHUMAN_GID}" ]; then
-    echo "[docker-entrypoint] FATAL user '${OPENHUMAN_USER}' does not exist in this image" >&2
-    echo "[docker-entrypoint] FATAL the image must create it (see Dockerfile: groupadd/useradd)" >&2
-    exit 1
-fi
-
 # The workspace path the core will actually write to.
 # Prefer the env var if set; otherwise fall back to the image default.
 WORKSPACE_DIR="${OPENHUMAN_WORKSPACE:-/home/openhuman/.openhuman}"
@@ -57,14 +51,6 @@ echo "[docker-entrypoint] uid=$(id -u), gid=$(id -g), user=$(id -un 2>/dev/null 
 echo "[docker-entrypoint] target user=${OPENHUMAN_USER} uid=${OPENHUMAN_UID} gid=${OPENHUMAN_GID}"
 echo "[docker-entrypoint] WORKSPACE_DIR=${WORKSPACE_DIR}"
 echo "[docker-entrypoint] HOME_OPENHUMAN_DIR=${HOME_OPENHUMAN_DIR}"
-
-# An explicit non-root `user:` / `--user` means the operator has already pinned
-# the runtime identity.  We cannot chown anything without CAP_CHOWN anyway, and
-# gosu needs CAP_SETUID/CAP_SETGID we do not have, so hand off directly.
-if [ "$(id -u)" -ne 0 ]; then
-    echo "[docker-entrypoint] already running non-root — skipping heal, exec direct"
-    exec openhuman-core "$@"
-fi
 
 # Make DIR and every entry under it owned by the openhuman user.
 heal_dir() {
@@ -138,7 +124,43 @@ add_config_dir() {
 
 add_config_dir "${WORKSPACE_DIR}"
 add_config_dir "${HOME_OPENHUMAN_DIR}"
-add_config_dir "$(dirname "${WORKSPACE_DIR}")/.openhuman"
+# The legacy candidate is DERIVED, not configured, so it is only a candidate
+# when it already exists: `heal_dir` runs `mkdir -p`, and materializing an empty
+# sibling `.openhuman` that the core may never resolve into is a side effect a
+# healthy start should not have.
+LEGACY_DIR="$(dirname "${WORKSPACE_DIR}")/.openhuman"
+if [ -d "${LEGACY_DIR}" ]; then
+    add_config_dir "${LEGACY_DIR}"
+fi
+
+# An explicit non-root `user:` / `--user` means the operator has already pinned
+# the runtime identity. We cannot chown without CAP_CHOWN, and gosu needs
+# CAP_SETUID/CAP_SETGID we do not have, so the heal is genuinely unavailable
+# here. The *diagnosis* is not: `test -r` as ourselves needs no privileges, and
+# skipping it would reproduce exactly the silent dead-end this script exists to
+# prevent (core boots, every config RPC returns EACCES, nothing in the log).
+if [ "$(id -u)" -ne 0 ]; then
+    for _dir in ${CONFIG_DIRS}; do
+        if [ -e "${_dir}/config.toml" ] && [ ! -r "${_dir}/config.toml" ]; then
+            echo "[docker-entrypoint] FATAL ${_dir}/config.toml is not readable by uid=$(id -u)" >&2
+            ls -ln "${_dir}/config.toml" >&2 || true
+            echo "[docker-entrypoint] FATAL running with a pinned non-root user, so the workspace cannot be healed in-container" >&2
+            echo "[docker-entrypoint] FATAL remedy: chown -Rh $(id -u):$(id -g) ${_dir} on the host, or drop the pinned 'user:' so the entrypoint can repair it" >&2
+            exit 1
+        fi
+    done
+    echo "[docker-entrypoint] already running non-root — skipping heal, exec direct"
+    exec openhuman-core "$@"
+fi
+
+# Only the root path needs these: the heal chowns to them and gosu drops to
+# them. A pinned non-root run never touches them, so it must not be blocked by
+# an image that happens not to define the user.
+if [ -z "${OPENHUMAN_UID}" ] || [ -z "${OPENHUMAN_GID}" ]; then
+    echo "[docker-entrypoint] FATAL user '${OPENHUMAN_USER}' does not exist in this image" >&2
+    echo "[docker-entrypoint] FATAL the image must create it (see Dockerfile: groupadd/useradd)" >&2
+    exit 1
+fi
 
 for _dir in ${CONFIG_DIRS}; do
     heal_dir "${_dir}"

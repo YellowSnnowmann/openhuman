@@ -18,8 +18,14 @@
 /** Context lines the Rust loader wraps a config read in. */
 const CONFIG_READ_ANCHOR = /failed to read config file|reading config\.toml from/;
 
-/** OS denial signals, unix and Windows. */
-const PERMISSION_SIGNAL = /permission denied|access is denied|os error 13|os error 5/;
+/**
+ * OS denial signals, unix and Windows.
+ *
+ * The errno alternatives are parenthesised because that is the exact shape
+ * `io::Error`'s Display always produces (`… (os error 13)`), and an unanchored
+ * `os error 5` would also match `os error 50` / `os error 512`.
+ */
+const PERMISSION_SIGNAL = /permission denied|access is denied|\(os error 13\)|\(os error 5\)/;
 
 /** Marker the core appends when the file's uid differs from the process euid. */
 const OWNER_MISMATCH_MARKER = 'config owner mismatch';
