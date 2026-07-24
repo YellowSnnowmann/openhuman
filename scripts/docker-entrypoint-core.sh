@@ -40,6 +40,12 @@ OPENHUMAN_USER="openhuman"
 OPENHUMAN_UID="$(id -u "${OPENHUMAN_USER}" 2>/dev/null || echo '')"
 OPENHUMAN_GID="$(id -g "${OPENHUMAN_USER}" 2>/dev/null || echo '')"
 
+if [ -z "${OPENHUMAN_UID}" ] || [ -z "${OPENHUMAN_GID}" ]; then
+    echo "[docker-entrypoint] FATAL user '${OPENHUMAN_USER}' does not exist in this image" >&2
+    echo "[docker-entrypoint] FATAL the image must create it (see Dockerfile: groupadd/useradd)" >&2
+    exit 1
+fi
+
 # The workspace path the core will actually write to.
 # Prefer the env var if set; otherwise fall back to the image default.
 WORKSPACE_DIR="${OPENHUMAN_WORKSPACE:-/home/openhuman/.openhuman}"
@@ -88,22 +94,55 @@ heal_dir() {
     # `find` itself does not follow symlinks (-P is the default), so `-h`
     # closes the last dereference.  Hardlinks are not a path here: the workspace
     # volume is its own filesystem, and hardlinks cannot cross devices.
+    # Numeric uid:gid rather than `openhuman:openhuman`: the name pair only
+    # works while the primary group happens to share the user's name, and it
+    # keeps this symmetric with the numeric remedy printed on failure below.
     if find "${_dir}" ! -user "${OPENHUMAN_USER}" -exec \
-        chown -h "${OPENHUMAN_USER}:${OPENHUMAN_USER}" {} + 2>/dev/null; then
-        echo "[docker-entrypoint] heal ${_dir} -> ${OPENHUMAN_USER}:${OPENHUMAN_USER} done"
+        chown -h "${OPENHUMAN_UID}:${OPENHUMAN_GID}" {} + 2>/dev/null; then
+        echo "[docker-entrypoint] heal ${_dir} -> ${OPENHUMAN_UID}:${OPENHUMAN_GID} done"
     else
         echo "[docker-entrypoint] WARN chown under ${_dir} failed — no CAP_CHOWN? (cap_drop: ALL)"
         echo "[docker-entrypoint] WARN files not owned by uid=${OPENHUMAN_UID} will be unreadable"
     fi
 }
 
-heal_dir "${WORKSPACE_DIR}"
+# Every directory the core may resolve a config.toml out of, deduplicated.
+#
+#   WORKSPACE_DIR        OPENHUMAN_WORKSPACE, the primary candidate.
+#   HOME_OPENHUMAN_DIR   core.token always lands in $HOME/.openhuman, whatever
+#                        OPENHUMAN_WORKSPACE says.
+#   LEGACY_DIR           `resolve_config_dir_for_workspace`
+#                        (src/openhuman/config/schema/load/dirs.rs) falls back to
+#                        `<parent-of-workspace>/.openhuman` when the workspace
+#                        itself holds no config.toml. For the image default the
+#                        three collapse to one path; a custom OPENHUMAN_WORKSPACE
+#                        makes them diverge, and healing only the first left the
+#                        actually-resolved config untouched.
+#
+# Paths are assumed free of whitespace (they are container paths baked into the
+# image or set via env); POSIX sh has no arrays to do better cheaply.
+CONFIG_DIRS=""
+add_config_dir() {
+    _candidate="$1"
+    if [ -z "${_candidate}" ]; then
+        return 0
+    fi
+    for _existing in ${CONFIG_DIRS}; do
+        if [ "${_existing}" = "${_candidate}" ]; then
+            return 0
+        fi
+    done
+    CONFIG_DIRS="${CONFIG_DIRS} ${_candidate}"
+    return 0
+}
 
-# If WORKSPACE_DIR and HOME_OPENHUMAN_DIR differ, heal the home dir too
-# (core.token always lands in $HOME/.openhuman regardless of OPENHUMAN_WORKSPACE).
-if [ "${WORKSPACE_DIR}" != "${HOME_OPENHUMAN_DIR}" ]; then
-    heal_dir "${HOME_OPENHUMAN_DIR}"
-fi
+add_config_dir "${WORKSPACE_DIR}"
+add_config_dir "${HOME_OPENHUMAN_DIR}"
+add_config_dir "$(dirname "${WORKSPACE_DIR}")/.openhuman"
+
+for _dir in ${CONFIG_DIRS}; do
+    heal_dir "${_dir}"
+done
 
 # Preflight 1: prove gosu can actually drop privileges before we blame the
 # workspace for anything.  Without CAP_SETUID/CAP_SETGID (e.g. `cap_drop: ALL`
@@ -120,13 +159,19 @@ fi
 # while every config-dependent RPC returns EACCES.  A restart loop carrying a
 # one-line remedy in `docker logs` is far easier to diagnose than a green
 # container whose sign-in screen dead-ends on an os-error-13 string.
-if [ -e "${WORKSPACE_DIR}/config.toml" ] \
-    && ! gosu "${OPENHUMAN_USER}" test -r "${WORKSPACE_DIR}/config.toml"; then
-    echo "[docker-entrypoint] FATAL ${WORKSPACE_DIR}/config.toml is not readable by ${OPENHUMAN_USER} (uid=${OPENHUMAN_UID})" >&2
-    ls -ln "${WORKSPACE_DIR}/config.toml" >&2 || true
-    echo "[docker-entrypoint] FATAL remedy: docker exec -u 0 <container> chown -Rh ${OPENHUMAN_UID}:${OPENHUMAN_GID} ${WORKSPACE_DIR}" >&2
-    exit 1
-fi
+#
+# Checked across every candidate dir, not just the workspace: which one the core
+# resolves depends on where a config.toml actually exists, and an unreadable
+# config in any directory we manage is broken regardless of which one wins.
+for _dir in ${CONFIG_DIRS}; do
+    if [ -e "${_dir}/config.toml" ] \
+        && ! gosu "${OPENHUMAN_USER}" test -r "${_dir}/config.toml"; then
+        echo "[docker-entrypoint] FATAL ${_dir}/config.toml is not readable by ${OPENHUMAN_USER} (uid=${OPENHUMAN_UID})" >&2
+        ls -ln "${_dir}/config.toml" >&2 || true
+        echo "[docker-entrypoint] FATAL remedy: docker exec -u 0 <container> chown -Rh ${OPENHUMAN_UID}:${OPENHUMAN_GID} ${_dir}" >&2
+        exit 1
+    fi
+done
 
 echo "[docker-entrypoint] dropping privileges -> exec gosu ${OPENHUMAN_USER} openhuman-core"
 exec gosu "${OPENHUMAN_USER}" openhuman-core "$@"

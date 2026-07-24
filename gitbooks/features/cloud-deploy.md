@@ -664,17 +664,21 @@ exit
 fly machine restart --config .fly/fly.toml
 ```
 
-The Docker equivalent, where the runtime user is UID 10001:
+The Docker equivalent. Derive the ids from the container rather than hard-coding
+them, so this stays correct whichever image you are running:
 
 ```bash
-docker exec -u 0 openhuman-core chown -Rh 10001:10001 /home/openhuman/.openhuman
+docker exec -u 0 openhuman-core sh -c \
+  'chown -Rh "$(id -u openhuman):$(id -g openhuman)" /home/openhuman/.openhuman'
 docker restart openhuman-core
 ```
 
-To see which UID owns what before repairing:
+To see which UID owns what before repairing. Note `docker exec` defaults to
+**root**, so ask about the runtime user explicitly rather than trusting a bare
+`id`:
 
 ```bash
-docker exec openhuman-core sh -c 'id; ls -ln /home/openhuman/.openhuman/config.toml'
+docker exec openhuman-core sh -c 'id openhuman; ls -ln /home/openhuman/.openhuman/config.toml'
 ```
 
 ---

@@ -3104,6 +3104,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': '本地继续',
   'welcome.continueLocallyExperimental': '本地继续（实验性）',
   'welcome.localSessionStarting': '正在启动本地会话...',
+  'welcome.coreConfigUnreadable':
+    '运行时无法读取自己的配置文件。config.toml 可能归属于其他用户账户，或因其他原因无法被运行时进程访问。请重启运行时；若仍未解决，请修复工作目录的归属权或重新创建其数据卷。',
+  'welcome.localSessionErrorFallback': '无法启动本地会话。',
   'welcome.localSessionDesc': '使用离线本地配置文件，跳过 TinyHumans OAuth。',
   'chat.agentChatDesc': '与智能体进行直接对话。',
   'chat.modelPlaceholder': 'gpt-4o',

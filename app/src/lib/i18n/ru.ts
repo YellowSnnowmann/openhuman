@@ -3304,6 +3304,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'Продолжить локально',
   'welcome.continueLocallyExperimental': 'Продолжить локально (Экспериментально)',
   'welcome.localSessionStarting': 'Запуск локального сеанса...',
+  'welcome.coreConfigUnreadable':
+    'Среде выполнения не удалось прочитать свой файл конфигурации. Возможно, config.toml принадлежит другой учётной записи или недоступен процессу по иной причине. Перезапустите среду выполнения, а если это не поможет, исправьте владельца рабочего каталога или создайте его том заново.',
+  'welcome.localSessionErrorFallback': 'Не удалось запустить локальный сеанс.',
   'welcome.localSessionDesc':
     'Использует автономный локальный профиль и пропускает TinyHumans OAuth.',
   'chat.agentChatDesc': 'Открыть прямой чат с агентом.',

@@ -3289,6 +3289,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'Lanjutkan secara lokal',
   'welcome.continueLocallyExperimental': 'Lanjutkan Secara Lokal (Eksperimental)',
   'welcome.localSessionStarting': 'Memulai sesi lokal...',
+  'welcome.coreConfigUnreadable':
+    'Runtime tidak dapat membaca berkas konfigurasinya. config.toml mungkin milik akun pengguna lain, atau tidak dapat diakses oleh proses runtime karena alasan lain. Mulai ulang runtime, dan jika belum teratasi, perbaiki kepemilikan direktori kerja atau buat ulang volumenya.',
+  'welcome.localSessionErrorFallback': 'Tidak dapat memulai sesi lokal.',
   'welcome.localSessionDesc': 'Menggunakan profil lokal offline dan melewati TinyHumans OAuth.',
   'chat.agentChatDesc': 'Buka sesi chat langsung dengan agen.',
   'chat.modelPlaceholder': 'gpt-4o',

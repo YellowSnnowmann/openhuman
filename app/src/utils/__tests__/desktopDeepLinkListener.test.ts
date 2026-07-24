@@ -125,6 +125,8 @@ describe('desktopDeepLinkListener', () => {
     expect(windowControls.setFocus).toHaveBeenCalledTimes(1);
     expect(getDeepLinkAuthState()).toEqual({
       isProcessing: false,
+      // Literal copy, not a key: only the localized failures carry one.
+      errorMessageKey: null,
       errorMessage:
         'Twitter/X sign-in failed before OpenHuman received authorization. Check the Twitter Developer Portal app settings: OAuth 2.0 must be enabled, callback URL must match the backend redirect URL exactly, and the client ID, client secret, and requested scopes must match the OpenHuman backend configuration.',
       requiresAppDataReset: false,
@@ -250,6 +252,32 @@ describe('desktopDeepLinkListener', () => {
     const state = getDeepLinkAuthState();
     expect(state.requiresAppDataReset).toBe(false);
     expect(state.errorMessage).toBe('Sign-in failed. Please try again.');
+    expect(state.errorMessageKey).toBeNull();
+  });
+
+  // The core cannot read its own config.toml: permanent, host-side, and
+  // identical for every config-dependent RPC. It previously fell through to the
+  // generic "Please try again", which is advice that can never work. The copy is
+  // localized, and this module cannot call useT(), so it hands the rendering
+  // component an i18n key instead of a literal.
+  it('surfaces an unreadable core config as a translatable key, not a retry prompt', async () => {
+    vi.mocked(storeSession).mockRejectedValueOnce(
+      new Error(
+        'Failed to read config file: /home/openhuman/.openhuman/config.toml ' +
+          '[config owner mismatch] (file uid=0 gid=0 mode=0600; process euid=10001 egid=10001): ' +
+          'Permission denied (os error 13)'
+      )
+    );
+
+    vi.mocked(getCurrent).mockResolvedValue([authDeepLinkWithState('token=abc&key=auth')]);
+
+    await setupDesktopDeepLinkListener();
+    await waitForAuthSettled();
+
+    const state = getDeepLinkAuthState();
+    expect(state.errorMessageKey).toBe('welcome.coreConfigUnreadable');
+    expect(state.errorMessage).not.toBe('Sign-in failed. Please try again.');
+    expect(state.requiresAppDataReset).toBe(false);
   });
 
   it('injection #1: store-time /auth/me failure bounces to signin — no session applied, no /home nav', async () => {
@@ -446,19 +474,6 @@ describe('authStoreFailureUserMessage (issue #3025)', () => {
       expect(authStoreFailureUserMessage(kind, mode)).toBe('Sign-in failed. Please try again.');
     }
   });
-
-  // Unlike the transport kinds, an unreadable config is a property of whichever
-  // core answered — embedded or remote — so the copy must not be gated on
-  // cloud mode, and must never degrade to "try again".
-  it.each(['local', 'cloud', null] as const)(
-    'gives config_unreadable actionable copy for mode=%s',
-    mode => {
-      const msg = authStoreFailureUserMessage('config_unreadable', mode);
-      expect(msg).not.toBe('Sign-in failed. Please try again.');
-      expect(msg.toLowerCase()).toContain('config.toml');
-      expect(msg).not.toMatch(/\/home\/openhuman|os error|uid=/);
-    }
-  );
 
   it('points cloud-mode users at the remote runtime, not a dead-end retry', () => {
     for (const kind of CLOUD_KINDS) {

@@ -114,6 +114,7 @@ describe('Welcome auth entrypoint', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: false,
       errorMessage: null,
+      errorMessageKey: null,
       requiresAppDataReset: false,
     });
   });
@@ -162,6 +163,7 @@ describe('Welcome auth entrypoint', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: true,
       errorMessage: null,
+      errorMessageKey: null,
       requiresAppDataReset: false,
     });
 
@@ -174,6 +176,7 @@ describe('Welcome auth entrypoint', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: false,
       errorMessage: 'OAuth failed',
+      errorMessageKey: null,
       requiresAppDataReset: false,
     });
 
@@ -192,6 +195,7 @@ describe('Welcome — decryption-failure recovery action', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: false,
       errorMessage: "Sign-in failed because OpenHuman couldn't decrypt locally stored data.",
+      errorMessageKey: null,
       requiresAppDataReset: true,
     });
   });
@@ -243,6 +247,7 @@ describe('Welcome — Select runtime button', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: false,
       errorMessage: null,
+      errorMessageKey: null,
       requiresAppDataReset: false,
     });
     vi.mocked(clearCoreRpcUrlCache).mockReset();
@@ -292,6 +297,7 @@ describe('Welcome — OAuth buttons presence', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: false,
       errorMessage: null,
+      errorMessageKey: null,
       requiresAppDataReset: false,
     });
   });
@@ -314,6 +320,7 @@ describe('Welcome — OAuth buttons presence', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: true,
       errorMessage: null,
+      errorMessageKey: null,
       requiresAppDataReset: false,
     });
     renderWithProviders(<Welcome />);
@@ -329,6 +336,7 @@ describe('Welcome — local login', () => {
     vi.mocked(useDeepLinkAuthState).mockReturnValue({
       isProcessing: false,
       errorMessage: null,
+      errorMessageKey: null,
       requiresAppDataReset: false,
     });
   });
@@ -394,7 +402,11 @@ describe('Welcome — local login', () => {
     await waitFor(() => {
       expect(screen.getByText(/could not read its configuration file/i)).toBeInTheDocument();
     });
+    // The raw chain must not leak: the path belongs to the runtime host, and
+    // neither it nor the errno is actionable for the person signing in.
     expect(screen.queryByText(/\/home\/openhuman/)).not.toBeInTheDocument();
     expect(screen.queryByText(/os error 13/)).not.toBeInTheDocument();
+    // Resolved through i18n, so a bare key must never reach the DOM.
+    expect(screen.queryByText('welcome.coreConfigUnreadable')).not.toBeInTheDocument();
   });
 });

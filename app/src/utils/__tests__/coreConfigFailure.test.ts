@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  CORE_CONFIG_UNREADABLE_MESSAGE,
-  describeCoreConfigFailure,
-  isCoreConfigUnreadableError,
-} from '../coreConfigFailure';
+import en from '../../lib/i18n/en';
+import { CORE_CONFIG_UNREADABLE_I18N_KEY, isCoreConfigUnreadableError } from '../coreConfigFailure';
 
 // The verbatim chain a container core emits when its workspace volume carries a
 // config.toml owned by a different uid than the runtime process.
@@ -51,6 +48,11 @@ describe('isCoreConfigUnreadableError', () => {
     ).toBe(false);
   });
 
+  it('normalises its own input, so callers may pass a raw or lowered message', () => {
+    expect(isCoreConfigUnreadableError(REPORTED.toLowerCase())).toBe(true);
+    expect(isCoreConfigUnreadableError(REPORTED.toUpperCase())).toBe(true);
+  });
+
   it('is safe on empty input', () => {
     expect(isCoreConfigUnreadableError(null)).toBe(false);
     expect(isCoreConfigUnreadableError(undefined)).toBe(false);
@@ -58,16 +60,18 @@ describe('isCoreConfigUnreadableError', () => {
   });
 });
 
-describe('describeCoreConfigFailure', () => {
-  it('replaces the raw chain with actionable, path-free copy', () => {
-    const described = describeCoreConfigFailure(REPORTED);
-    expect(described).toBe(CORE_CONFIG_UNREADABLE_MESSAGE);
+describe('CORE_CONFIG_UNREADABLE_I18N_KEY', () => {
+  it('resolves to real English copy so the UI never renders a bare key', () => {
+    const copy = (en as Record<string, string>)[CORE_CONFIG_UNREADABLE_I18N_KEY];
+    expect(copy).toBeTruthy();
     // The person reading the sign-in screen cannot act on a container path, a
-    // uid, or an errno — and the path is the runtime host's, not theirs.
-    expect(described).not.toMatch(/\/home\/openhuman|os error|uid=/);
-  });
-
-  it('returns null for unrelated failures so they keep their own message', () => {
-    expect(describeCoreConfigFailure('token save failed')).toBeNull();
+    // uid, or an errno, and the path is the runtime host's, not theirs.
+    expect(copy).not.toMatch(/\/home\/openhuman|os error|uid=/);
+    // Hedged, not asserted: the classifier also matches denials with no
+    // ownership marker (older cores, Windows DACLs), where a flat "is owned by
+    // another user" claim would be wrong.
+    expect(copy).toMatch(/may/i);
+    // Repo i18n rule: no em dashes in translation values.
+    expect(copy).not.toContain('\u2014');
   });
 });

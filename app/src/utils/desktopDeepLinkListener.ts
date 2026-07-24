@@ -11,7 +11,7 @@ import {
   failDeepLinkAuthProcessing,
 } from '../store/deepLinkAuthState';
 import { getStoredCoreMode } from './configPersistence';
-import { CORE_CONFIG_UNREADABLE_MESSAGE, isCoreConfigUnreadableError } from './coreConfigFailure';
+import { CORE_CONFIG_UNREADABLE_I18N_KEY, isCoreConfigUnreadableError } from './coreConfigFailure';
 import { BILLING_DASHBOARD_URL } from './links';
 import {
   evaluateOAuthAppVersionGate,
@@ -286,7 +286,14 @@ const handleAuthDeepLink = async (parsed: URL, requireStateNonce = true) => {
         fingerprint: ['deep-link-auth', 'session-store-failed', kind],
       });
       console.warn('[DeepLink][auth] session store failed — staying on signin (kind=%s)', kind);
-      failDeepLinkAuthProcessing(authStoreFailureUserMessage(kind, getStoredCoreMode()));
+      // `config_unreadable` copy is translated, and this module cannot call
+      // `useT()`. Hand the key to the store and let the rendering component
+      // resolve it in the user's locale; every other kind keeps its literal.
+      if (kind === 'config_unreadable') {
+        failDeepLinkAuthProcessing('', { messageKey: CORE_CONFIG_UNREADABLE_I18N_KEY });
+      } else {
+        failDeepLinkAuthProcessing(authStoreFailureUserMessage(kind, getStoredCoreMode()));
+      }
     }
   }
 };
@@ -315,8 +322,10 @@ export const classifyAuthStoreFailure = (message: string): string => {
   const m = message.toLowerCase();
   // Most specific first: the core could not read its own config.toml. Checked
   // ahead of the transport buckets because it is permanent and host-side —
-  // bucketing it as `'other'` told the user to "try again" forever.
-  if (isCoreConfigUnreadableError(m)) return 'config_unreadable';
+  // bucketing it as `'other'` told the user to "try again" forever. Passed the
+  // raw message: the predicate normalises its own input, and every other call
+  // site hands it a raw one.
+  if (isCoreConfigUnreadableError(message)) return 'config_unreadable';
   if (/timed out|timeout|operation timed out|deadline/.test(m)) return 'auth_me_timeout';
   if (/\b401\b|unauthorized/.test(m)) return 'auth_me_unauthorized';
   if (/\b50[234]\b|bad gateway|service unavailable|gateway timeout/.test(m))
@@ -343,11 +352,11 @@ export const authStoreFailureUserMessage = (
   kind: string,
   mode: 'local' | 'cloud' | null
 ): string => {
-  // Mode-independent: an unreadable config.toml is a property of whichever
-  // core answered, embedded or remote, and retrying never clears it.
-  if (kind === 'config_unreadable') {
-    return CORE_CONFIG_UNREADABLE_MESSAGE;
-  }
+  // NOTE: `config_unreadable` never reaches here — its copy is translated and
+  // is resolved from `CORE_CONFIG_UNREADABLE_I18N_KEY` at the rendering
+  // component instead (see the catch block in `handleAuthDeepLink`). It is
+  // mode-independent anyway: an unreadable config.toml is a property of
+  // whichever core answered, embedded or remote, and retrying never clears it.
   if (mode !== 'cloud') {
     return 'Sign-in failed. Please try again.';
   }

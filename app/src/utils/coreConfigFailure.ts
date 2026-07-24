@@ -8,8 +8,8 @@
  *    [config owner mismatch] (file uid=0 …): Permission denied (os error 13)`
  * and, before this module existed, was painted verbatim into the Welcome
  * screen (absolute path included) with no classification and no recovery hint,
- * while the OAuth path bucketed it as `'other'` → "Sign-in failed. Please try
- * again." — presenting a permanent fault as a retryable one.
+ * while the OAuth path bucketed it as `'other'` -> "Sign-in failed. Please try
+ * again." presenting a permanent fault as a retryable one.
  *
  * Every config-dependent RPC fails the same way, so no amount of retrying
  * helps; the fix is always on the runtime host.
@@ -28,6 +28,8 @@ const OWNER_MISMATCH_MARKER = 'config owner mismatch';
  * True when `message` is a core config-read denial rather than an unrelated
  * permission error. Requires BOTH the config-read context and a denial signal
  * so a permission failure from any other subsystem keeps its own message.
+ *
+ * Accepts a raw (un-lowercased) message; callers need not normalise.
  */
 export const isCoreConfigUnreadableError = (message: string | null | undefined): boolean => {
   const lowered = (message ?? '').toLowerCase();
@@ -38,18 +40,14 @@ export const isCoreConfigUnreadableError = (message: string | null | undefined):
 };
 
 /**
- * User-facing copy for a config-read denial. Deliberately carries no
- * filesystem path, uid, or errno — those live in the runtime's own log, which
- * is where the person who can fix this is looking.
+ * i18n key for the user-facing copy. The message itself lives in the locale
+ * files rather than here so every language gets it and the i18n gates can see
+ * it; this module only decides *whether* the failure applies.
+ *
+ * The copy is deliberately hedged. A denial carrying the ownership marker is
+ * definitely a uid mismatch, but the classifier also matches the bare
+ * permission shape emitted by cores predating that marker, and on Windows the
+ * same shape can come from a DACL or an antivirus lock. Asserting "is owned by
+ * another user" would send those users chasing the wrong remedy.
  */
-export const CORE_CONFIG_UNREADABLE_MESSAGE =
-  'The runtime could not read its configuration file — config.toml is owned by a ' +
-  'different user account than the runtime process. Restart the runtime; if that ' +
-  "does not help, repair the workspace directory's ownership or re-create its volume.";
-
-/**
- * Friendly replacement for a raw core error, or `null` when the message is not
- * a config-read denial and should be surfaced as-is.
- */
-export const describeCoreConfigFailure = (message: string | null | undefined): string | null =>
-  isCoreConfigUnreadableError(message) ? CORE_CONFIG_UNREADABLE_MESSAGE : null;
+export const CORE_CONFIG_UNREADABLE_I18N_KEY = 'welcome.coreConfigUnreadable';

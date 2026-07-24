@@ -3370,6 +3370,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'Lokal fortfahren',
   'welcome.continueLocallyExperimental': 'Lokal fortfahren (Experimentell)',
   'welcome.localSessionStarting': 'Lokal starten Sitzung...',
+  'welcome.coreConfigUnreadable':
+    'Die Laufzeitumgebung konnte ihre Konfigurationsdatei nicht lesen. config.toml gehört möglicherweise einem anderen Benutzerkonto oder ist für den Laufzeitprozess aus einem anderen Grund nicht zugänglich. Starten Sie die Laufzeitumgebung neu, und reparieren Sie andernfalls die Besitzrechte des Arbeitsverzeichnisses oder erstellen Sie dessen Volume neu.',
+  'welcome.localSessionErrorFallback': 'Lokale Sitzung konnte nicht gestartet werden.',
   'welcome.localSessionDesc':
     'Verwendet ein lokales Offline-Profil und überspringt TinyHumans OAuth.',
   'chat.agentChatDesc': 'Öffne eine direkte Chat-Sitzung mit dem Agenten.',

@@ -3275,6 +3275,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'स्थानीय स्तर पर जारी रखें',
   'welcome.continueLocallyExperimental': 'लोकल रूप से जारी रखें (प्रायोगिक)',
   'welcome.localSessionStarting': 'स्थानीय सत्र प्रारंभ हो रहा है...',
+  'welcome.coreConfigUnreadable':
+    'रनटाइम अपनी कॉन्फ़िगरेशन फ़ाइल नहीं पढ़ सका। हो सकता है config.toml किसी दूसरे उपयोगकर्ता खाते का हो, या किसी अन्य कारण से रनटाइम प्रक्रिया के लिए दुर्गम हो। रनटाइम को पुनः आरंभ करें, और यदि इससे मदद न मिले तो वर्कस्पेस का स्वामित्व ठीक करें या उसका वॉल्यूम दोबारा बनाएँ।',
+  'welcome.localSessionErrorFallback': 'स्थानीय सत्र शुरू नहीं किया जा सका।',
   'welcome.localSessionDesc':
     'ऑफ़लाइन स्थानीय प्रोफ़ाइल का उपयोग करता है और TinyHumans OAuth को छोड़ देता है।',
   'chat.agentChatDesc': 'एजेंट के साथ डायरेक्ट चैट सेशन खोलें।',

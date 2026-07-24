@@ -3338,6 +3338,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'Continua localmente',
   'welcome.continueLocallyExperimental': 'Continua Localmente (Sperimentale)',
   'welcome.localSessionStarting': 'Avvio sessione locale...',
+  'welcome.coreConfigUnreadable':
+    'Il runtime non è riuscito a leggere il proprio file di configurazione. config.toml potrebbe appartenere a un altro account utente oppure essere inaccessibile al processo per un altro motivo. Riavvia il runtime e, se non basta, correggi la proprietà della cartella di lavoro o ricrea il suo volume.',
+  'welcome.localSessionErrorFallback': 'Impossibile avviare una sessione locale.',
   'welcome.localSessionDesc': 'Utilizza un profilo locale offline e salta TinyHumans OAuth.',
   'chat.agentChatDesc': "Apri una sessione di chat diretta con l'agente.",
   'chat.modelPlaceholder': 'gpt-4o',

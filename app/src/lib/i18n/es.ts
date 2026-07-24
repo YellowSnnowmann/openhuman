@@ -3340,6 +3340,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'Continuar localmente',
   'welcome.continueLocallyExperimental': 'Continuar localmente (Experimental)',
   'welcome.localSessionStarting': 'Iniciando sesión local...',
+  'welcome.coreConfigUnreadable':
+    'El entorno de ejecución no pudo leer su archivo de configuración. Es posible que config.toml pertenezca a otra cuenta de usuario o que resulte inaccesible para el proceso por otro motivo. Reinicia el entorno de ejecución y, si eso no ayuda, repara la propiedad del espacio de trabajo o vuelve a crear su volumen.',
+  'welcome.localSessionErrorFallback': 'No se pudo iniciar una sesión local.',
   'welcome.localSessionDesc': 'Utiliza un perfil local sin conexión y omite TinyHumans OAuth.',
   'chat.agentChatDesc': 'Abre una sesión de chat directo con el agente.',
   'chat.modelPlaceholder': 'gpt-4o',

@@ -3532,6 +3532,9 @@ const en: TranslationMap = {
   'welcome.continueLocally': 'Continue locally',
   'welcome.continueLocallyExperimental': 'Continue Locally (Experimental)',
   'welcome.localSessionStarting': 'Starting local session...',
+  'welcome.coreConfigUnreadable':
+    'The runtime could not read its configuration file. config.toml may belong to a different user account, or be inaccessible to the runtime process for another reason. Restart the runtime, and if that does not help, repair the workspace ownership or re-create its volume.',
+  'welcome.localSessionErrorFallback': 'Could not start a local session.',
   'welcome.localSessionDesc': 'Uses an offline local profile and skips TinyHumans OAuth.',
 
   // Chat: Agent chat panel description

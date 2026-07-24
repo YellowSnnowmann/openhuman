@@ -3242,6 +3242,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': '로컬에서 계속',
   'welcome.continueLocallyExperimental': '로컬에서 계속(실험적)',
   'welcome.localSessionStarting': '로컬 세션 시작 중...',
+  'welcome.coreConfigUnreadable':
+    '런타임이 자체 구성 파일을 읽지 못했습니다. config.toml이 다른 사용자 계정 소유이거나 다른 이유로 런타임 프로세스가 접근할 수 없는 상태일 수 있습니다. 런타임을 다시 시작하고, 그래도 해결되지 않으면 작업 디렉터리의 소유권을 복구하거나 볼륨을 다시 만드세요.',
+  'welcome.localSessionErrorFallback': '로컬 세션을 시작할 수 없습니다.',
   'welcome.localSessionDesc': '오프라인 로컬 프로필을 사용하고 TinyHumans를 건너뜁니다. OAuth.',
   'chat.agentChatDesc': '에이전트와 직접 채팅 세션을 엽니다.',
   'chat.modelPlaceholder': 'gpt-4o',

@@ -3279,6 +3279,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'স্থানীয়ভাবে চালিয়ে যান',
   'welcome.continueLocallyExperimental': 'লোকালি চালিয়ে যান (প্রায়োগিক)',
   'welcome.localSessionStarting': 'স্থানীয় অধিবেশন শুরু করা হচ্ছে...',
+  'welcome.coreConfigUnreadable':
+    'রানটাইম তার কনফিগারেশন ফাইল পড়তে পারেনি। config.toml অন্য কোনো ব্যবহারকারী অ্যাকাউন্টের হতে পারে, অথবা অন্য কোনো কারণে রানটাইম প্রক্রিয়ার জন্য দুর্গম হতে পারে। রানটাইম পুনরায় চালু করুন, আর তাতে কাজ না হলে ওয়ার্কস্পেসের মালিকানা ঠিক করুন বা এর ভলিউম নতুন করে তৈরি করুন।',
+  'welcome.localSessionErrorFallback': 'স্থানীয় সেশন শুরু করা যায়নি।',
   'welcome.localSessionDesc': 'একটি অফলাইন skips__ BR__Ans স্থানীয় প্রোফাইল ব্যবহার করে।',
   'chat.agentChatDesc': 'এজেন্টের সাথে সরাসরি চ্যাট সেশন খুলুন।',
   'chat.modelPlaceholder': 'gpt-4o',

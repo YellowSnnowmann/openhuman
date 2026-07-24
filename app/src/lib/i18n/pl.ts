@@ -3315,6 +3315,9 @@ const messages: TranslationMap = {
   'welcome.continueLocally': 'Kontynuuj lokalnie',
   'welcome.continueLocallyExperimental': 'Kontynuuj lokalnie (Eksperymentalne)',
   'welcome.localSessionStarting': 'Rozpoczynanie sesji lokalnej...',
+  'welcome.coreConfigUnreadable':
+    'Środowisko uruchomieniowe nie mogło odczytać swojego pliku konfiguracyjnego. Plik config.toml może należeć do innego konta użytkownika lub być niedostępny dla procesu z innego powodu. Uruchom ponownie środowisko, a jeśli to nie pomoże, napraw właściciela katalogu roboczego lub utwórz jego wolumin od nowa.',
+  'welcome.localSessionErrorFallback': 'Nie udało się rozpocząć sesji lokalnej.',
   'welcome.localSessionDesc':
     'Używa lokalnego profilu offline i pomija logowanie OAuth TinyHumans.',
   'chat.agentChatDesc': 'Otwórz bezpośrednią sesję czatu z agentem.',
