@@ -1772,6 +1772,92 @@ async fn load_or_init_read_failure_embeds_path_in_error_context() {
     );
 }
 
+/// A read denial on an existing config is fully explained by the file's
+/// uid/gid/mode and the process's euid — numbers the loader already has in
+/// hand. Without them a report of
+/// `Permission denied (os error 13)` cannot distinguish a mis-owned container
+/// volume (our defect) from a host ACL (the user's), which is exactly the
+/// ambiguity that made the sign-in failure undiagnosable.
+#[cfg(unix)]
+#[tokio::test]
+async fn load_or_init_read_failure_reports_file_and_process_ownership() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let config_path = root.join("config.toml");
+    std::fs::write(&config_path, "default_temperature = 0.5\n").unwrap();
+    std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    if std::fs::read_to_string(&config_path).is_ok() {
+        return; // running as root — permissions are ignored, assertion is moot
+    }
+
+    let env = MapEnv::default().with("OPENHUMAN_WORKSPACE", root.to_str().unwrap());
+    let err = Config::load_or_init_with_env_lookup(root, &root.join("workspace"), &env)
+        .await
+        .expect_err("reading an unreadable config.toml must fail");
+
+    let msg = format!("{err:#}");
+    for needle in ["file uid=", "gid=", "mode=0000", "process euid="] {
+        assert!(
+            msg.contains(needle),
+            "error must carry `{needle}` so the denial is diagnosable: {msg}"
+        );
+    }
+    // We created the file, so it is NOT an ownership mismatch — the marker
+    // must stay off, or every ordinary ACL denial would start paging.
+    assert!(
+        !msg.contains(CONFIG_OWNER_MISMATCH_MARKER),
+        "a config we own must not be reported as an ownership mismatch: {msg}"
+    );
+}
+
+/// `Config::save` writes the live config through a temp file + atomic rename,
+/// so the temp file's mode becomes the config's mode. It used to be created at
+/// `0o666 & ~umask` (0644), silently re-widening a file that holds `enc2:`
+/// provider keys and channel tokens on every settings change, and propagating
+/// the same mode onto `config.toml.bak` via `fs::copy`.
+#[cfg(unix)]
+#[tokio::test]
+async fn save_keeps_config_and_backup_owner_only_readable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let config_path = tmp.path().join("config.toml");
+    let config = Config {
+        config_path: config_path.clone(),
+        workspace_dir: tmp.path().join("workspace"),
+        ..Default::default()
+    };
+
+    config.save().await.expect("first save");
+    let mode = std::fs::metadata(&config_path)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600, "config.toml must be owner-only after save");
+
+    // The second save is the one that creates the .bak (from the temp file).
+    config.save().await.expect("second save");
+    let backup_mode = std::fs::metadata(config_path.with_extension("toml.bak"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(
+        backup_mode, 0o600,
+        "config.toml.bak holds the same secrets and must be owner-only too"
+    );
+    let mode_after = std::fs::metadata(&config_path)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode_after, 0o600, "an overwriting save must not re-widen");
+}
+
 #[test]
 fn redact_url_strips_basic_auth_and_query() {
     let out = redact_url_for_log(

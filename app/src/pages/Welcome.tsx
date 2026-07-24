@@ -15,6 +15,7 @@ import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { resolveTheme, setThemeMode, type ThemeMode } from '../store/themeSlice';
 import { clearAllAppData } from '../utils/clearAllAppData';
 import { clearStoredCoreMode, clearStoredCoreToken, storeRpcUrl } from '../utils/configPersistence';
+import { describeCoreConfigFailure } from '../utils/coreConfigFailure';
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from '../utils/links';
 import { createLocalSessionToken, LOCAL_SESSION_USER } from '../utils/localSession';
 import { openUrl } from '../utils/openUrl';
@@ -72,7 +73,12 @@ const Welcome = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log('[welcome] local session login failed: %s', message);
-      setLocalLoginError(message || 'Could not start a local session.');
+      // A config-read denial is permanent and host-side; showing the raw
+      // anyhow chain (absolute path + `os error 13`) gives the user nothing to
+      // act on. Unrecognized failures keep their original message.
+      setLocalLoginError(
+        describeCoreConfigFailure(message) || message || 'Could not start a local session.'
+      );
       setIsLocalSigningIn(false);
     }
   };

@@ -11,6 +11,7 @@ import {
   failDeepLinkAuthProcessing,
 } from '../store/deepLinkAuthState';
 import { getStoredCoreMode } from './configPersistence';
+import { CORE_CONFIG_UNREADABLE_MESSAGE, isCoreConfigUnreadableError } from './coreConfigFailure';
 import { BILLING_DASHBOARD_URL } from './links';
 import {
   evaluateOAuthAppVersionGate,
@@ -312,6 +313,10 @@ const isDecryptionFailure = (message: string): boolean => {
  */
 export const classifyAuthStoreFailure = (message: string): string => {
   const m = message.toLowerCase();
+  // Most specific first: the core could not read its own config.toml. Checked
+  // ahead of the transport buckets because it is permanent and host-side —
+  // bucketing it as `'other'` told the user to "try again" forever.
+  if (isCoreConfigUnreadableError(m)) return 'config_unreadable';
   if (/timed out|timeout|operation timed out|deadline/.test(m)) return 'auth_me_timeout';
   if (/\b401\b|unauthorized/.test(m)) return 'auth_me_unauthorized';
   if (/\b50[234]\b|bad gateway|service unavailable|gateway timeout/.test(m))
@@ -338,6 +343,11 @@ export const authStoreFailureUserMessage = (
   kind: string,
   mode: 'local' | 'cloud' | null
 ): string => {
+  // Mode-independent: an unreadable config.toml is a property of whichever
+  // core answered, embedded or remote, and retrying never clears it.
+  if (kind === 'config_unreadable') {
+    return CORE_CONFIG_UNREADABLE_MESSAGE;
+  }
   if (mode !== 'cloud') {
     return 'Sign-in failed. Please try again.';
   }

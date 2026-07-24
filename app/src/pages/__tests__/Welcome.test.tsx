@@ -374,4 +374,27 @@ describe('Welcome — local login', () => {
       expect(screen.getByText(/token save failed/)).toBeInTheDocument();
     });
   });
+
+  // The reported sign-in failure: the core (typically a container runtime whose
+  // workspace volume carries a config.toml owned by another uid) cannot read
+  // its own config, and the raw anyhow chain — absolute path and errno included
+  // — was painted straight into this screen with nothing the user could act on.
+  it('replaces an unreadable-core-config error with actionable, path-free copy', async () => {
+    mockStoreSessionToken.mockRejectedValueOnce(
+      new Error(
+        'Failed to read config file: /home/openhuman/.openhuman/config.toml ' +
+          '[config owner mismatch] (file uid=0 gid=0 mode=0600; process euid=10001 egid=10001): ' +
+          'Permission denied (os error 13)'
+      )
+    );
+
+    renderWithProviders(<Welcome />);
+    fireEvent.click(screen.getByRole('button', { name: /Continue locally/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not read its configuration file/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/\/home\/openhuman/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/os error 13/)).not.toBeInTheDocument();
+  });
 });

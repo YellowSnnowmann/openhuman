@@ -86,6 +86,56 @@ async fn parse_toml_off_worker(contents: String) -> Result<Config, String> {
     }
 }
 
+/// Marker appended to a config-read failure when the file is owned by a
+/// different uid than the process trying to read it.
+///
+/// `core::observability::expected_error_kind` keys on this to keep the failure
+/// paging instead of demoting it as an unpreventable user-environment denial:
+/// a uid mismatch on a file *we* created with mode 0600 is an OpenHuman defect
+/// (typically a container whose entrypoint chowned only the workspace
+/// directory, leaving a stale-uid `config.toml` inside it), not an ACL the user
+/// has to fix for us.
+pub(crate) const CONFIG_OWNER_MISMATCH_MARKER: &str = "[config owner mismatch]";
+
+/// Numeric ownership/permission facts about the config file, appended to the
+/// read-failure context.
+///
+/// An `EACCES` on a file whose `exists()` check just succeeded is fully
+/// explained by four numbers we can always obtain: the file's uid/gid, its
+/// mode, and the process's effective uid/gid. Without them the operator sees
+/// only "Permission denied (os error 13)" and cannot tell a foreign-owner
+/// container volume (our bug) from a genuine ACL / antivirus denial (theirs).
+///
+/// Numeric ids and mode bits are not PII, so this is safe both in the local log
+/// and in the error chain that reaches the client.
+#[cfg(unix)]
+async fn describe_config_ownership(path: &Path) -> String {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let Ok(meta) = fs::metadata(path).await else {
+        return String::new();
+    };
+    // SAFETY: `geteuid`/`getegid` take no arguments, mutate no process state,
+    // and are documented as always succeeding.
+    let (euid, egid) = unsafe { (libc::geteuid(), libc::getegid()) };
+    let mismatch = if meta.uid() == euid {
+        String::new()
+    } else {
+        format!("{CONFIG_OWNER_MISMATCH_MARKER} ")
+    };
+    format!(
+        " {mismatch}(file uid={} gid={} mode={:04o}; process euid={euid} egid={egid})",
+        meta.uid(),
+        meta.gid(),
+        meta.permissions().mode() & 0o777,
+    )
+}
+
+#[cfg(not(unix))]
+async fn describe_config_ownership(_path: &Path) -> String {
+    String::new()
+}
+
 impl Config {
     pub async fn load_or_init() -> Result<Self> {
         let (default_openhuman_dir, default_workspace_dir) = default_config_and_workspace_dirs()?;
@@ -138,9 +188,23 @@ impl Config {
         if config_path.exists() {
             #[cfg(unix)]
             {
-                use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+                use std::{
+                    fs::Permissions,
+                    os::unix::fs::{MetadataExt, PermissionsExt},
+                };
                 if let Ok(meta) = fs::metadata(&config_path).await {
-                    if meta.permissions().mode() & 0o004 != 0 {
+                    // SAFETY: `geteuid` takes no arguments, mutates no process
+                    // state, and is documented as always succeeding.
+                    let euid = unsafe { libc::geteuid() };
+                    // Only harden a file we own. Chmod-ing a foreign-owned
+                    // config either fails with EPERM (log noise) or — with
+                    // CAP_FOWNER, e.g. a root-run CLI inside a container —
+                    // succeeds and strips the read bit that was the only thing
+                    // letting the *other* uid (the one that actually serves
+                    // requests) open it. Leaving a foreign 0644 config alone is
+                    // strictly safer: it still loads, and the entrypoint owns
+                    // repairing ownership.
+                    if meta.uid() == euid && meta.permissions().mode() & 0o004 != 0 {
                         let warned = WARNED_WORLD_READABLE_CONFIGS
                             .get_or_init(|| Mutex::new(HashSet::new()));
                         let already_fixed = warned
@@ -195,9 +259,29 @@ impl Config {
                 5,
                 20,
                 || async {
-                    fs::read_to_string(&config_path).await.with_context(|| {
-                        format!("Failed to read config file: {}", config_path.display())
-                    })
+                    match fs::read_to_string(&config_path).await {
+                        Ok(contents) => Ok(contents),
+                        Err(error) => {
+                            // Attach the ownership/mode facts that explain an
+                            // EACCES on a file we just proved exists. Building
+                            // the context requires an await, so this cannot use
+                            // the sync `with_context` closure; wrapping the
+                            // io::Error keeps it in the chain so
+                            // `is_transient_fs_error` can still downcast it and
+                            // `{:#}` still renders the underlying cause.
+                            let ownership = describe_config_ownership(&config_path).await;
+                            tracing::warn!(
+                                path = %config_path.display(),
+                                detail = %ownership.trim(),
+                                error = %error,
+                                "[config] failed to read config file"
+                            );
+                            Err(anyhow::Error::new(error).context(format!(
+                                "Failed to read config file: {}{ownership}",
+                                config_path.display()
+                            )))
+                        }
+                    }
                 },
             )
             .await?;
@@ -428,6 +512,35 @@ impl Config {
                     temp_path.display()
                 )
             })?;
+
+        // Harden BEFORE any secret bytes are written. `create_new` opens at
+        // `0o666 & ~umask` (0644 under the usual 022), and the atomic rename
+        // below carries the *temp file's* mode onto the live config — so
+        // without this every save silently re-widened a config that holds
+        // `enc2:` provider keys and channel tokens back to world-readable, and
+        // `fs::copy` propagated the same mode onto `config.toml.bak`. The
+        // load-time auto-fix only ever repaired it on the next startup.
+        // Same pattern as `keyring::backend`.
+        //
+        // Non-fatal by design: filesystems that do not implement chmod
+        // (CIFS/SMB, exFAT, some FUSE mounts) would otherwise turn a save that
+        // has always worked into a hard failure. A failed hardening leaves the
+        // file exactly as permissive as it was before this call existed, so
+        // warn and continue rather than regress writability — matching the
+        // best-effort `let _ = set_permissions(..)` on the first-init path.
+        #[cfg(unix)]
+        {
+            use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+            if let Err(e) = fs::set_permissions(&temp_path, Permissions::from_mode(0o600)).await {
+                tracing::warn!(
+                    path = %temp_path.display(),
+                    error = %e,
+                    "[security][config] could not restrict config file to 0600; \
+                     it may be readable by other local users"
+                );
+            }
+        }
+
         temp_file
             .write_all(toml_str.as_bytes())
             .await

@@ -758,6 +758,21 @@ fn is_config_read_io_failure_message(lower: &str) -> bool {
     if lower.contains("is a directory") || lower.contains("not a file") {
         return false;
     }
+    // The file is owned by a uid other than the one reading it. That is an
+    // OpenHuman defect, not user-environment state: *we* pick the runtime uid
+    // (Dockerfile) and *we* write the config at 0600 (`impl_load.rs`), and the
+    // container entrypoint chowns only the workspace directory — so a
+    // stale-uid `config.toml` inside a reused volume denies every config RPC
+    // (including the sign-in `auth_store_session`) while `/health` stays green.
+    // There IS a local lever here, so it must keep paging. Genuine ACL /
+    // antivirus / OneDrive denials carry no marker and stay demoted.
+    //
+    // Referencing the loader's constant (rather than a copied literal) makes
+    // the producer/consumer coupling a compile-time one: the marker is already
+    // lowercase, so it matches `lower` verbatim.
+    if lower.contains(crate::openhuman::config::schema::CONFIG_OWNER_MISMATCH_MARKER) {
+        return false;
+    }
     lower.contains("access is denied")
         || lower.contains("permission denied")
         || lower.contains("being used by another process")
@@ -4334,6 +4349,42 @@ mod tests {
         assert_eq!(
             expected_error_kind(
                 "reading config.toml from C:\\Users\\u\\.openhuman\\users\\local-wb\\config.toml: Access is denied. (os error 5)"
+            ),
+            Some(ExpectedErrorKind::ConfigReadIoFailure),
+        );
+    }
+
+    /// A denial caused by the config being owned by a *different uid than the
+    /// process reading it* is an OpenHuman defect, not user-environment state:
+    /// we pick the container runtime uid and we write the file at 0600, and the
+    /// entrypoint historically chowned only the workspace directory — so a
+    /// reused volume denied every config RPC (including the sign-in
+    /// `auth_store_session`) while `/health` stayed green and Sentry saw
+    /// nothing. It must keep paging.
+    #[test]
+    fn does_not_demote_config_read_denial_on_owner_mismatch() {
+        let marker = crate::openhuman::config::schema::CONFIG_OWNER_MISMATCH_MARKER;
+        assert_ne!(
+            expected_error_kind(&format!(
+                "Failed to read config file: /home/openhuman/.openhuman/config.toml {marker} \
+                 (file uid=0 gid=0 mode=0600; process euid=10001 egid=10001): \
+                 Permission denied (os error 13)"
+            )),
+            Some(ExpectedErrorKind::ConfigReadIoFailure),
+        );
+    }
+
+    /// The complement: without the marker the file is ours and readable-in-
+    /// principle, so the denial really is an ACL / antivirus / OneDrive
+    /// condition with no local lever, and stays demoted. Guarding this pins
+    /// that the exclusion above is keyed on the marker, not on "permission".
+    #[test]
+    fn still_demotes_config_read_denial_without_owner_mismatch() {
+        assert_eq!(
+            expected_error_kind(
+                "Failed to read config file: /home/u/.openhuman/users/local/config.toml \
+                 (file uid=501 gid=20 mode=0000; process euid=501 egid=20): \
+                 Permission denied (os error 13)"
             ),
             Some(ExpectedErrorKind::ConfigReadIoFailure),
         );

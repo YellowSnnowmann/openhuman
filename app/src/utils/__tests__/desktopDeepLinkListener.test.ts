@@ -415,6 +415,19 @@ describe('classifyAuthStoreFailure', () => {
     expect(classifyAuthStoreFailure(bare)).toBe('auth_me_other');
     expect(classifyAuthStoreFailure(bare)).not.toBe('other');
   });
+
+  // A core that cannot read its own config.toml fails EVERY config-dependent
+  // RPC the same way. Bucketing it as 'other' surfaced "Sign-in failed. Please
+  // try again." for a fault no amount of retrying clears.
+  it('classifies an unreadable core config as its own permanent kind', () => {
+    const reported =
+      'Failed to read config file: /home/openhuman/.openhuman/config.toml ' +
+      '[config owner mismatch] (file uid=0 gid=0 mode=0600; process euid=10001 egid=10001): ' +
+      'Permission denied (os error 13)';
+
+    expect(classifyAuthStoreFailure(reported)).toBe('config_unreadable');
+    expect(classifyAuthStoreFailure(reported)).not.toBe('other');
+  });
 });
 
 describe('authStoreFailureUserMessage (issue #3025)', () => {
@@ -433,6 +446,19 @@ describe('authStoreFailureUserMessage (issue #3025)', () => {
       expect(authStoreFailureUserMessage(kind, mode)).toBe('Sign-in failed. Please try again.');
     }
   });
+
+  // Unlike the transport kinds, an unreadable config is a property of whichever
+  // core answered — embedded or remote — so the copy must not be gated on
+  // cloud mode, and must never degrade to "try again".
+  it.each(['local', 'cloud', null] as const)(
+    'gives config_unreadable actionable copy for mode=%s',
+    mode => {
+      const msg = authStoreFailureUserMessage('config_unreadable', mode);
+      expect(msg).not.toBe('Sign-in failed. Please try again.');
+      expect(msg.toLowerCase()).toContain('config.toml');
+      expect(msg).not.toMatch(/\/home\/openhuman|os error|uid=/);
+    }
+  );
 
   it('points cloud-mode users at the remote runtime, not a dead-end retry', () => {
     for (const kind of CLOUD_KINDS) {
