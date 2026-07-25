@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export interface DeepLinkAuthState {
+interface DeepLinkAuthState {
   isProcessing: boolean;
   errorMessage: string | null;
   // i18n key to render INSTEAD of `errorMessage`, for failures whose copy is
