@@ -378,9 +378,10 @@ async fn store_session_defers_live_jwt_when_auth_me_hangs_past_budget() {
         .await
         .unwrap();
     // The 200ms budget must cap the 60s hang — proves the timeout fired rather
-    // than the store awaiting the backend.
+    // than the store awaiting the backend. Bound safely above the 200ms budget
+    // but below the 12s default so a multi-second regression still fails.
     assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
+        started.elapsed() < std::time::Duration::from_secs(2),
         "store-time validation should be capped by the budget, took {:?}",
         started.elapsed()
     );
