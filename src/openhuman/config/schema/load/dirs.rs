@@ -7,7 +7,7 @@ use tokio::fs;
 
 pub use load_user_state::{
     active_user_marker_path, clear_active_user, pre_login_user_dir, read_active_user_id,
-    user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
+    read_active_user_id_checked, user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
 };
 
 #[path = "../load_user_state.rs"]
@@ -324,7 +324,15 @@ pub(super) async fn resolve_config_dirs_ignoring_env(
     default_openhuman_dir: &Path,
     default_workspace_dir: &Path,
 ) -> Result<(PathBuf, PathBuf, ConfigResolutionSource)> {
-    if let Some(user_id) = read_active_user_id(default_openhuman_dir) {
+    // `read_active_user_id_checked` (not the lossy `read_active_user_id`): a
+    // transient read fault on an *existing* marker propagates as an error here
+    // instead of masquerading as "no active user". Falling through to the
+    // pre-login directory in that case boots a signed-in user into a fresh,
+    // empty `users/local` profile and orphans their real data under
+    // `users/<id>` — the "app reset itself" symptom (#5334). Failing the boot
+    // loudly (and retrying on the next launch, once the file lock clears) keeps
+    // the data intact.
+    if let Some(user_id) = read_active_user_id_checked(default_openhuman_dir)? {
         let user_dir = user_openhuman_dir(default_openhuman_dir, &user_id);
         let user_workspace = user_dir.join("workspace");
         tracing::debug!(
