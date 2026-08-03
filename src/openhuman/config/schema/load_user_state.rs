@@ -45,40 +45,74 @@ pub fn active_user_marker_path(default_openhuman_dir: &Path) -> PathBuf {
 /// decides *which* config to load must be at least as resilient.
 pub fn read_active_user_id_checked(default_openhuman_dir: &Path) -> Result<Option<String>> {
     let path = active_user_marker_path(default_openhuman_dir);
-
-    let read_once = || -> Result<String> {
-        std::fs::read_to_string(&path)
-            .with_context(|| format!("read active user marker: {}", path.display()))
-    };
-
     // `retry_with_backoff` bails immediately on a non-transient error (incl.
     // `NotFound`), and only re-attempts the Windows file-lock class of faults —
-    // exactly the resilience the config-file read already has.
-    let contents =
-        match crate::openhuman::util::retry_with_backoff("read active_user.toml", 4, 20, read_once)
-        {
-            Ok(contents) => contents,
-            Err(err) => {
-                // A genuinely missing marker is the expected signed-out state, not a
-                // fault: fall through to the pre-login profile exactly as before.
-                let missing = err.chain().any(|cause| {
-                    cause
-                        .downcast_ref::<std::io::Error>()
-                        .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
-                });
-                if missing {
-                    return Ok(None);
-                }
-                tracing::warn!(
-                    path = %path.display(),
-                    error = %format!("{err:#}"),
-                    "[config] active_user.toml exists but could not be read; refusing to \
-                     downgrade to the pre-login profile so a signed-in user's data under \
-                     users/<id> is not orphaned"
-                );
-                return Err(err);
+    // exactly the resilience the config-file read already has. This variant is
+    // synchronous for the best-effort sync callers reached via
+    // [`read_active_user_id`]; async callers must use
+    // [`read_active_user_id_checked_async`] to avoid blocking sleeps.
+    let read = crate::openhuman::util::retry_with_backoff("read active_user.toml", 4, 20, || {
+        std::fs::read_to_string(&path)
+            .with_context(|| format!("read active user marker: {}", path.display()))
+    });
+    interpret_active_user_marker(&path, read)
+}
+
+/// Async counterpart of [`read_active_user_id_checked`] for callers already on
+/// the tokio executor (the config-directory resolver).
+///
+/// It retries with `retry_with_backoff_async` so a transient-lock backoff never
+/// blocks a worker thread with `std::thread::sleep` — the same reason the
+/// `config.toml` read uses the async helper
+/// (`read_config_with_recovery_or_default`). The outcome classification
+/// (missing → `Ok(None)`, other read fault → `Err`, unparseable → `Ok(None)`)
+/// is shared with the sync variant so the two cannot drift.
+pub async fn read_active_user_id_checked_async(
+    default_openhuman_dir: &Path,
+) -> Result<Option<String>> {
+    let path = active_user_marker_path(default_openhuman_dir);
+    let read =
+        crate::openhuman::util::retry_with_backoff_async("read active_user.toml", 4, 20, || {
+            let path = path.clone();
+            async move {
+                tokio::fs::read_to_string(&path)
+                    .await
+                    .with_context(|| format!("read active user marker: {}", path.display()))
             }
-        };
+        })
+        .await;
+    interpret_active_user_marker(&path, read)
+}
+
+/// Shared classification of an (already retried) active-user marker read, so the
+/// sync and async readers above cannot drift. Maps the raw read result to the
+/// active user id, applying the missing/unparseable → signed-out and
+/// unexpected-fault → error policy documented on
+/// [`read_active_user_id_checked`].
+fn interpret_active_user_marker(path: &Path, read: Result<String>) -> Result<Option<String>> {
+    let contents = match read {
+        Ok(contents) => contents,
+        Err(err) => {
+            // A genuinely missing marker is the expected signed-out state, not a
+            // fault: fall through to the pre-login profile exactly as before.
+            let missing = err.chain().any(|cause| {
+                cause
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+            });
+            if missing {
+                return Ok(None);
+            }
+            tracing::warn!(
+                path = %path.display(),
+                error = %format!("{err:#}"),
+                "[config] active_user.toml exists but could not be read; refusing to \
+                 downgrade to the pre-login profile so a signed-in user's data under \
+                 users/<id> is not orphaned"
+            );
+            return Err(err);
+        }
+    };
 
     // A corrupt (unparseable) marker cannot identify the active user. Treat it
     // as signed-out rather than an error: the id is re-established atomically on
