@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 
+import { maybeSurfaceConfigRecovery } from '../lib/configRecoveryNotice';
 import {
   type CoreAppSnapshot,
   type CoreState,
@@ -288,6 +289,9 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   const refreshCore = useCallback(async () => {
     const requestId = ++snapshotRequestIdRef.current;
     const rawSnapshot = await fetchCoreAppSnapshot();
+    // Raise a one-shot notice if the core recovered a corrupted config.toml
+    // this session (#5167). Guarded internally so repeated polls don't re-fire.
+    maybeSurfaceConfigRecovery(rawSnapshot.configRecovered);
     const snapshot = normalizeSnapshot(rawSnapshot);
     if (!isMountedRef.current) {
       return;
