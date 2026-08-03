@@ -1202,6 +1202,9 @@ describe('describeProviderVerificationFailure', () => {
 describe('classifyProviderVerificationFailure', () => {
   it('maps each recognised shape onto its reason, defaulting to unknown', () => {
     expect(classifyProviderVerificationFailure('HTTP 401 invalid_api_key')).toBe('auth');
+    // 403 / Forbidden is a rejected-credential failure (revoked / no-permission key).
+    expect(classifyProviderVerificationFailure('provider returned 403: forbidden')).toBe('auth');
+    expect(classifyProviderVerificationFailure('Forbidden')).toBe('auth');
     expect(classifyProviderVerificationFailure('unknown model')).toBe('model');
     expect(classifyProviderVerificationFailure('429 rate limit')).toBe('quota');
     expect(classifyProviderVerificationFailure('HTTP 404')).toBe('endpoint');

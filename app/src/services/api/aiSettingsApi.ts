@@ -509,6 +509,11 @@ export function classifyProviderVerificationFailure(raw: string): ProviderVerifi
 
   if (
     haystack.includes('401') ||
+    // 403 / Forbidden is a rejected-credential failure too (revoked key, key
+    // lacking permission). It must classify as `auth` so the add-time flow
+    // rolls back and rejects rather than keeping a broken key (#5341).
+    haystack.includes('403') ||
+    haystack.includes('forbidden') ||
     haystack.includes('invalid api key') ||
     haystack.includes('invalid_api_key') ||
     haystack.includes('incorrect api key') ||

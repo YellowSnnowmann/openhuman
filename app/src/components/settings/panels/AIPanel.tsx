@@ -3254,8 +3254,6 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                       if (enabled && existing) {
                         // Toggle OFF: remove the provider + scrub any
                         // routing entries that pin to it.
-                        // Drop any advisory that referenced this provider (#5339).
-                        setProviderSaveNotice(null);
                         const remaining = draft.cloudProviders.filter(cp => cp.id !== existing.id);
                         const nextRouting = routingWithProviderRemoved(
                           draft.routing,
@@ -3287,8 +3285,6 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                     enabled
                     busy={busyAction === `toggle-${existing.slug}`}
                     onToggle={async () => {
-                      // Drop any advisory that referenced this provider (#5339).
-                      setProviderSaveNotice(null);
                       const remaining = draft.cloudProviders.filter(cp => cp.id !== existing.id);
                       const nextRouting = routingWithProviderRemoved(
                         draft.routing,
