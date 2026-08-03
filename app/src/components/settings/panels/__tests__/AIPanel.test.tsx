@@ -59,6 +59,11 @@ vi.mock('../../../../services/api/aiSettingsApi', () => ({
   // covered in aiSettingsApi.test.ts.
   describeProviderVerificationFailure: (slug: string, _raw: string) =>
     `The key was saved, but '${slug}' rejected it. Check that you pasted the whole key.`,
+  // #5339: connectProvider routes on the classification — an auth failure still
+  // rejects+rolls back, anything else is a non-fatal advisory. Mirror the real
+  // shape (the mapping itself is covered in aiSettingsApi.test.ts).
+  classifyProviderVerificationFailure: (raw: string) =>
+    /401|unauthorized|invalid api key/i.test(raw) ? 'auth' : 'unknown',
   modelRegistryVision: vi.fn(() => false),
   upsertModelRegistryVision: vi.fn((registry: unknown[]) => registry),
   setCloudProviderKey: vi.fn().mockResolvedValue(undefined),
@@ -958,6 +963,49 @@ describe('AIPanel', () => {
     expect(
       within(dialog).queryByRole('button', { name: /Sign in with ChatGPT \/ Codex/i })
     ).not.toBeInTheDocument();
+  });
+
+  it('#5339: keeps a valid key and saves the provider when the add-time probe fails for a non-auth reason', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
+    // `/models` is momentarily unreachable — NOT an auth failure. The key is
+    // plausibly valid and must not be discarded or the save blocked.
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('HTTP request failed'));
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Connect DeepSeek/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Connect DeepSeek/i });
+    fireEvent.change(within(dialog).getByLabelText(/API key/i), {
+      target: { value: 'sk-deepseek-123' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Save$/i }));
+
+    // Settings persisted, key kept (never cleared).
+    await waitFor(() => expect(saveAISettings).toHaveBeenCalled());
+    expect(setCloudProviderKey).toHaveBeenCalledWith('deepseek', 'sk-deepseek-123');
+    expect(clearCloudProviderKey).not.toHaveBeenCalled();
+    // A truthful advisory replaces the old "not saved" dead end.
+    const advisory = await screen.findByText(/The key was saved, but 'deepseek'/);
+    expect(advisory).toBeInTheDocument();
+    // The advisory is dismissible.
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss/i }));
+    await waitFor(() =>
+      expect(screen.queryByText(/The key was saved, but 'deepseek'/)).not.toBeInTheDocument()
+    );
+  });
+
+  it('#5339: rejects and clears the key when the add-time probe fails with an auth error', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
+    // A 401 means the key itself is wrong — roll back and reject so the user fixes it.
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('HTTP 401 invalid api key'));
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Connect DeepSeek/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Connect DeepSeek/i });
+    fireEvent.change(within(dialog).getByLabelText(/API key/i), { target: { value: 'sk-bad' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Save$/i }));
+
+    await waitFor(() => expect(clearCloudProviderKey).toHaveBeenCalledWith('deepseek'));
+    expect(saveAISettings).not.toHaveBeenCalled();
   });
 
   it('shows a localized Kimi platform link and opens the supported .ai platform', async () => {

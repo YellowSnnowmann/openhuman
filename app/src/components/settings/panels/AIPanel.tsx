@@ -17,6 +17,7 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import {
   type AISettings as ApiAISettings,
   type ProviderRef as ApiProviderRef,
+  classifyProviderVerificationFailure,
   clearCloudProviderKey,
   type CloudProviderView,
   describeProviderVerificationFailure,
@@ -2899,6 +2900,12 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
   // an error on its own. Re-fetched whenever settings reload (a key
   // save/remove clears the matching entry core-side).
   const [providerAuthErrors, setProviderAuthErrors] = useState<ProviderAuthError[]>([]);
+  // #5339: non-fatal "the key was saved, but the provider was unreachable"
+  // advisory. Set when an add-time reachability probe fails for a *non-auth*
+  // reason (timeout / unreachable / unknown): the key is plausibly valid, so it
+  // is kept and the provider saved rather than rolled back. Distinct from
+  // `providerAuthErrors` (runtime 401/403) and from a hard save error.
+  const [providerSaveNotice, setProviderSaveNotice] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     void loadProviderAuthErrors()
@@ -2956,6 +2963,8 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
       // `claude` CLI. Mirrors the Codex skip, but also skips model listing.
       const isCliLogin = credentialMode === 'cli_login';
       setBusyAction(`toggle-${localLabel ? localLabel.toLowerCase().replace(/\s/g, '') : slug}`);
+      // Fresh attempt clears any prior "saved but unreachable" advisory (#5339).
+      setProviderSaveNotice(null);
 
       try {
         const trimmed = value.trim();
@@ -3041,12 +3050,43 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
             try {
               await listProviderModels(slug);
             } catch (probeErr) {
-              await flushCloudProviders(priorWireProviders).catch(() => {});
-              if (!isLocalRuntime && slug !== 'openhuman') {
-                await clearCloudProviderKey(slug).catch(() => {});
-              }
               const msg = probeErr instanceof Error ? probeErr.message : String(probeErr);
-              throw new Error(`Could not reach ${upserted.label}: ${msg}`);
+              const reason = classifyProviderVerificationFailure(msg);
+              // Only a cloud KEY provider (a key was just written at
+              // `setCloudProviderKey` above) gets the non-fatal treatment. Local
+              // runtimes (ollama/lmstudio/omlx) keep the original reject-on-probe
+              // behaviour: an unreachable local runtime is a genuine setup error,
+              // and it holds no API key to preserve.
+              const isKeyProvider = !isLocalRuntime && slug !== 'openhuman';
+              if (isKeyProvider && reason !== 'auth') {
+                // #5339: transient / unreachable / unknown — the key is plausibly
+                // valid, so do NOT discard it or block the save. Keep the key +
+                // provider entry, record a non-fatal advisory, and fall through to
+                // persist. Prevents a valid key being lost/orphaned over a momentary
+                // `/models` hiccup (the built-in key dialog has no "add anyway"
+                // escape hatch the custom-provider editor got in #5213).
+                console.warn(
+                  `[ai-settings] provider=${slug} add-time probe non-fatal reason=${reason}`
+                );
+                setProviderSaveNotice(describeProviderVerificationFailure(slug, msg, t));
+              } else {
+                // Auth failure (wrong key), or a local runtime that isn't up:
+                // roll both stores back and reject so the user fixes it. Rollback
+                // failures are LOGGED, never swallowed — a silently failed
+                // key-clear is exactly what orphans a key on disk (#5339).
+                await flushCloudProviders(priorWireProviders).catch(rollbackErr =>
+                  console.warn(`[ai-settings] rollback flush failed slug=${slug}`, rollbackErr)
+                );
+                if (isKeyProvider) {
+                  await clearCloudProviderKey(slug).catch(rollbackErr =>
+                    console.warn(
+                      `[ai-settings] rollback clearCloudProviderKey failed slug=${slug}`,
+                      rollbackErr
+                    )
+                  );
+                }
+                throw new Error(`Could not reach ${upserted.label}: ${msg}`);
+              }
             }
           }
         }
@@ -3068,7 +3108,7 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
         setBusyAction(null);
       }
     },
-    [draft, persist, saved.cloudProviders]
+    [draft, persist, saved.cloudProviders, t]
   );
 
   const connectOpenAiViaCodexAuth = useCallback(async () => {
@@ -3163,6 +3203,24 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
             </div>
           )}
 
+          {/* #5339: non-fatal "key saved, but provider unreachable" advisory.
+              Amber (not coral): the save succeeded, only reachability is in
+              question. */}
+          {providerSaveNotice && (
+            <div
+              role="status"
+              className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+              <LuCircleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <span className="flex-1">{providerSaveNotice}</span>
+              <button
+                type="button"
+                className="shrink-0 font-medium underline-offset-2 hover:underline"
+                onClick={() => setProviderSaveNotice(null)}>
+                {t('common.dismiss')}
+              </button>
+            </div>
+          )}
+
           {/* ─── Provider chip-toggle list ────────────────────────────────── */}
           <section className="space-y-3">
             {loading && <div className="text-xs text-content-muted">{t('common.loading')}</div>}
@@ -3196,6 +3254,8 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                       if (enabled && existing) {
                         // Toggle OFF: remove the provider + scrub any
                         // routing entries that pin to it.
+                        // Drop any advisory that referenced this provider (#5339).
+                        setProviderSaveNotice(null);
                         const remaining = draft.cloudProviders.filter(cp => cp.id !== existing.id);
                         const nextRouting = routingWithProviderRemoved(
                           draft.routing,
@@ -3227,6 +3287,8 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                     enabled
                     busy={busyAction === `toggle-${existing.slug}`}
                     onToggle={async () => {
+                      // Drop any advisory that referenced this provider (#5339).
+                      setProviderSaveNotice(null);
                       const remaining = draft.cloudProviders.filter(cp => cp.id !== existing.id);
                       const nextRouting = routingWithProviderRemoved(
                         draft.routing,
@@ -3611,9 +3673,22 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                   try {
                     await listProviderModels(upserted.slug);
                   } catch (probeErr) {
-                    await flushCloudProviders(priorWireProviders).catch(() => {});
+                    // Roll back both stores. Failures are LOGGED, never swallowed:
+                    // a silently failed key-clear orphans the key on disk (#5339).
+                    // The user can still "add anyway" (`skipProbe`) to keep it.
+                    await flushCloudProviders(priorWireProviders).catch(rollbackErr =>
+                      console.warn(
+                        `[ai-settings] rollback flush failed slug=${upserted.slug}`,
+                        rollbackErr
+                      )
+                    );
                     if (apiKey) {
-                      await clearCloudProviderKey(upserted.slug).catch(() => {});
+                      await clearCloudProviderKey(upserted.slug).catch(rollbackErr =>
+                        console.warn(
+                          `[ai-settings] rollback clearCloudProviderKey failed slug=${upserted.slug}`,
+                          rollbackErr
+                        )
+                      );
                     }
                     const msg = probeErr instanceof Error ? probeErr.message : String(probeErr);
                     console.warn('[ai-settings] provider /models probe failed', {
