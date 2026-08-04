@@ -233,7 +233,11 @@ const CODING_SESSION_BASE_TIMEOUT_MS = 120_000;
 const CODING_SESSION_PER_SESSION_TIMEOUT_MS = 30_000;
 const CODING_SESSION_RPC_GRACE_MS = 15_000;
 // Hard safety cap on drain passes so a stuck backlog can never spin forever.
-const CODING_SESSION_MAX_DRAIN_PASSES = 500;
+// Sized well above the largest realistic history: at 15 sessions/pass this
+// covers ~30k sessions in a single run, so the target ~7,800-file case drains
+// fully rather than exiting capped. The `moreRemaining` flag still lets the UI
+// report an honest "paused" state if the cap is ever reached.
+const CODING_SESSION_MAX_DRAIN_PASSES = 2000;
 
 export async function getCodingSessionStatus(): Promise<CodingSessionSourceStatus[]> {
   log('coding_session_status: entry');
@@ -318,12 +322,14 @@ export interface CodingSessionDrainOptions {
 export async function drainCodingSessions(
   options: CodingSessionDrainOptions = {}
 ): Promise<CodingSessionDrainProgress> {
-  const {
-    onProgress,
-    shouldStop,
-    maxSessionsPerPass = CODING_SESSION_BATCH_MAX,
-    maxPasses = CODING_SESSION_MAX_DRAIN_PASSES,
-  } = options;
+  const { onProgress, shouldStop } = options;
+  const maxSessionsPerPass = options.maxSessionsPerPass ?? CODING_SESSION_BATCH_MAX;
+  // Normalize the safety cap: a non-finite or non-positive override would defeat
+  // the runaway guard, so fall back to the default in that case.
+  const maxPasses =
+    Number.isFinite(options.maxPasses) && (options.maxPasses as number) > 0
+      ? Math.trunc(options.maxPasses as number)
+      : CODING_SESSION_MAX_DRAIN_PASSES;
 
   const progress: CodingSessionDrainProgress = {
     passes: 0,

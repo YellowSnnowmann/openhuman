@@ -136,6 +136,33 @@ describe('CodingSessionsCard', () => {
     );
   });
 
+  it('reports a paused import when the backlog remains without a user stop (cap/stall)', async () => {
+    // moreRemaining=true with no Stop click — the drain hit the pass cap or
+    // stalled. This must NOT be reported as a complete success.
+    mockedDrain.mockResolvedValue({
+      passes: 2000,
+      sessionsProcessed: 30000,
+      sessionsFailed: 0,
+      observations: 12000,
+      remaining: 300,
+      moreRemaining: true,
+    });
+    const onToast = vi.fn();
+    renderWithProviders(<CodingSessionsCard onToast={onToast} />);
+
+    fireEvent.click(await screen.findByTestId('coding-sessions-ingest'));
+
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'info',
+          title: 'Import paused',
+          message: 'Imported 30000 sessions. Run import again to continue the remaining 300.',
+        })
+      )
+    );
+  });
+
   it('reports partial session failures in the warning toast', async () => {
     mockedDrain.mockResolvedValue({
       passes: 1,

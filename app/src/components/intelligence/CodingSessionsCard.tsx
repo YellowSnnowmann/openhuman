@@ -26,8 +26,11 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
   const [ingesting, setIngesting] = useState(false);
   const [progress, setProgress] = useState<CodingSessionDrainProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Set by the Stop button and polled by the drain loop between passes.
+  // The ref keeps the synchronous `shouldStop` poll contract for the drain loop;
+  // the state mirror drives an immediate re-render so the Stop button disables on
+  // click instead of waiting for the next pass to fire `onProgress`.
   const stopRequestedRef = useRef(false);
+  const [stopRequested, setStopRequested] = useState(false);
 
   const load = useCallback(async () => {
     console.debug('[coding-sessions] status: entry');
@@ -61,6 +64,7 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
   const ingest = useCallback(async () => {
     console.debug('[coding-sessions] drain: entry');
     stopRequestedRef.current = false;
+    setStopRequested(false);
     setIngesting(true);
     setProgress(null);
     setError(null);
@@ -76,13 +80,16 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
         result.sessionsFailed,
         result.moreRemaining
       );
-      const stopped = stopRequestedRef.current && result.moreRemaining;
+      // Any leftover backlog is incomplete, regardless of why the loop exited —
+      // a user Stop, the pass cap, or a stalled pass. Only a fully drained run
+      // (no more budget) is reported as complete success.
+      const incomplete = result.moreRemaining;
       const message =
         result.sessionsFailed > 0
           ? t('memorySources.codingSessions.partialFailure')
               .replace('{failed}', String(result.sessionsFailed))
               .replace('{processed}', String(result.sessionsProcessed))
-          : stopped
+          : incomplete
             ? t('memorySources.codingSessions.stoppedMessage')
                 .replace('{processed}', String(result.sessionsProcessed))
                 .replace('{remaining}', String(result.remaining))
@@ -90,8 +97,8 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
                 .replace('{processed}', String(result.sessionsProcessed))
                 .replace('{observations}', String(result.observations));
       onToast?.({
-        type: result.sessionsFailed > 0 ? 'warning' : stopped ? 'info' : 'success',
-        title: stopped
+        type: result.sessionsFailed > 0 ? 'warning' : incomplete ? 'info' : 'success',
+        title: incomplete
           ? t('memorySources.codingSessions.stopped')
           : t('memorySources.codingSessions.complete'),
         message,
@@ -111,6 +118,7 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
   const stopDrain = useCallback(() => {
     console.debug('[coding-sessions] drain: stop requested');
     stopRequestedRef.current = true;
+    setStopRequested(true);
   }, []);
 
   return (
@@ -133,7 +141,7 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
               size="sm"
               variant="secondary"
               onClick={stopDrain}
-              disabled={stopRequestedRef.current}
+              disabled={stopRequested}
               data-testid="coding-sessions-stop">
               {t('memorySources.codingSessions.stop')}
             </Button>
