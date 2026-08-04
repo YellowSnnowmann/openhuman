@@ -378,4 +378,98 @@ mod tests {
             "unknown provider must error through the delegated factory"
         );
     }
+
+    /// End-to-end binding proof (#5356): a provider built **through
+    /// `create_embedding_provider_with_config`** must authenticate with the
+    /// `app-session` token stored under the *config* credential scope. A local
+    /// mock stands in for the cloud backend (no external network) and captures
+    /// the bearer it receives. A regression to `OpenHumanCloudEmbedding::new(None,
+    /// None, true, …)` would resolve the token from `default_state_dir()` — a
+    /// different directory with no token — and fail with "No backend session"
+    /// before any request, so this test fails if the factory ignores `config`.
+    #[tokio::test]
+    async fn factory_managed_provider_authenticates_with_config_scoped_token() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+
+        // Mock cloud embeddings backend at {BACKEND_URL}/openai/v1/embeddings.
+        #[derive(Clone, Default)]
+        struct Captured {
+            auth: Arc<Mutex<Option<String>>>,
+        }
+        let captured = Captured::default();
+        let app = Router::new()
+            .route(
+                "/openai/v1/embeddings",
+                post(
+                    |State(cap): State<Captured>,
+                     headers: HeaderMap,
+                     Json(_body): Json<serde_json::Value>| async move {
+                        *cap.auth.lock().unwrap() = headers
+                            .get("authorization")
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_owned);
+                        Json(serde_json::json!({
+                            "object": "list",
+                            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1_f32, 0.2, 0.3] }],
+                            "model": "voyage-3-large",
+                        }))
+                    },
+                ),
+            )
+            .with_state(captured.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        // The app-session token lives ONLY under the config credential scope.
+        let tmp = TempDir::new().unwrap();
+        let config = test_config(&tmp);
+        AuthService::from_config(&config)
+            .store_provider_token(
+                APP_SESSION_PROVIDER,
+                "default",
+                "sess-scoped-5356",
+                HashMap::new(),
+                true,
+            )
+            .unwrap();
+
+        // `OpenHumanCloudEmbedding::new` bakes the base URL at construction, so
+        // BACKEND_URL only needs to point at the mock while the factory builds —
+        // held under the crate-wide backend-env lock (shared with `api::config`'s
+        // own BACKEND_URL tests) so the process-global env can't race.
+        let provider = {
+            let _env_guard = crate::api::config::backend_env_test_lock();
+            let prev = std::env::var("BACKEND_URL").ok();
+            std::env::set_var("BACKEND_URL", &base);
+            let built = create_embedding_provider_with_config(
+                &config,
+                "managed",
+                "voyage-3-large",
+                3,
+                "",
+                None,
+            )
+            .expect("managed provider builds via config-aware factory");
+            match prev {
+                Some(v) => std::env::set_var("BACKEND_URL", v),
+                None => std::env::remove_var("BACKEND_URL"),
+            }
+            built
+        };
+
+        // Embed: the lazy bearer resolver reads the config scope, finds the
+        // token, and authenticates to the mock.
+        let vectors = provider.embed(&["binding probe"]).await.expect(
+            "factory-built managed provider must resolve the config-scoped token and embed",
+        );
+        assert_eq!(vectors.first().map(|v| v.len()).unwrap_or(0), 3);
+        assert_eq!(
+            captured.auth.lock().unwrap().as_deref(),
+            Some("Bearer sess-scoped-5356"),
+            "managed provider must authenticate with the token from the config scope"
+        );
+    }
 }
