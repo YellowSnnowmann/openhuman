@@ -182,6 +182,9 @@ async fn reembed_collect(
             }
             Err(e) => {
                 let failure = health::classify_embed_error(&e);
+                // #5354: name the local-runtime fix on the status panel now
+                // rather than after the retry budget drains.
+                health::mark_local_model_unavailable_if_applicable(&failure);
                 if matches!(failure.code, health::FailureCode::AuthMissing) {
                     return Err(anyhow::Error::new(failure).context(format!(
                         "reembed: {label} {id} cloud auth missing (sig={active_sig}): {e:#}"

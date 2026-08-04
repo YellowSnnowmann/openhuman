@@ -7180,8 +7180,12 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Kunci API diperlukan',
   'userErrors.apiKeyMissing.body':
     'Penyedia AI Anda belum memiliki kunci API. Tambahkan satu di pengaturan penyedia untuk melanjutkan.',
+  'userErrors.localModelUnavailable.title': 'Model lokal tidak tersedia',
+  'userErrors.localModelUnavailable.body':
+    'Ollama tidak berjalan, atau model yang dibutuhkan belum pernah diunduh. Jalankan Ollama dan unduh modelnya, atau alihkan tugas ini ke penyedia cloud.',
   'userErrors.scope.chat': 'Obrolan',
   'userErrors.scope.cron': 'Tugas terjadwal',
+  'userErrors.scope.memory': 'Memori',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',
   'agentWorld.trading.networkLabel': 'Jaringan',

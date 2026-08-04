@@ -14,10 +14,26 @@
  */
 
 /** Stable discriminator the UI branches on. Extend as new states are added. */
-export type UserErrorKind = 'insufficient_credits' | 'budget_exceeded' | 'api_key_missing';
+export type UserErrorKind =
+  | 'insufficient_credits'
+  | 'budget_exceeded'
+  | 'api_key_missing'
+  /**
+   * The local model runtime a workload depends on is not usable — Ollama is
+   * not running, or the configured model was never pulled (#5354). Mirrors the
+   * core-side `LOCAL_MODEL_UNAVAILABLE_KIND` token.
+   */
+  | 'local_model_unavailable';
 
 /** Where the failure originated, for grouping/labelling (privacy-safe). */
-export type UserErrorScope = 'chat' | 'cron' | 'provider' | 'integration' | 'workspace';
+export type UserErrorScope =
+  | 'chat'
+  | 'cron'
+  | 'provider'
+  | 'integration'
+  | 'workspace'
+  /** Memory ingestion / embedding pipeline. */
+  | 'memory';
 
 /** Primary next-step the user can take. `dismiss` is always available too. */
 export type UserErrorAction = 'open_billing' | 'open_provider_settings' | 'dismiss';

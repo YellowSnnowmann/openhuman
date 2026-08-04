@@ -26,6 +26,11 @@ impl tinycortex::memory::score::embed::Embedder for EmbedderBridge<'_> {
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         let vector = self.0.embed(text).await.map_err(|error| {
             let failure = crate::openhuman::memory::tree::health::classify_embed_error(&error);
+            // #5354: name the local-runtime fix on the status panel now rather
+            // than after the retry budget drains.
+            crate::openhuman::memory::tree::health::mark_local_model_unavailable_if_applicable(
+                &failure,
+            );
             anyhow::Error::new(failure).context(format!("seal embedding failed: {error:#}"))
         })?;
         crate::openhuman::memory::tree::score::embed::pack_checked(&vector)

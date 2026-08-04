@@ -7277,8 +7277,12 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Chiave API richiesta',
   'userErrors.apiKeyMissing.body':
     'Il tuo provider IA non ha una chiave API impostata. Aggiungine una nelle impostazioni del provider per continuare.',
+  'userErrors.localModelUnavailable.title': 'Modello locale non disponibile',
+  'userErrors.localModelUnavailable.body':
+    'Ollama non è in esecuzione, oppure il modello necessario non è mai stato scaricato. Avvia Ollama e scarica il modello, oppure sposta questa attività su un provider cloud.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Attività pianificata',
+  'userErrors.scope.memory': 'Memoria',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Importo',
   'agentWorld.trading.networkLabel': 'Rete',

@@ -7144,8 +7144,12 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API কী প্রয়োজন',
   'userErrors.apiKeyMissing.body':
     'আপনার AI প্রদানকারীর কোনো API কী সেট নেই। চালিয়ে যেতে প্রদানকারী সেটিংসে একটি যোগ করুন।',
+  'userErrors.localModelUnavailable.title': 'লোকাল মডেল অনুপলব্ধ',
+  'userErrors.localModelUnavailable.body':
+    'Ollama চলছে না, অথবা প্রয়োজনীয় মডেলটি কখনও পুল করা হয়নি। Ollama চালু করে মডেলটি পুল করুন, অথবা এই কাজটি কোনো ক্লাউড প্রোভাইডারে সরিয়ে নিন।',
   'userErrors.scope.chat': 'চ্যাট',
   'userErrors.scope.cron': 'নির্ধারিত কাজ',
+  'userErrors.scope.memory': 'মেমরি',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'পরিমাণ',
   'agentWorld.trading.networkLabel': 'নেটওয়ার্ক',

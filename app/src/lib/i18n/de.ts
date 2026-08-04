@@ -7345,8 +7345,12 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API-Schlüssel erforderlich',
   'userErrors.apiKeyMissing.body':
     'Für deinen KI-Anbieter ist kein API-Schlüssel hinterlegt. Füge in den Anbietereinstellungen einen hinzu, um fortzufahren.',
+  'userErrors.localModelUnavailable.title': 'Lokales Modell nicht verfügbar',
+  'userErrors.localModelUnavailable.body':
+    'Ollama läuft nicht, oder das benötigte Modell wurde nie geladen. Starte Ollama und lade das Modell, oder stelle diese Aufgabe auf einen Cloud-Anbieter um.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Geplante Aufgabe',
+  'userErrors.scope.memory': 'Speicher',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Betrag',
   'agentWorld.trading.networkLabel': 'Netzwerk',
