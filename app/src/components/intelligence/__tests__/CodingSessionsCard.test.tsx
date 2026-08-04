@@ -90,7 +90,7 @@ describe('CodingSessionsCard', () => {
 
   it('shows live progress and pauses the drain when the user stops', async () => {
     let finishDrain!: () => void;
-    mockedDrain.mockImplementation(({ onProgress }) => {
+    mockedDrain.mockImplementation(({ onProgress } = {}) => {
       onProgress?.({
         passes: 1,
         sessionsProcessed: 5,
