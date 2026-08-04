@@ -191,12 +191,10 @@ pub fn create_embedding_provider_with_config(
     match provider {
         "cloud" | "managed" => {
             let (state_dir, encrypt_secrets) = managed_credential_scope(config);
+            // Never log `state_dir`: the user-scoped path embeds the OS username
+            // and/or `users/<uid>` (PII). Log only the non-identifying flag.
             log::debug!(
-                "[embeddings::factory] managed embedder credential scope: dir={} encrypt={encrypt_secrets}",
-                state_dir
-                    .as_deref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "<none>".to_string())
+                "[embeddings::factory] building managed embedder from config credential scope (encrypt={encrypt_secrets})"
             );
             Ok(Box::new(OpenHumanCloudEmbedding::new(
                 None,
@@ -215,17 +213,17 @@ pub fn create_embedding_provider_with_config(
 }
 
 /// The `(state_dir, encrypt)` the managed/cloud embedder must use to find the
-/// `app-session` token. Mirrors
-/// [`AuthService::from_config`](crate::openhuman::security::credentials::AuthService::from_config)
-/// exactly (`config.config_path.parent()` + `config.secrets.encrypt`) so the
-/// embedder reads the token from the **same** store sign-in wrote it to.
-/// Extracted as a pure fn so the #5356 invariant is unit-testable without a
-/// network round-trip.
+/// `app-session` token. Delegates to
+/// [`state_dir_from_config`](crate::openhuman::security::credentials::state_dir_from_config)
+/// — the exact helper [`AuthService::from_config`] uses — so the embedder reads
+/// the token from the **same** store sign-in wrote it to, including the
+/// `"."`-fallback when `config_path` has no parent (a bare filename). Returning
+/// the raw parent instead would yield `None` there and silently fall back to
+/// `default_state_dir()` — the very divergence this fix removes. Extracted as a
+/// pure fn so the #5356 invariant is unit-testable without a network round-trip.
 fn managed_credential_scope(config: &Config) -> (Option<PathBuf>, bool) {
-    (
-        config.config_path.parent().map(PathBuf::from),
-        config.secrets.encrypt,
-    )
+    use crate::openhuman::security::credentials::state_dir_from_config;
+    (Some(state_dir_from_config(config)), config.secrets.encrypt)
 }
 
 /// Returns the default embedding provider — cloud (OpenHuman backend, Voyage).
@@ -319,6 +317,19 @@ mod tests {
             resolved.as_deref(),
             Some("sess-tok-5356"),
             "managed embedder scope must resolve the app-session token sign-in stored"
+        );
+
+        // Isolation: a DIFFERENT scope — what the old `(None, true)` hardcode
+        // resolved to via `default_state_dir()` (root `~/.openhuman`) instead of
+        // the user-scoped config dir — must NOT see the token. This is the half
+        // that fails if managed construction ignores `config`.
+        let default_like = TempDir::new().unwrap();
+        let wrong_scope = AuthService::new(default_like.path(), encrypt)
+            .get_provider_bearer_token(APP_SESSION_PROVIDER, None)
+            .unwrap();
+        assert!(
+            wrong_scope.is_none(),
+            "app-session token must be isolated to the config scope, not a default/root scope"
         );
     }
 
