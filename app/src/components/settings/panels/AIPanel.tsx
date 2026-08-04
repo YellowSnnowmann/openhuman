@@ -2905,7 +2905,14 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
   // reason (timeout / unreachable / unknown): the key is plausibly valid, so it
   // is kept and the provider saved rather than rolled back. Distinct from
   // `providerAuthErrors` (runtime 401/403) and from a hard save error.
-  const [providerSaveNotice, setProviderSaveNotice] = useState<string | null>(null);
+  //
+  // Keyed by slug (#5341) so it is cleared only for the provider it belongs to —
+  // removing or reconnecting a *different* provider must not wipe it, and
+  // removing *this* provider must.
+  const [providerSaveNotice, setProviderSaveNotice] = useState<{
+    slug: string;
+    message: string;
+  } | null>(null);
   useEffect(() => {
     let cancelled = false;
     void loadProviderAuthErrors()
@@ -2963,8 +2970,9 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
       // `claude` CLI. Mirrors the Codex skip, but also skips model listing.
       const isCliLogin = credentialMode === 'cli_login';
       setBusyAction(`toggle-${localLabel ? localLabel.toLowerCase().replace(/\s/g, '') : slug}`);
-      // Fresh attempt clears any prior "saved but unreachable" advisory (#5339).
-      setProviderSaveNotice(null);
+      // A fresh attempt on THIS provider clears only its own prior advisory —
+      // an advisory about a different provider must survive (#5341).
+      setProviderSaveNotice(prev => (prev?.slug === slug ? null : prev));
 
       try {
         const trimmed = value.trim();
@@ -3052,11 +3060,17 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
             } catch (probeErr) {
               const msg = probeErr instanceof Error ? probeErr.message : String(probeErr);
               const reason = classifyProviderVerificationFailure(msg);
-              // Only a cloud KEY provider (a key was just written at
+              // Only a cloud KEY provider (a key written to auth-profiles.json at
               // `setCloudProviderKey` above) gets the non-fatal treatment. Local
               // runtimes (ollama/lmstudio/omlx) keep the original reject-on-probe
-              // behaviour: an unreachable local runtime is a genuine setup error,
-              // and it holds no API key to preserve.
+              // behaviour: an unreachable local runtime is a genuine setup error
+              // the user should fix, not route chat to a dead host.
+              //
+              // NOTE: OMLX (`endpoint_key`) IS a local runtime that *does* write a
+              // key — into `local_ai.api_key` via `openhumanUpdateLocalAiSettings`,
+              // not auth-profiles.json. That `local_ai` write is NOT rolled back
+              // here (pre-existing behaviour, unchanged by this branch); restoring
+              // it on a failed local probe is tracked as a separate follow-up.
               const isKeyProvider = !isLocalRuntime && slug !== 'openhuman';
               if (isKeyProvider && reason !== 'auth') {
                 // #5339: transient / unreachable / unknown — the key is plausibly
@@ -3068,7 +3082,10 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                 console.warn(
                   `[ai-settings] provider=${slug} add-time probe non-fatal reason=${reason}`
                 );
-                setProviderSaveNotice(describeProviderVerificationFailure(slug, msg, t));
+                setProviderSaveNotice({
+                  slug,
+                  message: describeProviderVerificationFailure(slug, msg, t),
+                });
               } else {
                 // Auth failure (wrong key), or a local runtime that isn't up:
                 // roll both stores back and reject so the user fixes it. Rollback
@@ -3211,7 +3228,7 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
               role="status"
               className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
               <LuCircleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              <span className="flex-1">{providerSaveNotice}</span>
+              <span className="flex-1">{providerSaveNotice.message}</span>
               <button
                 type="button"
                 className="shrink-0 font-medium underline-offset-2 hover:underline"
@@ -3253,7 +3270,10 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                     onToggle={async () => {
                       if (enabled && existing) {
                         // Toggle OFF: remove the provider + scrub any
-                        // routing entries that pin to it.
+                        // routing entries that pin to it. Drop its advisory too,
+                        // so a stale notice can't name a provider that is gone
+                        // (#5341) — but only if the advisory is about THIS one.
+                        setProviderSaveNotice(prev => (prev?.slug === existing.slug ? null : prev));
                         const remaining = draft.cloudProviders.filter(cp => cp.id !== existing.id);
                         const nextRouting = routingWithProviderRemoved(
                           draft.routing,
@@ -3285,6 +3305,8 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
                     enabled
                     busy={busyAction === `toggle-${existing.slug}`}
                     onToggle={async () => {
+                      // Removing this provider clears only its own advisory (#5341).
+                      setProviderSaveNotice(prev => (prev?.slug === existing.slug ? null : prev));
                       const remaining = draft.cloudProviders.filter(cp => cp.id !== existing.id);
                       const nextRouting = routingWithProviderRemoved(
                         draft.routing,
@@ -3707,6 +3729,8 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
             }
           }}
           onClearKey={async slug => {
+            // Clearing this provider's key drops its own advisory (#5341).
+            setProviderSaveNotice(prev => (prev?.slug === slug ? null : prev));
             try {
               await clearCloudProviderKey(slug);
               await reload();

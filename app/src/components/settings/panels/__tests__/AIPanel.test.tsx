@@ -37,59 +37,52 @@ import AIPanel, {
   type RoutingMap,
 } from '../AIPanel';
 
-vi.mock('../../../../services/api/aiSettingsApi', () => ({
-  ALL_WORKLOADS: [
-    'chat',
-    'reasoning',
-    'agentic',
-    'coding',
-    'memory',
-    'embeddings',
-    'heartbeat',
-    'learning',
-    'subconscious',
-  ],
-  loadAISettings: vi.fn(),
-  saveAISettings: vi.fn(),
-  loadLocalProviderSnapshot: vi.fn(),
-  loadProviderAuthErrors: vi.fn().mockResolvedValue([]),
-  testProviderModel: vi.fn(),
-  // #5146 §2.4: AIPanel no longer renders the raw provider string — it maps
-  // the failure onto actionable copy first. Mirror that shape here so the
-  // banner asserted below is what a user actually sees; the mapping itself is
-  // covered in aiSettingsApi.test.ts.
-  // #5146 §2.4 / #5341: the copy is reason-dependent — auth failures say
-  // "rejected it", everything else says "a test call … failed". Mirror that so a
-  // reader sees the real code path exercised (the mapping is covered in
-  // aiSettingsApi.test.ts).
-  describeProviderVerificationFailure: (slug: string, raw: string) =>
-    /401|403|unauthorized|forbidden|invalid api key/i.test(raw)
-      ? `The key was saved, but '${slug}' rejected it. Check that you pasted the whole key.`
-      : `The key was saved, but a test call to '${slug}' failed. Check the provider's status page.`,
-  // #5339 / #5341: connectProvider routes on the classification — an auth failure
-  // (401/403) still rejects+rolls back, anything else is a non-fatal advisory.
-  classifyProviderVerificationFailure: (raw: string) =>
-    /401|403|unauthorized|forbidden|invalid api key/i.test(raw) ? 'auth' : 'unknown',
-  modelRegistryVision: vi.fn(() => false),
-  upsertModelRegistryVision: vi.fn((registry: unknown[]) => registry),
-  setCloudProviderKey: vi.fn().mockResolvedValue(undefined),
-  clearCloudProviderKey: vi.fn().mockResolvedValue(undefined),
-  serializeProviderRef: vi.fn((r: { kind: string; providerSlug?: string; model?: string }) =>
-    r.kind === 'openhuman'
-      ? 'openhuman'
-      : r.kind === 'local'
-        ? `ollama:${r.model}`
-        : `${r.providerSlug}:${r.model}`
-  ),
-  localProvider: { download: vi.fn(), applyPreset: vi.fn() },
-  flushCloudProviders: vi.fn().mockResolvedValue(undefined),
-  importOpenAiCodexCliAuth: vi.fn().mockResolvedValue(undefined),
-  listProviderModels: vi.fn().mockResolvedValue([]),
-  OPENAI_CODEX_OAUTH_MISSING_AUTH_URL: 'OPENAI_CODEX_OAUTH_MISSING_AUTH_URL',
-  OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL: 'OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL',
-  startOpenAiCodexOAuth: vi.fn(),
-  completeOpenAiCodexOAuth: vi.fn(),
-}));
+vi.mock('../../../../services/api/aiSettingsApi', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../services/api/aiSettingsApi')>();
+  return {
+    ALL_WORKLOADS: [
+      'chat',
+      'reasoning',
+      'agentic',
+      'coding',
+      'memory',
+      'embeddings',
+      'heartbeat',
+      'learning',
+      'subconscious',
+    ],
+    loadAISettings: vi.fn(),
+    saveAISettings: vi.fn(),
+    loadLocalProviderSnapshot: vi.fn(),
+    loadProviderAuthErrors: vi.fn().mockResolvedValue([]),
+    testProviderModel: vi.fn(),
+    // #5341: use the REAL classifier + describer (pure, translator-driven) instead
+    // of a hand-copied third implementation that could drift from the source. The
+    // classification rules (403/proxy handling, etc.) are unit-tested in
+    // aiSettingsApi.test.ts; here they drive the real component branch.
+    classifyProviderVerificationFailure: actual.classifyProviderVerificationFailure,
+    describeProviderVerificationFailure: actual.describeProviderVerificationFailure,
+    modelRegistryVision: vi.fn(() => false),
+    upsertModelRegistryVision: vi.fn((registry: unknown[]) => registry),
+    setCloudProviderKey: vi.fn().mockResolvedValue(undefined),
+    clearCloudProviderKey: vi.fn().mockResolvedValue(undefined),
+    serializeProviderRef: vi.fn((r: { kind: string; providerSlug?: string; model?: string }) =>
+      r.kind === 'openhuman'
+        ? 'openhuman'
+        : r.kind === 'local'
+          ? `ollama:${r.model}`
+          : `${r.providerSlug}:${r.model}`
+    ),
+    localProvider: { download: vi.fn(), applyPreset: vi.fn() },
+    flushCloudProviders: vi.fn().mockResolvedValue(undefined),
+    importOpenAiCodexCliAuth: vi.fn().mockResolvedValue(undefined),
+    listProviderModels: vi.fn().mockResolvedValue([]),
+    OPENAI_CODEX_OAUTH_MISSING_AUTH_URL: 'OPENAI_CODEX_OAUTH_MISSING_AUTH_URL',
+    OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL: 'OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL',
+    startOpenAiCodexOAuth: vi.fn(),
+    completeOpenAiCodexOAuth: vi.fn(),
+  };
+});
 
 vi.mock('../../hooks/useSettingsNavigation', () => ({
   useSettingsNavigation: () => ({
