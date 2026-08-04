@@ -11,6 +11,11 @@
 //! from the boot config, and every later snapshot reports it, so the notice
 //! surfaces even though the underlying config is already healthy.
 //!
+//! `app_state_snapshot` also latches from each poll's freshly-loaded config, so
+//! corruption that first appears *after* boot (the running config.toml is
+//! edited/damaged and healed on a later reload) is caught too, not just the
+//! boot-time case.
+//!
 //! [`Config::recovered_from_corruption`]:
 //! crate::openhuman::config::Config::recovered_from_corruption
 
@@ -30,20 +35,24 @@ fn mark_config_recovered() {
     CONFIG_RECOVERED.store(true, Ordering::Relaxed);
 }
 
-/// Latch the session recovery signal from a freshly-loaded boot config.
+/// Latch the session recovery signal from a freshly-loaded config.
 ///
-/// Called once from `bootstrap_core_runtime` with the config returned by
-/// `Config::load_or_init`, whose `recovered_from_corruption` is authoritative
-/// for this boot. No-op when the config loaded cleanly. Logs at warn so the
-/// reset is visible in local logs (it is a Sentry breadcrumb, not an event —
-/// the read failure it stems from is expected user-environment state, #5167).
+/// Called from `bootstrap_core_runtime` with the boot config returned by
+/// `Config::load_or_init`, and from every `app_state_snapshot` poll with the
+/// config that poll just loaded — whichever load's `recovered_from_corruption`
+/// is authoritative wins, so both boot-time and mid-session recovery latch.
+/// No-op when the config loaded cleanly. Logs at warn (once, on the load that
+/// actually recovered) so the recovery is visible in local logs (it is a Sentry
+/// breadcrumb, not an event — the read failure it stems from is expected
+/// user-environment state, #5167).
 pub fn latch_from_config(config: &Config) {
     if !config.recovered_from_corruption {
         return;
     }
     log::warn!(
-        "[app_state] config.toml was unreadable/corrupt on boot and was reset to \
-         defaults (previous file kept as .corrupted.<ts>); surfacing a user notice (#5167)"
+        "[app_state] config.toml was unreadable/corrupt and was recovered \
+         (restored from .bak or reset to defaults; previous file kept as \
+         .corrupted.<ts>); surfacing a user notice (#5167)"
     );
     mark_config_recovered();
 }
@@ -63,10 +72,22 @@ pub fn reset_for_tests() {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    /// Both tests below reset and mutate the process-global [`CONFIG_RECOVERED`]
+    /// atomic. Rust runs unit tests in parallel by default, so without
+    /// serialization one test's `reset_for_tests()` could clear a value the
+    /// other just set, between its write and assertion. Hold this guard for the
+    /// whole body of each test. Recover from poisoning (a panicking test still
+    /// releases the latch state via the next `reset_for_tests`) so one failure
+    /// doesn't cascade into spurious lock-poison failures.
+    static TEST_GUARD: Mutex<()> = Mutex::new(());
 
     #[test]
     fn latch_defaults_false_and_marks_true() {
+        let _guard = TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         reset_for_tests();
         assert!(
             !config_recovered_this_session(),
@@ -85,6 +106,7 @@ mod tests {
 
     #[test]
     fn latch_from_config_only_marks_when_recovered() {
+        let _guard = TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         reset_for_tests();
 
         let mut clean = Config::default();

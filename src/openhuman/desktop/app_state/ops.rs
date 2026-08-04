@@ -923,6 +923,13 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
 
     let t_config = Instant::now();
     let config = config_rpc::load_config_with_timeout().await?;
+    // Latch corruption recovery from *this* poll's load, not only from boot.
+    // `load_config_with_timeout` re-reads config.toml on every snapshot, so a
+    // config that becomes corrupt after boot is healed here — carrying a fresh
+    // `recovered_from_corruption`. Without this, that mid-session recovery would
+    // be dropped (the boot latch never saw it) and the notice never surfaces
+    // (#5167). No-op when the load was clean; idempotent once latched.
+    super::latch_from_config(&config);
     let config_ms = t_config.elapsed().as_millis();
 
     let t_auth = Instant::now();

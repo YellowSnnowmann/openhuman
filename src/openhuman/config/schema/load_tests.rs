@@ -2046,9 +2046,12 @@ async fn load_from_config_path_sets_recovery_flag_on_non_utf8() {
     let root = tmp.path();
     let workspace = root.join("workspace");
 
-    // The snapshot-reload path (`load_from_config_path`) must also flag recovery
-    // so a long-lived runtime that reloads a since-corrupted config surfaces the
-    // notice (#5167).
+    // The snapshot-reload path (`load_from_config_path`) must set the per-load
+    // recovery flag on the returned `Config`. This test asserts only that flag;
+    // the surfacing itself is wired one layer up in `app_state_snapshot`, which
+    // latches this flag on every poll (see `desktop::app_state::recovery_signal`
+    // and its `latch_from_config` call in `snapshot`), so a long-lived runtime
+    // that reloads a since-corrupted config does surface the notice (#5167).
     let config_path = root.join("config.toml");
     let binary_bytes: Vec<u8> = vec![0xff, 0xfe, 0x00, 0x01, 0x02];
     write_binary(&config_path, &binary_bytes).await;

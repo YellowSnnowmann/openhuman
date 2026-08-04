@@ -16,6 +16,7 @@ import {
   getCoreStateSnapshot,
   setCoreStateSnapshot,
 } from '../lib/coreState/store';
+import { useT } from '../lib/i18n/I18nContext';
 import { syncAnalyticsConsent } from '../services/analytics';
 import type { AuthExpiredReason } from '../services/coreRpcClient';
 import {
@@ -265,6 +266,10 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   const bootstrapFailCountRef = useRef(0);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const isMountedRef = useRef(true);
+  // Translator for user-visible strings dispatched outside JSX (e.g. the
+  // config-recovery notice below). Read here so `refreshCore` can localize the
+  // notice via the active locale rather than hardcoding English (#5167).
+  const { t } = useT();
   const commitState = useCallback((updater: (previous: CoreState) => CoreState) => {
     if (!isMountedRef.current) {
       return;
@@ -291,7 +296,7 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     const rawSnapshot = await fetchCoreAppSnapshot();
     // Raise a one-shot notice if the core recovered a corrupted config.toml
     // this session (#5167). Guarded internally so repeated polls don't re-fire.
-    maybeSurfaceConfigRecovery(rawSnapshot.configRecovered);
+    maybeSurfaceConfigRecovery(rawSnapshot.configRecovered, t);
     const snapshot = normalizeSnapshot(rawSnapshot);
     if (!isMountedRef.current) {
       return;
@@ -457,7 +462,7 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         console.warn('[core-state] memory client sync failed during refresh:', error);
       }
     }
-  }, [commitState]);
+  }, [commitState, t]);
 
   /** Serialized refresh — all callers share the same in-flight promise. */
   const refresh = useCallback(async () => {
