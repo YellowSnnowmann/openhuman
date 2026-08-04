@@ -1,11 +1,13 @@
 //! Factory functions for creating embedding providers.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::cloud::{
     OpenHumanCloudEmbedding, DEFAULT_CLOUD_EMBEDDING_DIMENSIONS, DEFAULT_CLOUD_EMBEDDING_MODEL,
 };
 use super::provider_trait::{EmbeddingProvider, TinyAgentsEmbeddingProvider};
+use crate::openhuman::config::Config;
 use tinyagents::harness::embeddings::{
     CohereEmbeddingModel, NoopEmbeddingModel, OllamaEmbeddingModel, OpenAiEmbeddingModel,
     VoyageEmbeddingModel,
@@ -162,6 +164,70 @@ pub fn create_embedding_provider_with_credentials(
     }
 }
 
+/// Config-aware variant of [`create_embedding_provider_with_credentials`].
+///
+/// Behaves identically for every provider **except** `managed`/`cloud`. For
+/// those it threads the caller's real credential-store location
+/// ([`managed_credential_scope`]) into the cloud embedder's bearer resolver — the
+/// same `(state_dir, encrypt)` pair
+/// [`AuthService::from_config`](crate::openhuman::security::credentials::AuthService::from_config)
+/// uses to **store** the `app-session` token at sign-in.
+///
+/// The keyless constructors hardcode `(None, true)`, which resolves to
+/// `default_state_dir()` (`~/.openhuman` root) with encryption forced on. On a
+/// shipped desktop `OPENHUMAN_WORKSPACE` is unset and the session token lives
+/// under the user-scoped `~/.openhuman/users/<uid>/auth-profiles.json`, so that
+/// hardcode reads the *wrong* file and a signed-in user's managed "Test
+/// connection" / embed falsely reports "No backend session" (#5356). Callers
+/// that hold a `&Config` must route managed construction through here.
+pub fn create_embedding_provider_with_config(
+    config: &Config,
+    provider: &str,
+    model: &str,
+    dims: usize,
+    api_key: &str,
+    custom_endpoint: Option<&str>,
+) -> anyhow::Result<Box<dyn EmbeddingProvider>> {
+    match provider {
+        "cloud" | "managed" => {
+            let (state_dir, encrypt_secrets) = managed_credential_scope(config);
+            log::debug!(
+                "[embeddings::factory] managed embedder credential scope: dir={} encrypt={encrypt_secrets}",
+                state_dir
+                    .as_deref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "<none>".to_string())
+            );
+            Ok(Box::new(OpenHumanCloudEmbedding::new(
+                None,
+                state_dir,
+                encrypt_secrets,
+                model,
+                dims,
+            )))
+        }
+        // Every other provider is credential-store-agnostic (BYO key or local
+        // endpoint), so the existing construction is correct unchanged.
+        other => {
+            create_embedding_provider_with_credentials(other, model, dims, api_key, custom_endpoint)
+        }
+    }
+}
+
+/// The `(state_dir, encrypt)` the managed/cloud embedder must use to find the
+/// `app-session` token. Mirrors
+/// [`AuthService::from_config`](crate::openhuman::security::credentials::AuthService::from_config)
+/// exactly (`config.config_path.parent()` + `config.secrets.encrypt`) so the
+/// embedder reads the token from the **same** store sign-in wrote it to.
+/// Extracted as a pure fn so the #5356 invariant is unit-testable without a
+/// network round-trip.
+fn managed_credential_scope(config: &Config) -> (Option<PathBuf>, bool) {
+    (
+        config.config_path.parent().map(PathBuf::from),
+        config.secrets.encrypt,
+    )
+}
+
 /// Returns the default embedding provider — cloud (OpenHuman backend, Voyage).
 ///
 /// The cloud embedder lazily resolves the session JWT and API URL on each
@@ -183,4 +249,122 @@ pub fn default_local_embedding_provider() -> Arc<dyn EmbeddingProvider> {
     Arc::new(TinyAgentsEmbeddingProvider::new(
         OllamaEmbeddingModel::default(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::openhuman::security::credentials::{AuthService, APP_SESSION_PROVIDER};
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    fn test_config(tmp: &TempDir) -> Config {
+        let mut config = Config::default();
+        config.config_path = tmp.path().join("config.toml");
+        config
+    }
+
+    /// #5356 regression (the active production cause). Sign-in stores the
+    /// `app-session` token under the user-scoped config dir via
+    /// `AuthService::from_config`; the managed/cloud embedder must derive its
+    /// credential scope from that SAME `(config.config_path.parent(),
+    /// config.secrets.encrypt)`. The pre-fix hardcode `(None, true)` resolved to
+    /// `default_state_dir()` (`~/.openhuman` root) with encryption forced on —
+    /// the wrong file — so a signed-in user got "No backend session". Setting
+    /// `encrypt=false` also proves the flag is read from config, not hardcoded.
+    #[test]
+    fn managed_credential_scope_mirrors_config_not_default_state_dir() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = test_config(&tmp);
+        config.secrets.encrypt = false;
+
+        let (dir, encrypt) = managed_credential_scope(&config);
+        assert_eq!(
+            dir.as_deref(),
+            config.config_path.parent(),
+            "managed embedder must use the config-scoped credential dir, not default_state_dir()"
+        );
+        assert!(
+            !encrypt,
+            "encrypt must reflect config.secrets.encrypt, not the hardcoded `true`"
+        );
+    }
+
+    /// End-to-end: a token stored exactly as sign-in stores it (via
+    /// `AuthService::from_config`) is recovered by the scope the managed branch
+    /// feeds the cloud embedder's bearer resolver. This is the round-trip the
+    /// old hardcode broke.
+    #[test]
+    fn managed_scope_resolves_signin_stored_app_session_token() {
+        let tmp = TempDir::new().unwrap();
+        let config = test_config(&tmp);
+
+        // Sign-in writes the app-session token here.
+        AuthService::from_config(&config)
+            .store_provider_token(
+                APP_SESSION_PROVIDER,
+                "default",
+                "sess-tok-5356",
+                HashMap::new(),
+                true,
+            )
+            .unwrap();
+
+        // The exact scope the managed branch uses must recover it.
+        let (dir, encrypt) = managed_credential_scope(&config);
+        let resolved = AuthService::new(dir.as_deref().unwrap(), encrypt)
+            .get_provider_bearer_token(APP_SESSION_PROVIDER, None)
+            .unwrap();
+        assert_eq!(
+            resolved.as_deref(),
+            Some("sess-tok-5356"),
+            "managed embedder scope must resolve the app-session token sign-in stored"
+        );
+    }
+
+    /// The `managed`/`cloud` arm builds a cloud embedder carrying the requested
+    /// dimensions (exercises the config-aware factory's managed branch). Mirrors
+    /// the existing `factory_managed`/`factory_cloud` assertions (name + dims).
+    #[test]
+    fn config_aware_factory_builds_managed_provider() {
+        let tmp = TempDir::new().unwrap();
+        let config = test_config(&tmp);
+        for provider in ["managed", "cloud"] {
+            let p = create_embedding_provider_with_config(
+                &config,
+                provider,
+                DEFAULT_CLOUD_EMBEDDING_MODEL,
+                DEFAULT_CLOUD_EMBEDDING_DIMENSIONS,
+                "",
+                None,
+            )
+            .expect("managed/cloud builds via config-aware factory");
+            assert_eq!(p.name(), "cloud");
+            assert_eq!(p.dimensions(), DEFAULT_CLOUD_EMBEDDING_DIMENSIONS);
+        }
+    }
+
+    /// Non-managed providers delegate unchanged to the credentialed factory —
+    /// the config scope has no effect on BYO-key / local providers.
+    #[test]
+    fn config_aware_factory_delegates_non_managed() {
+        let tmp = TempDir::new().unwrap();
+        let config = test_config(&tmp);
+        let p = create_embedding_provider_with_config(
+            &config,
+            "voyage",
+            "voyage-3-large",
+            1024,
+            "k",
+            None,
+        )
+        .expect("voyage builds via delegated path");
+        assert_eq!(p.dimensions(), 1024);
+
+        // Unknown provider still surfaces the same error, not a panic.
+        assert!(
+            create_embedding_provider_with_config(&config, "nope", "m", 1, "", None).is_err(),
+            "unknown provider must error through the delegated factory"
+        );
+    }
 }
