@@ -137,13 +137,15 @@ pub fn create_tts_provider(
 /// omits `voice_id` from the backend request body, and the slug branch falls
 /// through to the registry entry's `default_tts_voice`.
 ///
-/// `provider` is matched pre-trimmed; `voice` is trimmed here. For the slug
-/// form (`"openai:shimmer"`), a voice in the suffix wins over the `voice`
-/// argument, matching the STT model-resolution order in
-/// [`create_stt_provider`].
+/// Both arguments are trimmed here, so the function is safe to call with raw
+/// caller input: an untrimmed `"  cloud  "` would otherwise match neither
+/// literal arm and fall through to the slug branch, silently treating a known
+/// provider as an unknown one. For the slug form (`"openai:shimmer"`), a voice
+/// in the suffix wins over the `voice` argument, matching the STT
+/// model-resolution order in [`create_stt_provider`].
 pub(super) fn resolve_tts_voice<'a>(provider: &'a str, voice: &'a str) -> Option<&'a str> {
     let voice = voice.trim();
-    match provider {
+    match provider.trim() {
         "cloud" | "openhuman" => {
             if voice.is_empty() {
                 None

@@ -6,7 +6,7 @@ use super::entry::{
 };
 use super::helpers::{effective_stt_provider, effective_tts_provider, split_slug_model};
 use super::stt_providers::WhisperSttProvider;
-use super::traits::SttProvider;
+use super::traits::{SttProvider, TtsProvider};
 use crate::openhuman::config::schema::voice_providers::{SttApiStyle, VoiceCapability};
 use crate::openhuman::config::Config;
 
@@ -204,10 +204,23 @@ fn tts_voice_slug_suffix_beats_voice_argument() {
 }
 
 #[test]
+fn tts_voice_resolution_tolerates_untrimmed_provider() {
+    // A padded provider name must not fall through to the slug branch and be
+    // treated as an unknown external provider.
+    assert_eq!(resolve_tts_voice("  cloud  ", ""), None);
+    assert_eq!(
+        resolve_tts_voice("  piper  ", ""),
+        Some(DEFAULT_PIPER_VOICE)
+    );
+}
+
+#[test]
 fn tts_factory_slug_empty_voice_uses_registry_default() {
     // End-to-end through the factory: with no voice anywhere, the registry
     // entry's `default_tts_voice` must be what the provider is built with —
-    // previously pre-empted by the Piper id.
+    // previously pre-empted by the Piper id. Asserting the voice (not just
+    // `name()`) is the point: a factory that passed a hardcoded value instead
+    // of `resolved.unwrap_or("")` would still produce an "external" provider.
     let mut config = cfg();
     config.voice_providers.push(
         crate::openhuman::config::schema::voice_providers::VoiceProviderCreds {
@@ -220,6 +233,59 @@ fn tts_factory_slug_empty_voice_uses_registry_default() {
     );
     let p = create_tts_provider("openai", "", &config).unwrap();
     assert_eq!(p.name(), "external");
+    assert_eq!(
+        p.configured_voice(),
+        Some("alloy"),
+        "registry default_tts_voice must reach the provider, not the Piper id"
+    );
+}
+
+#[test]
+fn tts_factory_cloud_empty_voice_carries_no_voice() {
+    // The #5355 regression, asserted end-to-end through the boxed provider:
+    // nothing but `None` may reach `CloudTtsProvider`, or `synthesize_reply`
+    // puts a Piper id in `voice_id` and the backend answers 400.
+    for provider in ["cloud", "openhuman"] {
+        let p = create_tts_provider(provider, "", &cfg()).unwrap();
+        assert_eq!(p.name(), "cloud");
+        assert_eq!(
+            p.configured_voice(),
+            None,
+            "{provider} must carry no voice so the backend default applies"
+        );
+    }
+}
+
+#[test]
+fn tts_factory_cloud_preserves_explicit_voice() {
+    let p = create_tts_provider("cloud", "JBFqnCBsd6RMkjVDRZzb", &cfg()).unwrap();
+    assert_eq!(p.configured_voice(), Some("JBFqnCBsd6RMkjVDRZzb"));
+}
+
+#[test]
+fn tts_factory_piper_empty_voice_carries_bundled_voice() {
+    // The other half of the guarantee: Piper — and only Piper — still gets the
+    // bundled voice id when the caller supplies none.
+    let p = create_tts_provider("piper", "", &cfg()).unwrap();
+    assert_eq!(p.name(), "piper");
+    assert_eq!(p.configured_voice(), Some(DEFAULT_PIPER_VOICE));
+}
+
+#[test]
+fn tts_factory_slug_colon_voice_reaches_provider() {
+    // `slug:voice` must beat the registry default end-to-end.
+    let mut config = cfg();
+    config.voice_providers.push(
+        crate::openhuman::config::schema::voice_providers::VoiceProviderCreds {
+            slug: "openai".into(),
+            endpoint: "https://api.openai.com/v1".into(),
+            capability: VoiceCapability::Both,
+            default_tts_voice: Some("alloy".into()),
+            ..Default::default()
+        },
+    );
+    let p = create_tts_provider("openai:shimmer", "", &config).unwrap();
+    assert_eq!(p.configured_voice(), Some("shimmer"));
 }
 
 #[test]
