@@ -584,7 +584,7 @@ pub fn create_memory_for_migration(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::memory::tree::health::LOCAL_MODEL_UNAVAILABLE_KIND;
+    use crate::openhuman::memory::tree::health::user_error::LOCAL_MODEL_UNAVAILABLE_KIND;
 
     use axum::{routing::get, Json, Router};
     use std::ffi::OsString;

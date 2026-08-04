@@ -27,10 +27,8 @@ use std::fmt;
 pub mod doctor;
 pub use doctor::{async_run_doctor, run_doctor, DoctorCounters, DoctorReport, StageHealth};
 
-mod user_error;
-pub(crate) use user_error::{
-    publish_local_model_unavailable_user_error, LOCAL_MODEL_UNAVAILABLE_KIND,
-};
+pub(crate) mod user_error;
+pub(crate) use user_error::publish_local_model_unavailable_user_error;
 
 /// Whether a failure should be retried (`Transient`) or fail fast
 /// (`Unrecoverable`).
@@ -641,6 +639,7 @@ pub fn current_degraded_state() -> DegradedState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use user_error::LOCAL_MODEL_UNAVAILABLE_KIND;
 
     const ALL_CODES: [FailureCode; 11] = [
         FailureCode::BudgetExhausted,
