@@ -75,9 +75,13 @@ describe('classifyUserActionableError', () => {
     expect(a?.bodyKey).toBe('userErrors.localModelUnavailable.body');
     expect(a?.id).toBe(userErrorId('local_model_unavailable', 'memory', undefined));
 
-    // …and the prose the local embedder / health gate produce.
+    // …and every prose shape the local embedder / health gate / doctor
+    // produce. Both Rust-side shapes are covered so the two classifiers stay
+    // symmetric — daemon-not-listening AND model-never-pulled.
     for (const msg of [
       'ollama embed request failed (is Ollama running at http://localhost:11434?)',
+      'Ollama embedding model `bge-m3` is not installed at http://localhost:11434. Run `ollama pull bge-m3`',
+      'Ollama daemon unreachable at http://localhost:11434',
       'ollama embeddings opted-in but daemon unreachable at http://localhost:11434',
     ]) {
       expect(classifyUserActionableError({ message: msg })?.kind).toBe('local_model_unavailable');

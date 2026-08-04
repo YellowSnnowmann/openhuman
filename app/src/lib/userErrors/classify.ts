@@ -143,6 +143,9 @@ export function classifyUserActionableError(
     text.includes('local_model_unavailable') ||
     // tinyagents embedder, daemon not listening.
     text.includes('is ollama running') ||
+    // tinyagents embedder, model never pulled — the second shape the Rust
+    // classifier recognises, so the two sides stay symmetric.
+    (text.includes('ollama embedding model') && text.includes('is not installed at')) ||
     // platform doctor report.
     text.includes('ollama daemon unreachable') ||
     // memory embedder health gate.

@@ -27,6 +27,11 @@ use std::fmt;
 pub mod doctor;
 pub use doctor::{async_run_doctor, run_doctor, DoctorCounters, DoctorReport, StageHealth};
 
+mod user_error;
+pub(crate) use user_error::{
+    publish_local_model_unavailable_user_error, LOCAL_MODEL_UNAVAILABLE_KIND,
+};
+
 /// Whether a failure should be retried (`Transient`) or fail fast
 /// (`Unrecoverable`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -479,9 +484,14 @@ fn u8_to_code(v: u8) -> Option<FailureCode> {
 /// Record that semantic recall is degraded (embeddings were skipped because no
 /// usable provider is available). `cause` names why so the status surface can
 /// lead the user to the fix. Idempotent / cheap; safe to call per embed-stage.
+///
+/// The cause is published **before** the flag, and the flag with `Release`, so
+/// a concurrent [`current_degraded_state`] that observes the flag set cannot
+/// still read the previous degradation's cause and render the wrong
+/// remediation (CodeRabbit, #5398). Same ordering in every `mark_*` below.
 pub fn mark_semantic_recall_degraded(cause: FailureCode) {
-    SEMANTIC_RECALL_DEGRADED.store(true, Ordering::Relaxed);
     SEMANTIC_RECALL_CAUSE.store(code_to_u8(cause), Ordering::Relaxed);
+    SEMANTIC_RECALL_DEGRADED.store(true, Ordering::Release);
 }
 
 /// Surface a local-runtime embed failure on the status panel immediately
@@ -495,16 +505,40 @@ pub fn mark_semantic_recall_degraded(cause: FailureCode) {
 /// Setting the degraded flag at classification time puts the remediation on
 /// the panel from the first failure; the flag self-clears on the next
 /// successful embed, so a user who starts Ollama sees it disappear.
+///
+/// This is also the **only** producer of the durable UserErrorCenter entry for
+/// the "model was never pulled" half of the cause. The embedder health gate in
+/// `memory::store::factories` probes `GET /api/tags`, which succeeds whenever
+/// the daemon is up — so a running daemon with a missing model never trips that
+/// gate and never publishes its `user_error` (codex, #5398). Publishing here
+/// covers both halves from the one place that has actually classified the
+/// failure.
+///
+/// The broadcast fires only on the **transition** into the state, not on every
+/// failed embed: the re-embed path calls this per row, and while the panel
+/// store dedupes on the descriptor identity, emitting one socket event per
+/// chunk would be pointless traffic. The flag doubles as the edge detector.
 pub fn mark_local_model_unavailable_if_applicable(failure: &PipelineFailure) {
     if failure.code != FailureCode::LocalModelUnavailable {
         return;
     }
+    // Edge detection before the mark: already-degraded-for-this-reason means a
+    // previous failure in this outage already told the clients.
+    let already_surfaced = SEMANTIC_RECALL_DEGRADED.load(Ordering::Acquire)
+        && u8_to_code(SEMANTIC_RECALL_CAUSE.load(Ordering::Relaxed))
+            == Some(FailureCode::LocalModelUnavailable);
+
     log::warn!(
-        "[memory_tree::health] embed failed against the local runtime — marking semantic \
-         recall degraded (cause=local_model_unavailable, class={})",
-        failure.class.as_str()
+        "[memory_tree::health] action=mark_degraded surface=semantic_recall \
+         cause=local_model_unavailable class={} transition={}",
+        failure.class.as_str(),
+        !already_surfaced
     );
     mark_semantic_recall_degraded(FailureCode::LocalModelUnavailable);
+
+    if !already_surfaced {
+        publish_local_model_unavailable_user_error("embed_classify");
+    }
 }
 
 /// Clear the semantic-recall degraded flag — call when an embed succeeds, so
@@ -518,8 +552,8 @@ pub fn clear_semantic_recall_degraded() {
 /// Record that wiki structure is degraded (extraction yielded nothing across
 /// the board). `cause` is typically [`FailureCode::ExtractionTimeout`].
 pub fn mark_structure_degraded(cause: FailureCode) {
-    STRUCTURE_DEGRADED.store(true, Ordering::Relaxed);
     STRUCTURE_CAUSE.store(code_to_u8(cause), Ordering::Relaxed);
+    STRUCTURE_DEGRADED.store(true, Ordering::Release);
 }
 
 /// Clear the structure degraded flag — call when extraction yields entities.
@@ -535,8 +569,8 @@ pub fn clear_structure_degraded() {
 /// worker's host-I/O arm so the status surface tells the user to check their
 /// disk; idempotent / cheap.
 pub fn mark_storage_degraded(cause: FailureCode) {
-    STORAGE_DEGRADED.store(true, Ordering::Relaxed);
     STORAGE_CAUSE.store(code_to_u8(cause), Ordering::Relaxed);
+    STORAGE_DEGRADED.store(true, Ordering::Release);
 }
 
 /// Clear the storage degraded flag — call when a claim succeeds (the DB opened,
@@ -574,9 +608,13 @@ pub fn test_guard() -> std::sync::MutexGuard<'static, ()> {
 /// doctor surface. The `cause` is populated from the last recorded
 /// [`FailureCode`] when either flag is set.
 pub fn current_degraded_state() -> DegradedState {
-    let semantic_recall = SEMANTIC_RECALL_DEGRADED.load(Ordering::Relaxed);
-    let structure = STRUCTURE_DEGRADED.load(Ordering::Relaxed);
-    let storage = STORAGE_DEGRADED.load(Ordering::Relaxed);
+    // Acquire pairs with the Release store on each flag in `mark_*_degraded`,
+    // which publishes the cause FIRST. A reader that observes a set flag is
+    // therefore guaranteed to observe the cause that was stored with it, never
+    // a stale one from a previous degradation (CodeRabbit, #5398).
+    let semantic_recall = SEMANTIC_RECALL_DEGRADED.load(Ordering::Acquire);
+    let structure = STRUCTURE_DEGRADED.load(Ordering::Acquire);
+    let storage = STORAGE_DEGRADED.load(Ordering::Acquire);
     // Each flag carries its own cause; pick the most actionable one to surface.
     // Storage degradation is reported first — the host FS can't open the DB, so
     // it's the foundational failure beneath both recall and structure (no point
@@ -966,6 +1004,65 @@ mod tests {
         assert_eq!(
             s.cause.as_ref().map(|c| c.remediation_key.as_str()),
             Some("memory.health.remediation.local_model_unavailable")
+        );
+    }
+
+    /// #5398 (codex) — the classifier is the ONLY producer of the durable
+    /// UserErrorCenter entry when Ollama is running but the model was never
+    /// pulled: the factory health gate probes `GET /api/tags`, which succeeds
+    /// in that case, so it never fires. It must broadcast on the transition
+    /// into the state, and must not re-broadcast per failed row afterwards.
+    #[test]
+    fn local_model_unavailable_broadcasts_once_per_transition() {
+        let _g = test_guard();
+        let mut rx = crate::openhuman::web_chat::subscribe_web_channel_events();
+
+        let failure = PipelineFailure::new(FailureCode::LocalModelUnavailable);
+
+        // First failure of the outage → clients are told.
+        mark_local_model_unavailable_if_applicable(&failure);
+        let event = rx.try_recv().expect("transition must broadcast");
+        assert_eq!(event.event, "user_error");
+        assert_eq!(
+            event.error_type.as_deref(),
+            Some(LOCAL_MODEL_UNAVAILABLE_KIND)
+        );
+
+        // Subsequent failures in the same outage must stay quiet — the re-embed
+        // path calls this per row.
+        mark_local_model_unavailable_if_applicable(&failure);
+        mark_local_model_unavailable_if_applicable(&failure);
+        assert!(
+            rx.try_recv().is_err(),
+            "must not re-broadcast while already degraded for this cause"
+        );
+
+        // A successful embed clears the flag; the next outage is a new
+        // transition and must tell the clients again.
+        clear_semantic_recall_degraded();
+        mark_local_model_unavailable_if_applicable(&failure);
+        assert!(
+            rx.try_recv().is_ok(),
+            "a fresh outage after recovery must broadcast again"
+        );
+    }
+
+    /// A different active cause must not be mistaken for "already surfaced" —
+    /// recall degraded for an unrelated reason still needs the local-runtime
+    /// entry when Ollama then goes away.
+    #[test]
+    fn local_model_unavailable_broadcasts_over_a_different_active_cause() {
+        let _g = test_guard();
+        let mut rx = crate::openhuman::web_chat::subscribe_web_channel_events();
+
+        mark_semantic_recall_degraded(FailureCode::EmbeddingsUnconfigured);
+        mark_local_model_unavailable_if_applicable(&PipelineFailure::new(
+            FailureCode::LocalModelUnavailable,
+        ));
+
+        assert!(
+            rx.try_recv().is_ok(),
+            "a cause change into local_model_unavailable is a transition"
         );
     }
 

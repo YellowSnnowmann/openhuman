@@ -7268,7 +7268,7 @@ const messages: TranslationMap = {
     'Twój dostawca AI nie ma ustawionego klucza API. Dodaj go w ustawieniach dostawcy, aby kontynuować.',
   'userErrors.localModelUnavailable.title': 'Model lokalny niedostępny',
   'userErrors.localModelUnavailable.body':
-    'Ollama nie działa albo potrzebny model nigdy nie został pobrany. Uruchom Ollamę i pobierz model lub przenieś to zadanie do dostawcy w chmurze.',
+    'Ollama nie działa albo wymagany model nie jest zainstalowany. Uruchom Ollamę i pobierz model lub przenieś to zadanie do dostawcy w chmurze.',
   'userErrors.scope.chat': 'Czat',
   'userErrors.scope.cron': 'Zaplanowane zadanie',
   'userErrors.scope.memory': 'Pamięć',

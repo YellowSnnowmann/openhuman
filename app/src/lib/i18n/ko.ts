@@ -7082,7 +7082,7 @@ const messages: TranslationMap = {
     'AI 제공업체에 API 키가 설정되지 않았습니다. 제공업체 설정에서 추가하세요.',
   'userErrors.localModelUnavailable.title': '로컬 모델을 사용할 수 없음',
   'userErrors.localModelUnavailable.body':
-    'Ollama가 실행 중이 아니거나 필요한 모델을 내려받지 않았습니다. Ollama를 실행하고 모델을 내려받거나, 이 작업을 클라우드 제공업체로 전환하세요.',
+    'Ollama가 실행 중이 아니거나 필요한 모델이 설치되어 있지 않습니다. Ollama를 실행하고 모델을 내려받거나, 이 작업을 클라우드 제공업체로 전환하세요.',
   'userErrors.scope.chat': '채팅',
   'userErrors.scope.cron': '예약된 작업',
   'userErrors.scope.memory': '메모리',

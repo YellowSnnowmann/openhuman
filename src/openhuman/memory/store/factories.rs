@@ -111,46 +111,18 @@ fn report_ollama_health_gate_once(base_url: &str, model: &str) -> bool {
     true
 }
 
-/// Stable `error_type` token for the local-embedding-runtime user error.
-///
-/// Mirrors the frontend `UserErrorKind` discriminator of the same name; the
-/// classifier keys on this exact string, so a drift on either side drops the
-/// signal silently. Kept as a constant so the FE-parity test names one symbol.
-pub(crate) const LOCAL_MODEL_UNAVAILABLE_KIND: &str = "local_model_unavailable";
-
 /// Surface the Ollama-unreachable fallback in every connected client's
 /// UserErrorCenter (#5354).
 ///
 /// `DomainEvent::EmbeddingModelUnhealthy` is published above, but nothing
 /// bridges the domain bus to the product UI — `/events/domain` is consumed only
-/// by the developer Event Log panel — so that event alone reaches no user. This
-/// broadcasts the same condition over the web-channel path the cron scheduler
-/// already uses for permanent user-config halts (`publish_cron_user_error`),
-/// which `socketService` routes into the durable UserErrorCenter entry.
-///
-/// Metadata-only, exactly like the cron producer: a stable `kind` token in
-/// `error_type` plus `error_source`, and never the raw provider text or the
-/// configured endpoint (which can carry a private host).
+/// by the developer Event Log panel — so that event alone reaches no user. The
+/// payload and publisher live in `memory::tree::health::user_error` so this
+/// producer and the embed-failure classifier emit one identical, tested shape.
 fn surface_local_model_unavailable_to_clients() {
-    log::debug!(
-        "[memory::factory] action=surface_user_error kind={LOCAL_MODEL_UNAVAILABLE_KIND} source=memory"
+    crate::openhuman::memory::tree::health::publish_local_model_unavailable_user_error(
+        "health_gate",
     );
-    crate::openhuman::web_chat::publish_web_channel_event(local_model_unavailable_user_error());
-}
-
-/// The metadata-only `user_error` payload for the local-embedding-runtime
-/// fallback. Split out from the publish so the no-leak contract is unit-
-/// testable without a live socket.
-fn local_model_unavailable_user_error() -> crate::core::socketio::WebChannelEvent {
-    crate::core::socketio::WebChannelEvent {
-        event: "user_error".to_string(),
-        // Every socket auto-joins the "system" room, so this reaches all
-        // connected clients rather than one chat session.
-        client_id: "system".to_string(),
-        error_type: Some(LOCAL_MODEL_UNAVAILABLE_KIND.to_string()),
-        error_source: Some("memory".to_string()),
-        ..Default::default()
-    }
 }
 
 /// Resets the once-per-process Sentry latch. Test-only — any test that
@@ -612,6 +584,8 @@ pub fn create_memory_for_migration(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openhuman::memory::tree::health::LOCAL_MODEL_UNAVAILABLE_KIND;
+
     use axum::{routing::get, Json, Router};
     use std::ffi::OsString;
     use std::net::SocketAddr;
@@ -898,33 +872,6 @@ mod tests {
         assert_eq!(redact_ollama_host(""), "unknown");
     }
 
-    /// #5354 — the `user_error` broadcast that actually reaches the UI.
-    ///
-    /// `DomainEvent::EmbeddingModelUnhealthy` is published beside it, but the
-    /// domain bus has no product-UI consumer, so this web-channel event is the
-    /// one that lands in the UserErrorCenter. Two things must hold: the wire
-    /// shape the frontend `socketService` handler reads, and the metadata-only
-    /// no-leak contract (no raw provider text, no configured endpoint).
-    #[test]
-    fn local_model_unavailable_user_error_is_metadata_only() {
-        let event = local_model_unavailable_user_error();
-
-        assert_eq!(event.event, "user_error");
-        // The "system" room is the one every socket auto-joins.
-        assert_eq!(event.client_id, "system");
-        assert_eq!(
-            event.error_type.as_deref(),
-            Some(LOCAL_MODEL_UNAVAILABLE_KIND)
-        );
-        assert_eq!(event.error_source.as_deref(), Some("memory"));
-
-        // No-leak contract: nothing that could carry the base URL, a model id,
-        // or raw provider prose may ride along.
-        assert!(event.message.is_none(), "must not carry raw error prose");
-        assert!(event.full_response.is_none());
-        assert!(event.thread_id.is_empty());
-    }
-
     /// #5354 — the client broadcast must NOT ride the once-per-process Sentry
     /// latch.
     ///
@@ -962,15 +909,6 @@ mod tests {
                 Some(LOCAL_MODEL_UNAVAILABLE_KIND)
             );
         }
-    }
-
-    /// The kind token is a cross-language contract: `app/src/types/userError.ts`
-    /// declares this exact `UserErrorKind` discriminator and `classify.ts` keys
-    /// on it. A rename on either side drops the signal with no compile error on
-    /// either side, so pin the wire string.
-    #[test]
-    fn local_model_unavailable_kind_matches_frontend_discriminator() {
-        assert_eq!(LOCAL_MODEL_UNAVAILABLE_KIND, "local_model_unavailable");
     }
 
     /// First call to `report_ollama_health_gate_once` fires the report;

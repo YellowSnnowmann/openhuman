@@ -7560,7 +7560,7 @@ const en: TranslationMap = {
     'Your AI provider has no API key set. Add one in provider settings to continue.',
   'userErrors.localModelUnavailable.title': 'Local model unavailable',
   'userErrors.localModelUnavailable.body':
-    'Ollama is not running, or the model it needs was never pulled. Start Ollama and pull the model, or switch this workload to a cloud provider.',
+    'Ollama is not running, or the model it needs is not installed. Start Ollama and pull the model, or switch this workload to a cloud provider.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Scheduled job',
   'userErrors.scope.memory': 'Memory',
