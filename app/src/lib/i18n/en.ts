@@ -7546,8 +7546,15 @@ const en: TranslationMap = {
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',
-  'memorySources.codingSessions.ingest': 'Ingest new sessions',
-  'memorySources.codingSessions.ingesting': 'Ingesting…',
+  'memorySources.codingSessions.importAll': 'Import all sessions',
+  'memorySources.codingSessions.draining': 'Importing… pass {passes}',
+  'memorySources.codingSessions.stop': 'Stop',
+  'memorySources.codingSessions.progress':
+    '{processed} sessions imported · {observations} observations',
+  'memorySources.codingSessions.remaining': 'about {remaining} left',
+  'memorySources.codingSessions.stopped': 'Import paused',
+  'memorySources.codingSessions.stoppedMessage':
+    'Imported {processed} sessions. Run import again to continue the remaining {remaining}.',
   'memorySources.codingSessions.claude': 'Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessions · {evidence} human turns',
@@ -7559,8 +7566,6 @@ const en: TranslationMap = {
     '{processed} sessions produced {observations} persona observations.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessions failed while {processed} were processed. Run ingestion again to retry them.',
-  'memorySources.codingSessions.moreRemaining':
-    'The session batch limit was reached. Run ingestion again to continue importing your history.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
 };
 

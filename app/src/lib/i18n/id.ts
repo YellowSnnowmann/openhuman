@@ -7243,8 +7243,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sesi agen pemrograman',
   'memorySources.codingSessions.description':
     'Ubah keputusan dan koreksi Codex serta Claude Code menjadi memori persona pribadi.',
-  'memorySources.codingSessions.ingest': 'Serap sesi baru',
-  'memorySources.codingSessions.ingesting': 'Menyerap…',
+  'memorySources.codingSessions.importAll': 'Impor semua sesi',
+  'memorySources.codingSessions.draining': 'Mengimpor… lintasan {passes}',
+  'memorySources.codingSessions.stop': 'Hentikan',
+  'memorySources.codingSessions.progress': '{processed} sesi diimpor · {observations} observasi',
+  'memorySources.codingSessions.remaining': 'sekitar {remaining} tersisa',
+  'memorySources.codingSessions.stopped': 'Impor dijeda',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} sesi diimpor. Jalankan impor lagi untuk melanjutkan {remaining} yang tersisa.',
   'memorySources.codingSessions.claude': 'Riwayat Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sesi · {evidence} masukan manusia',
@@ -7256,8 +7262,6 @@ const messages: TranslationMap = {
     '{processed} sesi menghasilkan {observations} pengamatan persona.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sesi gagal sementara {processed} berhasil diproses. Jalankan penyerapan lagi untuk mencoba ulang.',
-  'memorySources.codingSessions.moreRemaining':
-    'Batas batch sesi tercapai. Jalankan penyerapan lagi untuk melanjutkan impor riwayat Anda.',
   'memorySources.codingSessions.failed': 'Gagal menyerap sesi pemrograman',
   'flows.canvas.sidePanelToggle': 'Panel samping',
   'flows.canvas.legendTab': 'Manual',

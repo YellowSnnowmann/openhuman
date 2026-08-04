@@ -7311,8 +7311,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sesje agentów programistycznych',
   'memorySources.codingSessions.description':
     'Zamień decyzje i poprawki z Codex oraz Claude Code w prywatną pamięć persony.',
-  'memorySources.codingSessions.ingest': 'Wczytaj nowe sesje',
-  'memorySources.codingSessions.ingesting': 'Wczytywanie…',
+  'memorySources.codingSessions.importAll': 'Importuj wszystkie sesje',
+  'memorySources.codingSessions.draining': 'Importowanie… przebieg {passes}',
+  'memorySources.codingSessions.stop': 'Zatrzymaj',
+  'memorySources.codingSessions.progress':
+    'Zaimportowano {processed} sesji · {observations} obserwacji',
+  'memorySources.codingSessions.remaining': 'pozostało około {remaining}',
+  'memorySources.codingSessions.stopped': 'Import wstrzymany',
+  'memorySources.codingSessions.stoppedMessage':
+    'Zaimportowano {processed} sesji. Uruchom import ponownie, aby kontynuować pozostałe {remaining}.',
   'memorySources.codingSessions.claude': 'Historia Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sesji · {evidence} wypowiedzi użytkownika',
@@ -7325,8 +7332,6 @@ const messages: TranslationMap = {
     '{processed} sesji utworzyło {observations} obserwacji persony.',
   'memorySources.codingSessions.partialFailure':
     'Nie udało się przetworzyć {failed} sesji, a {processed} przetworzono. Uruchom import ponownie, aby spróbować jeszcze raz.',
-  'memorySources.codingSessions.moreRemaining':
-    'Osiągnięto limit sesji w partii. Uruchom import ponownie, aby kontynuować wczytywanie historii.',
   'memorySources.codingSessions.failed': 'Nie udało się wczytać sesji programistycznych',
   'flows.canvas.sidePanelToggle': 'Panel boczny',
   'flows.canvas.legendTab': 'Ręczny',

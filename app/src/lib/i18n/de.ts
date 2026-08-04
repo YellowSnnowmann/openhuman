@@ -7408,8 +7408,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Coding-Agent-Sitzungen',
   'memorySources.codingSessions.description':
     'Verwandle Entscheidungen und Korrekturen aus Codex und Claude Code in private Persona-Erinnerungen.',
-  'memorySources.codingSessions.ingest': 'Neue Sitzungen einlesen',
-  'memorySources.codingSessions.ingesting': 'Wird eingelesen…',
+  'memorySources.codingSessions.importAll': 'Alle Sitzungen importieren',
+  'memorySources.codingSessions.draining': 'Import läuft… Durchlauf {passes}',
+  'memorySources.codingSessions.stop': 'Stopp',
+  'memorySources.codingSessions.progress':
+    '{processed} Sitzungen importiert · {observations} Beobachtungen',
+  'memorySources.codingSessions.remaining': 'noch etwa {remaining}',
+  'memorySources.codingSessions.stopped': 'Import angehalten',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} Sitzungen importiert. Starten Sie den Import erneut, um die restlichen {remaining} fortzusetzen.',
   'memorySources.codingSessions.claude': 'Claude-Code-Verlauf',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} Sitzungen · {evidence} menschliche Beiträge',
@@ -7422,8 +7429,6 @@ const messages: TranslationMap = {
     '{processed} Sitzungen ergaben {observations} Persona-Beobachtungen.',
   'memorySources.codingSessions.partialFailure':
     '{failed} Sitzungen sind fehlgeschlagen, während {processed} verarbeitet wurden. Starten Sie das Einlesen erneut.',
-  'memorySources.codingSessions.moreRemaining':
-    'Das Sitzungslimit für diesen Durchlauf wurde erreicht. Starten Sie das Einlesen erneut, um den Import fortzusetzen.',
   'memorySources.codingSessions.failed': 'Einlesen der Coding-Sitzungen fehlgeschlagen',
   'flows.canvas.sidePanelToggle': 'Seitenleiste',
   'flows.canvas.legendTab': 'Manuell',

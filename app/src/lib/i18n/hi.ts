@@ -7205,8 +7205,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'कोडिंग-एजेंट सत्र',
   'memorySources.codingSessions.description':
     'Codex और Claude Code के निर्णयों व सुधारों को निजी व्यक्तित्व स्मृति में बदलें।',
-  'memorySources.codingSessions.ingest': 'नए सत्र शामिल करें',
-  'memorySources.codingSessions.ingesting': 'शामिल किया जा रहा है…',
+  'memorySources.codingSessions.importAll': 'सभी सत्र आयात करें',
+  'memorySources.codingSessions.draining': 'आयात हो रहा है… पास {passes}',
+  'memorySources.codingSessions.stop': 'रोकें',
+  'memorySources.codingSessions.progress': '{processed} सत्र आयात किए गए · {observations} अवलोकन',
+  'memorySources.codingSessions.remaining': 'लगभग {remaining} शेष',
+  'memorySources.codingSessions.stopped': 'आयात रोका गया',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} सत्र आयात किए गए। शेष {remaining} जारी रखने के लिए फिर से आयात चलाएँ।',
   'memorySources.codingSessions.claude': 'क्लॉड कोड',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} सत्र · {evidence} मानवीय संदेश',
@@ -7218,8 +7224,6 @@ const messages: TranslationMap = {
     '{processed} सत्रों से {observations} व्यक्तित्व अवलोकन बने।',
   'memorySources.codingSessions.partialFailure':
     '{processed} सत्र संसाधित हुए, जबकि {failed} विफल रहे। दोबारा प्रयास करने के लिए अंतर्ग्रहण फिर चलाएँ।',
-  'memorySources.codingSessions.moreRemaining':
-    'सत्र बैच की सीमा पूरी हो गई है। अपना इतिहास आयात करना जारी रखने के लिए फिर से अंतर्ग्रहण चलाएँ।',
   'memorySources.codingSessions.failed': 'कोडिंग सत्र शामिल करना विफल रहा',
   'flows.canvas.sidePanelToggle': 'साइड पैनल',
   'flows.canvas.legendTab': 'मैनुअल',

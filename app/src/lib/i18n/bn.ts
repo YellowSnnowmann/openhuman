@@ -7206,8 +7206,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'কোডিং-এজেন্ট সেশন',
   'memorySources.codingSessions.description':
     'Codex ও Claude Code-এর সিদ্ধান্ত এবং সংশোধনকে ব্যক্তিগত পারসোনা মেমরিতে রূপ দিন।',
-  'memorySources.codingSessions.ingest': 'নতুন সেশন গ্রহণ করুন',
-  'memorySources.codingSessions.ingesting': 'গ্রহণ করা হচ্ছে…',
+  'memorySources.codingSessions.importAll': 'সব সেশন আমদানি করুন',
+  'memorySources.codingSessions.draining': 'আমদানি হচ্ছে… পাস {passes}',
+  'memorySources.codingSessions.stop': 'থামান',
+  'memorySources.codingSessions.progress':
+    '{processed}টি সেশন আমদানি হয়েছে · {observations}টি পর্যবেক্ষণ',
+  'memorySources.codingSessions.remaining': 'আরও প্রায় {remaining} বাকি',
+  'memorySources.codingSessions.stopped': 'আমদানি থামানো হয়েছে',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed}টি সেশন আমদানি হয়েছে। বাকি {remaining}টি চালিয়ে যেতে আবার আমদানি চালান।',
   'memorySources.codingSessions.claude': 'ক্লড কোড',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files}টি সেশন · {evidence}টি মানব বার্তা',
@@ -7219,8 +7226,6 @@ const messages: TranslationMap = {
     '{processed}টি সেশন থেকে {observations}টি পারসোনা পর্যবেক্ষণ তৈরি হয়েছে।',
   'memorySources.codingSessions.partialFailure':
     '{processed}টি সেশন প্রক্রিয়া করার সময় {failed}টি ব্যর্থ হয়েছে। আবার চেষ্টা করতে গ্রহণ পুনরায় চালান।',
-  'memorySources.codingSessions.moreRemaining':
-    'সেশন ব্যাচের সীমা পূর্ণ হয়েছে। আপনার ইতিহাস আমদানি চালিয়ে যেতে আবার গ্রহণ চালান।',
   'memorySources.codingSessions.failed': 'কোডিং সেশন গ্রহণ ব্যর্থ হয়েছে',
   'flows.canvas.sidePanelToggle': 'সাইড প্যানেল',
   'flows.canvas.legendTab': 'ম্যানুয়াল',

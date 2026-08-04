@@ -7354,8 +7354,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sesiones de agentes de programación',
   'memorySources.codingSessions.description':
     'Convierte tus decisiones y correcciones de Codex y Claude Code en memoria privada de personalidad.',
-  'memorySources.codingSessions.ingest': 'Ingerir sesiones nuevas',
-  'memorySources.codingSessions.ingesting': 'Ingiriendo…',
+  'memorySources.codingSessions.importAll': 'Importar todas las sesiones',
+  'memorySources.codingSessions.draining': 'Importando… lote {passes}',
+  'memorySources.codingSessions.stop': 'Detener',
+  'memorySources.codingSessions.progress':
+    '{processed} sesiones importadas · {observations} observaciones',
+  'memorySources.codingSessions.remaining': 'quedan unas {remaining}',
+  'memorySources.codingSessions.stopped': 'Importación en pausa',
+  'memorySources.codingSessions.stoppedMessage':
+    'Se importaron {processed} sesiones. Ejecuta la importación de nuevo para continuar con las {remaining} restantes.',
   'memorySources.codingSessions.claude': 'Historial de Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sesiones · {evidence} intervenciones humanas',
@@ -7368,8 +7375,6 @@ const messages: TranslationMap = {
     '{processed} sesiones produjeron {observations} observaciones de personalidad.',
   'memorySources.codingSessions.partialFailure':
     'Fallaron {failed} sesiones mientras se procesaron {processed}. Ejecuta la ingesta de nuevo para reintentarlas.',
-  'memorySources.codingSessions.moreRemaining':
-    'Se alcanzó el límite de sesiones del lote. Ejecuta la ingesta de nuevo para seguir importando tu historial.',
   'memorySources.codingSessions.failed': 'Falló la ingesta de sesiones de programación',
   'flows.canvas.sidePanelToggle': 'Panel lateral',
   'flows.canvas.legendTab': 'Manual',

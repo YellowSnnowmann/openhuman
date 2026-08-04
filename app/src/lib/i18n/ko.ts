@@ -7125,8 +7125,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': '코딩 에이전트 세션',
   'memorySources.codingSessions.description':
     'Codex와 Claude Code의 결정 및 수정 사항을 비공개 페르소나 메모리로 변환합니다.',
-  'memorySources.codingSessions.ingest': '새 세션 수집',
-  'memorySources.codingSessions.ingesting': '수집 중…',
+  'memorySources.codingSessions.importAll': '모든 세션 가져오기',
+  'memorySources.codingSessions.draining': '가져오는 중… {passes}회차',
+  'memorySources.codingSessions.stop': '중지',
+  'memorySources.codingSessions.progress': '{processed}개 세션 가져옴 · 관찰 {observations}개',
+  'memorySources.codingSessions.remaining': '약 {remaining}개 남음',
+  'memorySources.codingSessions.stopped': '가져오기 일시중지됨',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed}개 세션을 가져왔습니다. 남은 {remaining}개를 계속하려면 가져오기를 다시 실행하세요.',
   'memorySources.codingSessions.claude': '클로드 코드',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '세션 {files}개 · 사용자 입력 {evidence}개',
@@ -7138,8 +7144,6 @@ const messages: TranslationMap = {
     '세션 {processed}개에서 페르소나 관찰 {observations}개를 만들었습니다.',
   'memorySources.codingSessions.partialFailure':
     '세션 {processed}개를 처리하는 동안 {failed}개가 실패했습니다. 다시 시도하려면 수집을 다시 실행하세요.',
-  'memorySources.codingSessions.moreRemaining':
-    '세션 배치 한도에 도달했습니다. 기록 가져오기를 계속하려면 수집을 다시 실행하세요.',
   'memorySources.codingSessions.failed': '코딩 세션 수집 실패',
   'flows.canvas.sidePanelToggle': '사이드 패널',
   'flows.canvas.legendTab': '수동',
