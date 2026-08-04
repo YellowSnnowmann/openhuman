@@ -7161,7 +7161,7 @@ const messages: TranslationMap = {
     'आपके AI प्रदाता के लिए कोई API कुंजी सेट नहीं है। जारी रखने के लिए प्रदाता सेटिंग्स में एक जोड़ें।',
   'userErrors.localModelUnavailable.title': 'लोकल मॉडल उपलब्ध नहीं है',
   'userErrors.localModelUnavailable.body':
-    'या तो Ollama चल नहीं रहा है, या ज़रूरी मॉडल इंस्टॉल नहीं है। Ollama शुरू करके मॉडल पुल करें, या इस काम को किसी क्लाउड प्रोवाइडर पर ले जाएँ।',
+    'कॉन्फ़िगर किए गए एंडपॉइंट पर Ollama तक पहुँच नहीं है, या ज़रूरी मॉडल वहाँ इंस्टॉल नहीं है। Ollama शुरू करके उसी एंडपॉइंट पर मॉडल पुल करें, या इस काम को किसी क्लाउड प्रोवाइडर पर ले जाएँ।',
   'userErrors.scope.chat': 'चैट',
   'userErrors.scope.cron': 'निर्धारित कार्य',
   'userErrors.scope.memory': 'मेमोरी',

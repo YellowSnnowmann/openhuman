@@ -433,6 +433,15 @@ impl DegradedState {
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 static SEMANTIC_RECALL_DEGRADED: AtomicBool = AtomicBool::new(false);
+/// Whether the clients have already been told about the *current* local-runtime
+/// outage. Separate from [`SEMANTIC_RECALL_DEGRADED`] because "is recall
+/// degraded" and "have we announced it" are different questions, and the
+/// announcement must be claimed by exactly one caller: the embed path runs
+/// concurrently across worker tasks, and a plain read-then-write of the
+/// degraded flag lets two of them both decide they are the first
+/// (CodeRabbit, #5398). Claimed with `compare_exchange`, released by
+/// [`clear_semantic_recall_degraded`] so a later outage announces again.
+static LOCAL_MODEL_USER_ERROR_SURFACED: AtomicBool = AtomicBool::new(false);
 static STRUCTURE_DEGRADED: AtomicBool = AtomicBool::new(false);
 /// The host filesystem can't service the memory_tree path (EIO/ENOSPC/EROFS).
 /// Set by the queue worker's host-I/O arm; cleared on the next successful
@@ -515,26 +524,39 @@ pub fn mark_semantic_recall_degraded(cause: FailureCode) {
 /// The broadcast fires only on the **transition** into the state, not on every
 /// failed embed: the re-embed path calls this per row, and while the panel
 /// store dedupes on the descriptor identity, emitting one socket event per
-/// chunk would be pointless traffic. The flag doubles as the edge detector.
+/// chunk would be pointless traffic.
+///
+/// The announcement is claimed with a `compare_exchange` on a dedicated latch
+/// rather than by reading the degraded flag, so exactly one of several
+/// concurrent embed tasks publishes (CodeRabbit, #5398).
+///
+/// The latch is released by [`clear_semantic_recall_degraded`], which every
+/// write-embedder build calls once per seal / re-embed operation. That is
+/// deliberate: it makes the announcement **re-emit once per failing operation
+/// until recovery**, so a client that was not yet connected when the outage
+/// began still receives it on the next operation. `publish_web_channel_event`
+/// is an unbuffered broadcast with no replay, so bounded re-emission is what
+/// stands in for one.
 pub fn mark_local_model_unavailable_if_applicable(failure: &PipelineFailure) {
     if failure.code != FailureCode::LocalModelUnavailable {
         return;
     }
-    // Edge detection before the mark: already-degraded-for-this-reason means a
-    // previous failure in this outage already told the clients.
-    let already_surfaced = SEMANTIC_RECALL_DEGRADED.load(Ordering::Acquire)
-        && u8_to_code(SEMANTIC_RECALL_CAUSE.load(Ordering::Relaxed))
-            == Some(FailureCode::LocalModelUnavailable);
+    // Claim the announcement before mutating anything else. `compare_exchange`
+    // makes the check-and-claim one indivisible step, so concurrent callers
+    // cannot all conclude they are first.
+    let claimed_announcement = LOCAL_MODEL_USER_ERROR_SURFACED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok();
 
     log::warn!(
         "[memory_tree::health] action=mark_degraded surface=semantic_recall \
-         cause=local_model_unavailable class={} transition={}",
+         cause=local_model_unavailable class={} announced={}",
         failure.class.as_str(),
-        !already_surfaced
+        claimed_announcement
     );
     mark_semantic_recall_degraded(FailureCode::LocalModelUnavailable);
 
-    if !already_surfaced {
+    if claimed_announcement {
         publish_local_model_unavailable_user_error("embed_classify");
     }
 }
@@ -545,6 +567,11 @@ pub fn mark_local_model_unavailable_if_applicable(failure: &PipelineFailure) {
 pub fn clear_semantic_recall_degraded() {
     SEMANTIC_RECALL_DEGRADED.store(false, Ordering::Relaxed);
     SEMANTIC_RECALL_CAUSE.store(0, Ordering::Relaxed);
+    // Release the announcement claim so a later local-runtime failure tells the
+    // clients again. Called once per write-embedder build, which is what turns
+    // the single announcement into bounded re-emission until recovery — the
+    // reason a client connecting mid-outage still gets told.
+    LOCAL_MODEL_USER_ERROR_SURFACED.store(false, Ordering::Release);
 }
 
 /// Record that wiki structure is degraded (extraction yielded nothing across
@@ -594,6 +621,7 @@ pub fn test_guard() -> std::sync::MutexGuard<'static, ()> {
         .lock()
         .unwrap_or_else(|p| p.into_inner());
     SEMANTIC_RECALL_DEGRADED.store(false, Ordering::Relaxed);
+    LOCAL_MODEL_USER_ERROR_SURFACED.store(false, Ordering::Relaxed);
     STRUCTURE_DEGRADED.store(false, Ordering::Relaxed);
     STORAGE_DEGRADED.store(false, Ordering::Relaxed);
     SEMANTIC_RECALL_CAUSE.store(0, Ordering::Relaxed);
@@ -1043,6 +1071,70 @@ mod tests {
         assert!(
             rx.try_recv().is_ok(),
             "a fresh outage after recovery must broadcast again"
+        );
+    }
+
+    /// #5398 (CodeRabbit) — concurrent embed tasks must not all decide they are
+    /// the first to announce. The claim is a `compare_exchange`, so exactly one
+    /// of N racing callers publishes. Deterministic: the assertion is on the
+    /// count of claims, which the atomic makes exact regardless of scheduling.
+    #[test]
+    fn concurrent_failures_announce_exactly_once() {
+        let _g = test_guard();
+        let mut rx = crate::openhuman::web_chat::subscribe_web_channel_events();
+
+        const THREADS: usize = 8;
+        std::thread::scope(|scope| {
+            for _ in 0..THREADS {
+                scope.spawn(|| {
+                    mark_local_model_unavailable_if_applicable(&PipelineFailure::new(
+                        FailureCode::LocalModelUnavailable,
+                    ));
+                });
+            }
+        });
+
+        let mut published = 0;
+        while rx.try_recv().is_ok() {
+            published += 1;
+        }
+        assert_eq!(
+            published, 1,
+            "{THREADS} concurrent failures must yield exactly one announcement"
+        );
+    }
+
+    /// #5398 (CodeRabbit) — `publish_web_channel_event` is an unbuffered
+    /// broadcast: an announcement made before any client subscribed is dropped
+    /// with no replay. Bounded re-emission is what covers that, so a client
+    /// connecting mid-outage must still be told on the next failing operation.
+    #[test]
+    fn announcement_reaches_a_client_that_connects_mid_outage() {
+        let _g = test_guard();
+        let failure = PipelineFailure::new(FailureCode::LocalModelUnavailable);
+
+        // Outage starts with nobody listening — this send goes nowhere.
+        mark_local_model_unavailable_if_applicable(&failure);
+
+        // The client connects now, after the first failure.
+        let mut rx = crate::openhuman::web_chat::subscribe_web_channel_events();
+        assert!(
+            rx.try_recv().is_err(),
+            "the pre-subscription announcement is genuinely gone, not buffered"
+        );
+
+        // Next seal / re-embed operation builds its write embedder, which
+        // clears the degraded state, then fails again against the same dead
+        // runtime. The late subscriber must receive that one.
+        clear_semantic_recall_degraded();
+        mark_local_model_unavailable_if_applicable(&failure);
+
+        let event = rx
+            .try_recv()
+            .expect("a client connecting mid-outage must still be told");
+        assert_eq!(
+            event.error_type.as_deref(),
+            Some(LOCAL_MODEL_UNAVAILABLE_KIND)
         );
     }
 

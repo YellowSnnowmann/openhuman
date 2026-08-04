@@ -7296,7 +7296,7 @@ const messages: TranslationMap = {
     'Il tuo provider IA non ha una chiave API impostata. Aggiungine una nelle impostazioni del provider per continuare.',
   'userErrors.localModelUnavailable.title': 'Modello locale non disponibile',
   'userErrors.localModelUnavailable.body':
-    'Ollama non è in esecuzione, oppure il modello necessario non è installato. Avvia Ollama e scarica il modello, oppure sposta questa attività su un provider cloud.',
+    "Ollama non è raggiungibile sull'endpoint configurato, oppure il modello necessario non è installato lì. Avvia Ollama e scarica il modello su quell'endpoint, oppure sposta questo lavoro su un provider cloud.",
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Attività pianificata',
   'userErrors.scope.memory': 'Memoria',

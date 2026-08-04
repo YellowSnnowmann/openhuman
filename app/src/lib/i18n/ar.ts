@@ -7004,7 +7004,7 @@ const messages: TranslationMap = {
     'لا يوجد مفتاح API لمزوّد الذكاء الاصطناعي. أضِفه في إعدادات المزوّد للمتابعة.',
   'userErrors.localModelUnavailable.title': 'النموذج المحلي غير متاح',
   'userErrors.localModelUnavailable.body':
-    'إما أن Ollama لا يعمل أو أن النموذج المطلوب غير مثبّت. شغّل Ollama ونزّل النموذج، أو حوّل هذه المهمة إلى مزوّد سحابي.',
+    'لا يمكن الوصول إلى Ollama على النقطة الطرفية المُهيأة، أو أن النموذج المطلوب غير مثبّت عليها. شغّل Ollama ونزّل النموذج على تلك النقطة الطرفية، أو حوّل هذا العمل إلى مزوّد سحابي.',
   'userErrors.scope.chat': 'الدردشة',
   'userErrors.scope.cron': 'مهمة مجدوَلة',
   'userErrors.scope.memory': 'الذاكرة',

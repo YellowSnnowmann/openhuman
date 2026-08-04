@@ -7343,7 +7343,7 @@ const messages: TranslationMap = {
     "Aucune clé API n'est définie pour votre fournisseur d'IA. Ajoutez-en une dans les paramètres du fournisseur pour continuer.",
   'userErrors.localModelUnavailable.title': 'Modèle local indisponible',
   'userErrors.localModelUnavailable.body':
-    "Ollama n'est pas en cours d'exécution, ou le modèle requis n'est pas installé. Lancez Ollama et téléchargez le modèle, ou basculez cette tâche vers un fournisseur cloud.",
+    "Ollama n'est pas joignable sur le point de terminaison configuré, ou le modèle requis n'y est pas installé. Lancez Ollama et téléchargez le modèle sur ce point de terminaison, ou basculez cette charge de travail vers un fournisseur cloud.",
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tâche planifiée',
   'userErrors.scope.memory': 'Mémoire',
