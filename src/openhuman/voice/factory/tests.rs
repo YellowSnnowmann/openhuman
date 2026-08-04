@@ -2,7 +2,7 @@
 
 use super::entry::{
     create_stt_provider, create_tts_provider, default_stt_provider, default_tts_provider,
-    WHISPER_MODEL_PRESETS,
+    resolve_tts_voice, DEFAULT_PIPER_VOICE, WHISPER_MODEL_PRESETS,
 };
 use super::helpers::{effective_stt_provider, effective_tts_provider, split_slug_model};
 use super::stt_providers::WhisperSttProvider;
@@ -126,6 +126,100 @@ fn tts_factory_piper_branch() {
 fn tts_factory_piper_empty_voice_uses_default() {
     let p = create_tts_provider("piper", "", &cfg()).unwrap();
     assert_eq!(p.name(), "piper");
+}
+
+// ---------------------------------------------------------------------------
+// Voice resolution (#5355)
+//
+// The regression: `create_tts_provider` coerced an empty voice to
+// `DEFAULT_PIPER_VOICE` *before* the provider match, so every provider got a
+// Piper model id. The cloud branch forwarded it as `voice_id` to the backend
+// ElevenLabs proxy, which answers 400 Bad Request. The three RPC handlers that
+// deliberately pass "" for non-Piper providers were silently overridden.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tts_voice_empty_never_yields_piper_default_for_cloud() {
+    // The #5355 regression, stated directly: no Piper voice id may escape to
+    // the cloud provider. `None` makes `synthesize_reply` omit `voice_id` so
+    // the backend applies its own default.
+    for provider in ["cloud", "openhuman"] {
+        assert_eq!(
+            resolve_tts_voice(provider, ""),
+            None,
+            "{provider} with an empty voice must defer to the backend default"
+        );
+        assert_eq!(
+            resolve_tts_voice(provider, "   "),
+            None,
+            "{provider} must treat a whitespace-only voice as empty"
+        );
+    }
+}
+
+#[test]
+fn tts_voice_explicit_is_preserved_for_cloud() {
+    // An explicit cloud voice (e.g. an ElevenLabs id) must still pass through
+    // untouched — the fix must not swallow caller-supplied voices.
+    assert_eq!(
+        resolve_tts_voice("cloud", "JBFqnCBsd6RMkjVDRZzb"),
+        Some("JBFqnCBsd6RMkjVDRZzb")
+    );
+    assert_eq!(resolve_tts_voice("cloud", "  Rachel  "), Some("Rachel"));
+}
+
+#[test]
+fn tts_voice_piper_still_defaults_to_bundled_voice() {
+    // Piper is the one provider the constant is valid for; this behaviour is
+    // unchanged by the fix.
+    assert_eq!(
+        resolve_tts_voice("piper", ""),
+        Some(DEFAULT_PIPER_VOICE),
+        "piper must keep its bundled-voice fallback"
+    );
+    assert_eq!(
+        resolve_tts_voice("piper", "en_GB-alba-medium"),
+        Some("en_GB-alba-medium")
+    );
+}
+
+#[test]
+fn tts_voice_slug_empty_defers_to_registry_default() {
+    // Second defect on the same line: the Piper id was never empty by the time
+    // `create_tts_provider_by_slug` looked at it, so an external provider's
+    // configured `default_tts_voice` could never win.
+    assert_eq!(resolve_tts_voice("openai", ""), None);
+    assert_eq!(resolve_tts_voice("elevenlabs", "   "), None);
+}
+
+#[test]
+fn tts_voice_slug_suffix_beats_voice_argument() {
+    // `slug:voice` is the more specific request, so it outranks the ambient
+    // `voice` argument — same precedence the STT model resolution uses.
+    assert_eq!(
+        resolve_tts_voice("openai:shimmer", "alloy"),
+        Some("shimmer")
+    );
+    assert_eq!(resolve_tts_voice("openai", "alloy"), Some("alloy"));
+}
+
+#[test]
+fn tts_factory_slug_empty_voice_uses_registry_default() {
+    // End-to-end through the factory: with no voice anywhere, the registry
+    // entry's `default_tts_voice` must be what the provider is built with —
+    // previously pre-empted by the Piper id.
+    let mut config = cfg();
+    config.voice_providers.push(
+        crate::openhuman::config::schema::voice_providers::VoiceProviderCreds {
+            slug: "openai".into(),
+            endpoint: "https://api.openai.com/v1".into(),
+            capability: VoiceCapability::Both,
+            default_tts_voice: Some("alloy".into()),
+            ..Default::default()
+        },
+    );
+    let p = create_tts_provider("openai", "", &config).unwrap();
+    assert_eq!(p.name(), "external");
 }
 
 #[test]
