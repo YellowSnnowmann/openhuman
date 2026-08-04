@@ -30,9 +30,12 @@ static CONFIG_RECOVERED: AtomicBool = AtomicBool::new(false);
 
 /// Record that config-corruption recovery happened this session.
 ///
-/// Idempotent and safe to call repeatedly.
-fn mark_config_recovered() {
-    CONFIG_RECOVERED.store(true, Ordering::Relaxed);
+/// Returns `true` only on the first call this process (the `false`→`true`
+/// transition); subsequent calls return `false`. Lets a caller invoked on every
+/// snapshot poll act (e.g. log) exactly once. Idempotent and safe to call
+/// repeatedly.
+fn mark_config_recovered() -> bool {
+    !CONFIG_RECOVERED.swap(true, Ordering::Relaxed)
 }
 
 /// Latch the session recovery signal from a freshly-loaded config.
@@ -41,20 +44,27 @@ fn mark_config_recovered() {
 /// `Config::load_or_init`, and from every `app_state_snapshot` poll with the
 /// config that poll just loaded — whichever load's `recovered_from_corruption`
 /// is authoritative wins, so both boot-time and mid-session recovery latch.
-/// No-op when the config loaded cleanly. Logs at warn (once, on the load that
-/// actually recovered) so the recovery is visible in local logs (it is a Sentry
-/// breadcrumb, not an event — the read failure it stems from is expected
-/// user-environment state, #5167).
+/// No-op when the config loaded cleanly.
+///
+/// Logs at warn **once per process**, gated on the latch's `false`→`true`
+/// transition rather than on `recovered_from_corruption` itself. That matters
+/// because this runs on every snapshot poll (~every few seconds): when a corrupt
+/// config cannot be healed — `impl_load` skips the heal if the rename to
+/// `.corrupted.<ts>` fails (e.g. a Windows sharing violation, os error 32) and
+/// retries on the next load — every poll re-recovers, and an ungated warn would
+/// emit indefinitely. It is a Sentry breadcrumb, not an event (the read failure
+/// it stems from is expected user-environment state, #5167).
 pub fn latch_from_config(config: &Config) {
     if !config.recovered_from_corruption {
         return;
     }
-    log::warn!(
-        "[app_state] config.toml was unreadable/corrupt and was recovered \
-         (restored from .bak or reset to defaults; previous file kept as \
-         .corrupted.<ts>); surfacing a user notice (#5167)"
-    );
-    mark_config_recovered();
+    if mark_config_recovered() {
+        tracing::warn!(
+            "[app_state] config.toml was unreadable/corrupt and was recovered \
+             (restored from .bak or reset to defaults; previous file kept as \
+             .corrupted.<ts>); surfacing a user notice (#5167)"
+        );
+    }
 }
 
 /// Whether config-corruption recovery happened this session. Read by
@@ -93,13 +103,20 @@ mod tests {
             !config_recovered_this_session(),
             "latch must default to false"
         );
-        mark_config_recovered();
+        assert!(
+            mark_config_recovered(),
+            "first mark reports the false->true transition"
+        );
         assert!(
             config_recovered_this_session(),
             "latch must report true after mark"
         );
-        // Idempotent — a second mark keeps it true.
-        mark_config_recovered();
+        // Idempotent — a second mark keeps the latch true but reports no
+        // transition, so callers (latch_from_config) log exactly once.
+        assert!(
+            !mark_config_recovered(),
+            "second mark reports no transition (already latched)"
+        );
         assert!(config_recovered_this_session());
         reset_for_tests();
     }

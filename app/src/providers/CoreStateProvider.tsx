@@ -294,13 +294,15 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   const refreshCore = useCallback(async () => {
     const requestId = ++snapshotRequestIdRef.current;
     const rawSnapshot = await fetchCoreAppSnapshot();
-    // Raise a one-shot notice if the core recovered a corrupted config.toml
-    // this session (#5167). Guarded internally so repeated polls don't re-fire.
-    maybeSurfaceConfigRecovery(rawSnapshot.configRecovered, t);
     const snapshot = normalizeSnapshot(rawSnapshot);
     if (!isMountedRef.current) {
       return;
     }
+    // Raise a one-shot notice if the core recovered a corrupted config.toml
+    // this session (#5167). Placed after the mount guard so a superseded or
+    // unmounted refresh doesn't dispatch; the core latches configRecovered, so
+    // the next live poll still surfaces it. Guarded internally against re-fire.
+    maybeSurfaceConfigRecovery(rawSnapshot.configRecovered, t);
     if (!snapshot.sessionToken) {
       logoutGuardUntilRef.current = 0;
     }
