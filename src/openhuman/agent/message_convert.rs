@@ -138,27 +138,79 @@ pub(crate) fn chat_message_to_message(msg: &ChatMessage) -> Message {
 /// markers into [`ContentBlock::Image`] lets the provider layer serialize them
 /// as real `image_url` parts. The crate forwards [`ImageRef::url`] verbatim, so
 /// the marker payload (already a `data:` URI here) is exactly what it needs.
+///
+/// Blocks are emitted in **source order** — prose and images interleave as the
+/// user wrote them, so a caption stays next to its image. A marker whose payload
+/// is not a provider-ready reference (a `data:` URI or an `http(s)` URL) is kept
+/// verbatim as text rather than sent as an image the provider would reject.
 fn user_content_blocks(text: String) -> Vec<ContentBlock> {
-    let (cleaned, image_refs) = crate::openhuman::agent::multimodal::parse_image_markers(&text);
-    if image_refs.is_empty() {
-        // No attachments: keep the exact prior mapping (the original, untrimmed
-        // text) so plain messages are byte-for-byte unchanged.
+    const PREFIX: &str = "[IMAGE:";
+    // Fast path: no markers → unchanged single text block (byte-for-byte).
+    if !text.contains(PREFIX) {
         return vec![ContentBlock::Text(text)];
     }
-    let mut content = Vec::with_capacity(image_refs.len() + 1);
-    // Lead with the marker-free prose when there is any; an image-only turn
-    // emits no empty text block (some providers reject one).
-    if !cleaned.is_empty() {
-        content.push(ContentBlock::Text(cleaned));
+
+    fn flush_text(pending: &mut String, blocks: &mut Vec<ContentBlock>) {
+        let trimmed = pending.trim();
+        if !trimmed.is_empty() {
+            blocks.push(ContentBlock::Text(trimmed.to_string()));
+        }
+        pending.clear();
     }
-    for reference in image_refs {
-        let mime_type = data_uri_mime(&reference);
-        content.push(ContentBlock::Image(ImageRef {
-            url: reference,
-            mime_type,
-        }));
+
+    let mut blocks: Vec<ContentBlock> = Vec::new();
+    let mut pending = String::new();
+    let mut images = 0usize;
+    let mut rest = text.as_str();
+
+    while let Some(start) = rest.find(PREFIX) {
+        pending.push_str(&rest[..start]);
+        let after = &rest[start + PREFIX.len()..];
+        let Some(end) = after.find(']') else {
+            // Unterminated marker — keep the remainder verbatim as text.
+            pending.push_str(&rest[start..]);
+            rest = "";
+            break;
+        };
+        let payload = after[..end].trim();
+        if is_provider_ready_image_reference(payload) {
+            // Preserve source order: flush the prose seen so far, then the image.
+            flush_text(&mut pending, &mut blocks);
+            blocks.push(ContentBlock::Image(ImageRef {
+                url: payload.to_string(),
+                mime_type: data_uri_mime(payload),
+            }));
+            images += 1;
+        } else {
+            // Not provider-ready (bare path / un-normalized marker) — keep the
+            // whole `[IMAGE:…]` marker verbatim as text.
+            pending.push_str(&rest[start..start + PREFIX.len() + end + 1]);
+        }
+        rest = &after[end + 1..];
     }
-    content
+    pending.push_str(rest);
+    flush_text(&mut pending, &mut blocks);
+
+    if images > 0 {
+        log::debug!(
+            "[agent][message_convert] lifted {images} image attachment(s) from user text into content blocks"
+        );
+    }
+    // A whitespace-only, image-less remainder still needs a block to stay a
+    // valid user turn.
+    if blocks.is_empty() {
+        blocks.push(ContentBlock::Text(text));
+    }
+    blocks
+}
+
+/// Whether an `[IMAGE:…]` payload is a reference the provider can serialize as an
+/// image: an inline `data:` URI or an `http(s)` URL. Anything else (a bare
+/// filesystem path, an un-normalized marker) is left as text.
+fn is_provider_ready_image_reference(reference: &str) -> bool {
+    reference.starts_with("data:")
+        || reference.starts_with("http://")
+        || reference.starts_with("https://")
 }
 
 /// Extract the MIME type from a `data:<mime>;base64,…` URI, if present.
@@ -498,20 +550,37 @@ mod tests {
         assert_eq!(only.content.len(), 1);
         assert!(matches!(&only.content[0], ContentBlock::Image(image) if image.url == jpeg));
 
+        // Interleaved prose + images preserve source order: text, image, text,
+        // image — so each caption stays next to its image.
         let Message::User(multi) = chat_message_to_message(&ChatMessage::user(format!(
             "compare [IMAGE:{jpeg}] and [IMAGE:{gif}]"
         ))) else {
             panic!("user role must map to a user message");
         };
-        let images: Vec<&str> = multi
-            .content
-            .iter()
-            .filter_map(|block| match block {
-                ContentBlock::Image(image) => Some(image.url.as_str()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(images, vec![jpeg, gif]);
+        assert_eq!(multi.content.len(), 4, "text, image, text, image in order");
+        assert!(matches!(&multi.content[0], ContentBlock::Text(t) if t == "compare"));
+        assert!(matches!(&multi.content[1], ContentBlock::Image(i) if i.url == jpeg));
+        assert!(matches!(&multi.content[2], ContentBlock::Text(t) if t == "and"));
+        assert!(matches!(&multi.content[3], ContentBlock::Image(i) if i.url == gif));
+    }
+
+    // A marker whose payload is not a provider-ready reference (a bare path, an
+    // un-normalized marker) must stay verbatim as text — never sent as an image
+    // the provider would reject.
+    #[test]
+    fn non_data_image_marker_is_kept_as_text() {
+        let Message::User(user) = chat_message_to_message(&ChatMessage::user(
+            "see [IMAGE:/tmp/local/path.png] here".to_string(),
+        )) else {
+            panic!("user role must map to a user message");
+        };
+        assert_eq!(user.content.len(), 1);
+        assert!(
+            matches!(&user.content[0], ContentBlock::Text(t)
+                if t == "see [IMAGE:/tmp/local/path.png] here"),
+            "a non-data/http marker stays literal text, got {:?}",
+            user.content
+        );
     }
 
     // No marker → byte-for-byte the previous behavior: a single text block that
