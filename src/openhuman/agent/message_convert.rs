@@ -15,7 +15,7 @@
 //! agent-loop while callers keep speaking openhuman's `ChatMessage` vocabulary.
 
 use tinyagents::harness::message::{
-    AssistantMessage, ContentBlock, Message, SystemMessage, ToolMessage, UserMessage,
+    AssistantMessage, ContentBlock, ImageRef, Message, SystemMessage, ToolMessage, UserMessage,
 };
 use tinyagents::harness::tool::ToolCall as TaToolCall;
 
@@ -120,9 +120,56 @@ pub(crate) fn chat_message_to_message(msg: &ChatMessage) -> Message {
         // "user" and any unrecognized role default to a user turn — the safest
         // mapping for a free-form inbound message.
         _ => Message::User(UserMessage {
-            content: vec![ContentBlock::Text(text)],
+            content: user_content_blocks(text),
         }),
     }
+}
+
+/// Build the content blocks for a user turn, lifting any `[IMAGE:…]` markers out
+/// of the text into typed [`ContentBlock::Image`] blocks.
+///
+/// By the time a user message reaches this bridge the multimodal pipeline has
+/// already rehydrated and normalized every attachment into an inline
+/// `[IMAGE:data:<mime>;base64,…]` marker (see
+/// [`crate::openhuman::agent::multimodal::prepare_messages_for_provider`]).
+/// Leaving those buried in a single [`ContentBlock::Text`] ships the base64 to
+/// the model as literal text, so vision models never actually see the image —
+/// PNG screenshots fail outright and JPEGs get guessed at (#5359). Splitting the
+/// markers into [`ContentBlock::Image`] lets the provider layer serialize them
+/// as real `image_url` parts. The crate forwards [`ImageRef::url`] verbatim, so
+/// the marker payload (already a `data:` URI here) is exactly what it needs.
+fn user_content_blocks(text: String) -> Vec<ContentBlock> {
+    let (cleaned, image_refs) = crate::openhuman::agent::multimodal::parse_image_markers(&text);
+    if image_refs.is_empty() {
+        // No attachments: keep the exact prior mapping (the original, untrimmed
+        // text) so plain messages are byte-for-byte unchanged.
+        return vec![ContentBlock::Text(text)];
+    }
+    let mut content = Vec::with_capacity(image_refs.len() + 1);
+    // Lead with the marker-free prose when there is any; an image-only turn
+    // emits no empty text block (some providers reject one).
+    if !cleaned.is_empty() {
+        content.push(ContentBlock::Text(cleaned));
+    }
+    for reference in image_refs {
+        let mime_type = data_uri_mime(&reference);
+        content.push(ContentBlock::Image(ImageRef {
+            url: reference,
+            mime_type,
+        }));
+    }
+    content
+}
+
+/// Extract the MIME type from a `data:<mime>;base64,…` URI, if present.
+///
+/// Best-effort: the provider layer also reads the type straight from the `data:`
+/// URI, so a non-`data:` reference (e.g. an `http(s)` URL) simply carries
+/// `None` and is forwarded as-is.
+fn data_uri_mime(reference: &str) -> Option<String> {
+    let rest = reference.strip_prefix("data:")?;
+    let mime = rest.split([';', ',']).next()?.trim();
+    (!mime.is_empty()).then(|| mime.to_string())
 }
 
 /// Parse a native assistant tool-call envelope (`{ "content", "tool_calls" }`, as
@@ -409,6 +456,75 @@ pub(crate) fn ta_call_to_oh_call(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // #5359: a user turn whose text carries an inline `[IMAGE:data:…]` marker
+    // (what the multimodal pipeline hands this bridge) must emit a typed
+    // `ContentBlock::Image` so the provider serializes it as `image_url` — not
+    // bury the base64 in a `ContentBlock::Text` the model reads as literal text.
+    #[test]
+    fn user_image_marker_becomes_an_image_content_block() {
+        let png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+        let msg = ChatMessage::user(format!("what is in this screenshot? [IMAGE:{png}]"));
+
+        let Message::User(user) = chat_message_to_message(&msg) else {
+            panic!("user role must map to a user message");
+        };
+        assert_eq!(user.content.len(), 2, "prose text + one image block");
+        match &user.content[0] {
+            ContentBlock::Text(text) => assert_eq!(text, "what is in this screenshot?"),
+            other => panic!("expected the marker-free prose first, got {other:?}"),
+        }
+        match &user.content[1] {
+            ContentBlock::Image(image) => {
+                assert_eq!(image.url, png, "the data URI is forwarded verbatim");
+                assert_eq!(image.mime_type.as_deref(), Some("image/png"));
+            }
+            other => panic!("expected an image block, got {other:?}"),
+        }
+    }
+
+    // An image-only turn must not emit an empty text block (some providers 400
+    // on one), and multiple attachments each become their own image block.
+    #[test]
+    fn image_only_and_multi_image_user_turns_map_to_image_blocks_only() {
+        let jpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+        let gif = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+
+        let Message::User(only) =
+            chat_message_to_message(&ChatMessage::user(format!("[IMAGE:{jpeg}]")))
+        else {
+            panic!("user role must map to a user message");
+        };
+        assert_eq!(only.content.len(), 1);
+        assert!(matches!(&only.content[0], ContentBlock::Image(image) if image.url == jpeg));
+
+        let Message::User(multi) = chat_message_to_message(&ChatMessage::user(format!(
+            "compare [IMAGE:{jpeg}] and [IMAGE:{gif}]"
+        ))) else {
+            panic!("user role must map to a user message");
+        };
+        let images: Vec<&str> = multi
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Image(image) => Some(image.url.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(images, vec![jpeg, gif]);
+    }
+
+    // No marker → byte-for-byte the previous behavior: a single text block that
+    // preserves the original (untrimmed) content.
+    #[test]
+    fn plain_user_text_stays_a_single_text_block() {
+        let Message::User(user) = chat_message_to_message(&ChatMessage::user("  hi there  "))
+        else {
+            panic!("user role must map to a user message");
+        };
+        assert_eq!(user.content.len(), 1);
+        assert!(matches!(&user.content[0], ContentBlock::Text(text) if text == "  hi there  "));
+    }
 
     #[test]
     fn seeded_native_tool_round_recovers_structure_and_round_trips() {
