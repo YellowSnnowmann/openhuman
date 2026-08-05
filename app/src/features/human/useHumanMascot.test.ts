@@ -81,6 +81,8 @@ vi.mock('./voice/audioPlayer', () => ({
       return;
     throw err;
   },
+  isAudioStopped: (err: unknown) =>
+    typeof err === 'object' && err !== null && (err as { stopped?: unknown }).stopped === true,
 }));
 
 function makeFakePlayback(durationMs = 100) {
@@ -105,6 +107,12 @@ function makeFakePlayback(durationMs = 100) {
     finishNaturally: () => {
       stopped = true;
       resolveEnded();
+    },
+    // Reject `ended` with a real (non-stop) decoder/playback fault — distinct
+    // from the stop sentinel `stop()` raises.
+    failWith: (err: Error) => {
+      stopped = true;
+      rejectEnded(err);
     },
     durationMs,
   };
@@ -750,6 +758,40 @@ describe('useHumanMascot TTS playback', () => {
 
     await act(async () => {
       fake.finishNaturally();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.face).toBe('happy');
+
+    act(() => {
+      vi.advanceTimersByTime(ACK_FACE_HOLD_MS + 1);
+    });
+    expect(result.current.face).toBe('idle');
+  });
+
+  it('finishes the turn when a clip ends with a real decoder error (no rethrow, not stranded)', async () => {
+    const fake = makeFakePlayback();
+    (synthesizeSpeech as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      audio_base64: 'AAA=',
+      audio_mime: 'audio/mpeg',
+      visemes: [{ viseme: 'aa', start_ms: 0, end_ms: 100 }],
+    });
+    (playBase64Audio as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fake.handle);
+
+    const { result } = renderHook(() => useHumanMascot({ speakReplies: true }));
+    await act(async () => {
+      capturedListeners?.onDone?.(fakeDone('sure thing'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.face).toBe('speaking');
+
+    // The clip started fine but `ended` rejects with a genuine playback fault.
+    // The pump must swallow it (not rethrow), release the handle, and still end
+    // the turn on the ack face rather than stranding the mascot in 'speaking'.
+    await act(async () => {
+      fake.failWith(new Error('decoder blew up'));
       await Promise.resolve();
       await Promise.resolve();
     });

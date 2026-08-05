@@ -6,7 +6,12 @@ import { type ChatSubagentDoneEvent, subscribeChatEvents } from '../../services/
 import { selectEffectiveMascotVoiceId } from '../../store/mascotSlice';
 import type { MascotFace } from './Mascot';
 import { lerpViseme, VISEMES, type VisemeShape } from './Mascot/visemes';
-import { type PlaybackHandle, playBase64Audio, swallowAudioStop } from './voice/audioPlayer';
+import {
+  isAudioStopped,
+  type PlaybackHandle,
+  playBase64Audio,
+  swallowAudioStop,
+} from './voice/audioPlayer';
 import {
   hasUsableStarts,
   normalizeVisemeTimeline,
@@ -364,6 +369,10 @@ export function useHumanMascot(options: UseHumanMascotOptions = {}): UseHumanMas
         clearAckTimer();
         toolSucceededRef.current = false;
         subagentSucceededRef.current = false;
+        // A new agent turn supersedes any reply still being spoken — stop the
+        // previous turn's audio and drop its queue so the next turn's deltas
+        // start a fresh stream instead of appending onto stale state.
+        cancelTtsPlayback();
         mascotLog('voice-session transition → thinking (inference_start)');
         setFace('thinking');
       },
@@ -532,7 +541,10 @@ export function useHumanMascot(options: UseHumanMascotOptions = {}): UseHumanMas
    * is already open (subsequent deltas of the same reply).
    */
   function ensureTtsTurn(): void {
-    if (streamActiveRef.current) return;
+    // Reuse the open turn only while it is still accepting sentences. Once
+    // `chat_done` has closed it (queueClosedRef), a delta belongs to a NEW turn
+    // — start fresh so it never appends onto the previous reply's queue/ack.
+    if (streamActiveRef.current && !queueClosedRef.current) return;
     beginTtsTurn();
   }
 
@@ -643,11 +655,15 @@ export function useHumanMascot(options: UseHumanMascotOptions = {}): UseHumanMas
         await playChunk(result.tts, chunk.text, seq);
       }
     } finally {
-      // Only release the guard if this pump still owns the turn — a superseding
-      // turn resets it explicitly, so a stale pump must not clear a live one.
-      if (isTurnCurrent(seq)) queuePumpingRef.current = false;
+      // Only act if this pump still owns the turn — a superseding turn resets
+      // state explicitly, so a stale pump must not touch it. Finalizing here in
+      // the `finally` guarantees the turn always ends (mouth rests, ack fires)
+      // even if a chunk unexpectedly throws, instead of stranding it speaking.
+      if (isTurnCurrent(seq)) {
+        queuePumpingRef.current = false;
+        maybeFinishTurn(seq);
+      }
     }
-    if (isTurnCurrent(seq)) maybeFinishTurn(seq);
   }
 
   /**
@@ -722,7 +738,13 @@ export function useHumanMascot(options: UseHumanMascotOptions = {}): UseHumanMas
     try {
       await handle.ended;
     } catch (err) {
-      swallowAudioStop(err);
+      // A real decoder/playback error (not the stop sentinel) degrades this
+      // chunk. Do NOT rethrow — that would escape the pump, skip the cleanup
+      // below, and strand the mascot in the speaking state. Log and fall
+      // through so the handle is released and the queue finishes normally.
+      if (!isAudioStopped(err)) {
+        mascotLog('tts chunk ended with a playback error: %s', String(err));
+      }
     }
     // Release the finished clip so the between-chunk gap rests the mouth. The
     // face stays 'speaking'; the next chunk or the finish transition follows.
