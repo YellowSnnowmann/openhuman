@@ -6900,6 +6900,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Режим хранения секретов и статус связки ключей',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Ухудшено',
+  'memoryTree.status.statusBudgetExhausted': 'Приостановлено: бюджет эмбеддингов исчерпан',
   'memoryTree.status.degradedRecall': 'Семантический поиск отключён',
   'memoryTree.status.degradedStructure': 'Структура вики неполная',
   'memoryTree.status.extractionCoverage': 'Охват извлечения: {pct}% фрагментов имеют структуру',
@@ -7232,6 +7233,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Отклонить',
   'userErrors.action.openBilling': 'Открыть оплату',
   'userErrors.action.openProviderSettings': 'Настройки провайдера',
+  'userErrors.action.openEmbeddingsSettings': 'Настроить эмбеддинги',
   'userErrors.budgetExceeded.title': 'Управляемый бюджет исчерпан',
   'userErrors.budgetExceeded.body': 'Управляемый бюджет ИИ исчерпан. Измените план.',
   'userErrors.insufficientCredits.title': 'Требуются кредиты провайдера',
@@ -7241,6 +7243,16 @@ const messages: TranslationMap = {
     'У провайдера ИИ не задан ключ API. Добавьте его в настройках провайдера.',
   'userErrors.scope.chat': 'Чат',
   'userErrors.scope.cron': 'Запланированная задача',
+  'userErrors.memoryBudgetExhausted.title': 'Память перестала расти',
+  'userErrors.memoryBudgetExhausted.body':
+    'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
+  'memoryBudget.approachingTitle': 'Память приближается к лимиту эмбеддингов',
+  'memoryBudget.approachingMessage':
+    'Вы израсходовали {pct}% бюджета эмбеддингов. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы память продолжала расти без перерывов.',
+  'memoryBudget.exhaustedTitle': 'Память перестала расти',
+  'memoryBudget.exhaustedMessage':
+    'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
+  'memoryBudget.cta': 'Настроить эмбеддинги',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Сумма',
   'agentWorld.trading.networkLabel': 'Сеть',

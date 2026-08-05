@@ -248,11 +248,15 @@ pub async fn apply_model_settings(
     // signature. Coverage-gated + non-fatal: if the active signature did
     // not actually change, this enqueues nothing.
     crate::openhuman::memory::queue::ensure_reembed_backfill(config);
+    // #5324: the embedder may have just moved off the exhausted managed
+    // budget onto local Ollama / a BYO provider. Give the jobs that parked as
+    // `unrecoverable` under the old provider a fresh attempt budget.
+    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
     let snapshot = snapshot_config_json(config)?;
     Ok(RpcOutcome::new(
         snapshot,
         vec![format!(
-            "model settings saved to {}",
+            "model settings saved to {} (requeued_failed={requeued})",
             config.config_path.display()
         )],
     ))
@@ -318,11 +322,14 @@ pub async fn apply_memory_settings(
     // are logged, never fail the settings save). §7's migration is
     // one-shot so it does not cover a later switch — this does.
     crate::openhuman::memory::queue::ensure_reembed_backfill(config);
+    // #5324: same rationale as the model-settings path — a switch away from
+    // the exhausted managed budget must un-park the jobs that failed under it.
+    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
     let snapshot = snapshot_config_json(config)?;
     Ok(RpcOutcome::new(
         snapshot,
         vec![format!(
-            "memory settings saved to {}",
+            "memory settings saved to {} (requeued_failed={requeued})",
             config.config_path.display()
         )],
     ))

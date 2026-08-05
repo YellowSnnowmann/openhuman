@@ -7012,6 +7012,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Geheimnisspeicher-Modus und Schlüsselbund-Status',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Eingeschränkt',
+  'memoryTree.status.statusBudgetExhausted': 'Pausiert: Embedding-Budget erreicht',
   'memoryTree.status.degradedRecall': 'Semantische Suche deaktiviert',
   'memoryTree.status.degradedStructure': 'Wiki-Struktur unvollständig',
   'memoryTree.status.extractionCoverage':
@@ -7353,6 +7354,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Verwerfen',
   'userErrors.action.openBilling': 'Abrechnung öffnen',
   'userErrors.action.openProviderSettings': 'Anbietereinstellungen',
+  'userErrors.action.openEmbeddingsSettings': 'Embeddings einrichten',
   'userErrors.budgetExceeded.title': 'Verwaltetes Budget erreicht',
   'userErrors.budgetExceeded.body':
     'Dein verwaltetes KI-Budget ist aufgebraucht. Füge Budget hinzu oder ändere deinen Tarif.',
@@ -7364,6 +7366,16 @@ const messages: TranslationMap = {
     'Für deinen KI-Anbieter ist kein API-Schlüssel hinterlegt. Füge in den Anbietereinstellungen einen hinzu, um fortzufahren.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Geplante Aufgabe',
+  'userErrors.memoryBudgetExhausted.title': 'Das Gedächtnis wächst nicht mehr',
+  'userErrors.memoryBudgetExhausted.body':
+    'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
+  'memoryBudget.approachingTitle': 'Das Gedächtnis nähert sich seinem Embedding-Limit',
+  'memoryBudget.approachingMessage':
+    'Du hast {pct}% deines Embedding-Budgets verbraucht. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, damit das Gedächtnis ohne Unterbrechung weiterwächst.',
+  'memoryBudget.exhaustedTitle': 'Das Gedächtnis wächst nicht mehr',
+  'memoryBudget.exhaustedMessage':
+    'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
+  'memoryBudget.cta': 'Embeddings einrichten',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Betrag',
   'agentWorld.trading.networkLabel': 'Netzwerk',

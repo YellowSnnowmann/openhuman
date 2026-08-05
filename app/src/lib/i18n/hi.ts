@@ -6829,6 +6829,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'रहस्य भंडारण मोड और कीचेन स्थिति',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'अवक्रमित',
+  'memoryTree.status.statusBudgetExhausted': 'रोका गया: एम्बेडिंग बजट समाप्त',
   'memoryTree.status.degradedRecall': 'सिमेंटिक रिकॉल अक्षम',
   'memoryTree.status.degradedStructure': 'विकी संरचना अधूरी',
   'memoryTree.status.extractionCoverage': 'एक्सट्रैक्शन कवरेज: {pct}% खंडों में संरचना है',
@@ -7151,6 +7152,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'खारिज करें',
   'userErrors.action.openBilling': 'बिलिंग खोलें',
   'userErrors.action.openProviderSettings': 'प्रदाता सेटिंग्स',
+  'userErrors.action.openEmbeddingsSettings': 'एम्बेडिंग सेट करें',
   'userErrors.budgetExceeded.title': 'प्रबंधित बजट समाप्त',
   'userErrors.budgetExceeded.body': 'प्रबंधित AI बजट समाप्त। बजट जोड़ें या प्लान बदलें।',
   'userErrors.insufficientCredits.title': 'प्रदाता क्रेडिट आवश्यक',
@@ -7161,6 +7163,16 @@ const messages: TranslationMap = {
     'आपके AI प्रदाता के लिए कोई API कुंजी सेट नहीं है। जारी रखने के लिए प्रदाता सेटिंग्स में एक जोड़ें।',
   'userErrors.scope.chat': 'चैट',
   'userErrors.scope.cron': 'निर्धारित कार्य',
+  'userErrors.memoryBudgetExhausted.title': 'मेमोरी बढ़ना बंद हो गई है',
+  'userErrors.memoryBudgetExhausted.body':
+    'आपका एम्बेडिंग बजट खत्म हो गया है, इसलिए नई सामग्री अब मेमोरी में नहीं जुड़ रही। दोबारा शुरू करने के लिए लोकल एम्बेडिंग सेट करें या अपनी API कुंजी जोड़ें।',
+  'memoryBudget.approachingTitle': 'मेमोरी अपनी एम्बेडिंग सीमा के पास पहुंच रही है',
+  'memoryBudget.approachingMessage':
+    'आपने अपने एम्बेडिंग बजट का {pct}% इस्तेमाल कर लिया है। मेमोरी बिना रुकावट बढ़ती रहे, इसके लिए लोकल एम्बेडिंग सेट करें या अपनी API कुंजी जोड़ें।',
+  'memoryBudget.exhaustedTitle': 'मेमोरी बढ़ना बंद हो गई है',
+  'memoryBudget.exhaustedMessage':
+    'आपका एम्बेडिंग बजट खत्म हो गया है, इसलिए नई सामग्री अब मेमोरी में नहीं जुड़ रही। दोबारा शुरू करने के लिए लोकल एम्बेडिंग सेट करें या अपनी API कुंजी जोड़ें।',
+  'memoryBudget.cta': 'एम्बेडिंग सेट करें',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'राशि',
   'agentWorld.trading.networkLabel': 'नेटवर्क',

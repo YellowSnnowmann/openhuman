@@ -6933,6 +6933,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Modo de armazenamento de segredos e status do chaveiro',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Degradado',
+  'memoryTree.status.statusBudgetExhausted': 'Em pausa: limite de embeddings atingido',
   'memoryTree.status.degradedRecall': 'Recuperação semântica desativada',
   'memoryTree.status.degradedStructure': 'Estrutura do wiki incompleta',
   'memoryTree.status.extractionCoverage':
@@ -7268,6 +7269,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Dispensar',
   'userErrors.action.openBilling': 'Abrir faturamento',
   'userErrors.action.openProviderSettings': 'Configurações do provedor',
+  'userErrors.action.openEmbeddingsSettings': 'Configurar embeddings',
   'userErrors.budgetExceeded.title': 'Orçamento gerenciado esgotado',
   'userErrors.budgetExceeded.body':
     'Seu orçamento de IA gerenciado acabou. Adicione orçamento ou altere seu plano.',
@@ -7279,6 +7281,16 @@ const messages: TranslationMap = {
     'Seu provedor de IA não tem uma chave de API definida. Adicione uma nas configurações do provedor para continuar.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tarefa agendada',
+  'userErrors.memoryBudgetExhausted.title': 'A memória parou de crescer',
+  'userErrors.memoryBudgetExhausted.body':
+    'Seu orçamento de embeddings acabou, então novos conteúdos não estão mais sendo adicionados à memória. Configure embeddings locais ou adicione sua própria chave de API para retomar.',
+  'memoryBudget.approachingTitle': 'A memória está chegando ao limite de embeddings',
+  'memoryBudget.approachingMessage':
+    'Você já usou {pct}% do seu orçamento de embeddings. Configure embeddings locais ou adicione sua própria chave de API para a memória continuar crescendo sem interrupção.',
+  'memoryBudget.exhaustedTitle': 'A memória parou de crescer',
+  'memoryBudget.exhaustedMessage':
+    'Seu orçamento de embeddings acabou, então novos conteúdos não estão mais sendo adicionados à memória. Configure embeddings locais ou adicione sua própria chave de API para retomar.',
+  'memoryBudget.cta': 'Configurar embeddings',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Valor',
   'agentWorld.trading.networkLabel': 'Rede',

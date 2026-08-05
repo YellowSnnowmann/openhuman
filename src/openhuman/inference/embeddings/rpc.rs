@@ -367,11 +367,21 @@ pub async fn update_settings(
         crate::openhuman::memory::queue::ensure_reembed_backfill(&config);
     }
 
+    // #5324: this is the exact screen the "embedding budget reached" alert
+    // deep-links to, so a save here is the user completing the remediation.
+    // Un-park the jobs that failed under the old (budget-exhausted /
+    // misconfigured) provider so memory resumes growing without the user
+    // also having to find "Retry failed" in Memory Tree settings.
+    // Unconditional on `sig_changed`: re-saving the *same* signature after
+    // fixing the account behind it is a legitimate remediation too.
+    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(&config);
+
     tracing::info!(
         provider = config.memory.embedding_provider.as_str(),
         model = config.memory.embedding_model.as_str(),
         dimensions = config.memory.embedding_dimensions,
         sig_changed,
+        requeued,
         "{LOG_PREFIX} update_settings applied"
     );
 
@@ -381,12 +391,13 @@ pub async fn update_settings(
         "dimensions": config.memory.embedding_dimensions,
         "signature_changed": sig_changed,
         "new_signature": new_sig,
+        "requeued_failed_jobs": requeued,
     });
 
     Ok(RpcOutcome::new(
         payload,
         vec![format!(
-            "embeddings settings updated (sig_changed={sig_changed})"
+            "embeddings settings updated (sig_changed={sig_changed} requeued_failed={requeued})"
         )],
     ))
 }
@@ -409,11 +420,24 @@ pub async fn set_api_key(
     auth.store_provider_token(&cred_provider, "default", api_key, HashMap::new(), true)
         .map_err(|e| format!("failed to store embedding API key: {e}"))?;
 
-    tracing::info!(provider = provider_slug, "{LOG_PREFIX} set_api_key stored");
+    // #5324: supplying a BYO key does NOT change the embedding signature, so
+    // `ensure_reembed_backfill` has nothing to enqueue — but it is precisely
+    // the action that unblocks jobs parked on `budget_exhausted` /
+    // `auth_missing`. Requeue them here or they stay dead until the user
+    // separately discovers the "Retry failed" button.
+    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
+
+    tracing::info!(
+        provider = provider_slug,
+        requeued,
+        "{LOG_PREFIX} set_api_key stored"
+    );
 
     Ok(RpcOutcome::new(
-        serde_json::json!({ "stored": true, "provider": provider_slug }),
-        vec![format!("embedding API key stored for {provider_slug}")],
+        serde_json::json!({ "stored": true, "provider": provider_slug, "requeued_failed_jobs": requeued }),
+        vec![format!(
+            "embedding API key stored for {provider_slug} (requeued_failed={requeued})"
+        )],
     ))
 }
 

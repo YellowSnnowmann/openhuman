@@ -6930,6 +6930,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Tryb przechowywania sekretów i stan pęku kluczy',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Ograniczony',
+  'memoryTree.status.statusBudgetExhausted': 'Wstrzymano: wyczerpano budżet osadzeń',
   'memoryTree.status.degradedRecall': 'Wyszukiwanie semantyczne wyłączone',
   'memoryTree.status.degradedStructure': 'Struktura wiki niekompletna',
   'memoryTree.status.extractionCoverage': 'Pokrycie ekstrakcji: {pct}% fragmentów ma strukturę',
@@ -7257,6 +7258,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Odrzuć',
   'userErrors.action.openBilling': 'Otwórz rozliczenia',
   'userErrors.action.openProviderSettings': 'Ustawienia dostawcy',
+  'userErrors.action.openEmbeddingsSettings': 'Skonfiguruj osadzenia',
   'userErrors.budgetExceeded.title': 'Wyczerpano zarządzany budżet',
   'userErrors.budgetExceeded.body':
     'Twój zarządzany budżet AI został wyczerpany. Dodaj budżet lub zmień plan.',
@@ -7268,6 +7270,16 @@ const messages: TranslationMap = {
     'Twój dostawca AI nie ma ustawionego klucza API. Dodaj go w ustawieniach dostawcy, aby kontynuować.',
   'userErrors.scope.chat': 'Czat',
   'userErrors.scope.cron': 'Zaplanowane zadanie',
+  'userErrors.memoryBudgetExhausted.title': 'Pamięć przestała rosnąć',
+  'userErrors.memoryBudgetExhausted.body':
+    'Twój budżet osadzeń został wyczerpany, więc nowe treści nie są już dodawane do pamięci. Skonfiguruj lokalne osadzenia lub dodaj własny klucz API, aby wznowić.',
+  'memoryBudget.approachingTitle': 'Pamięć zbliża się do limitu osadzeń',
+  'memoryBudget.approachingMessage':
+    'Wykorzystano {pct}% budżetu osadzeń. Skonfiguruj lokalne osadzenia lub dodaj własny klucz API, aby pamięć rosła bez przerw.',
+  'memoryBudget.exhaustedTitle': 'Pamięć przestała rosnąć',
+  'memoryBudget.exhaustedMessage':
+    'Twój budżet osadzeń został wyczerpany, więc nowe treści nie są już dodawane do pamięci. Skonfiguruj lokalne osadzenia lub dodaj własny klucz API, aby wznowić.',
+  'memoryBudget.cta': 'Skonfiguruj osadzenia',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Kwota',
   'agentWorld.trading.networkLabel': 'Sieć',

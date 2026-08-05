@@ -6465,6 +6465,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': '密钥存储模式和密钥链状态',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': '已降级',
+  'memoryTree.status.statusBudgetExhausted': '已暂停：嵌入额度已用尽',
   'memoryTree.status.degradedRecall': '语义召回已禁用',
   'memoryTree.status.degradedStructure': 'Wiki 结构不完整',
   'memoryTree.status.extractionCoverage': '提取覆盖率：{pct}% 的片段具有结构',
@@ -6769,6 +6770,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': '忽略',
   'userErrors.action.openBilling': '打开账单',
   'userErrors.action.openProviderSettings': '提供商设置',
+  'userErrors.action.openEmbeddingsSettings': '设置嵌入',
   'userErrors.budgetExceeded.title': '托管预算已用尽',
   'userErrors.budgetExceeded.body': '托管 AI 预算已用尽，请增加预算或更改套餐。',
   'userErrors.insufficientCredits.title': '需要提供商额度',
@@ -6777,6 +6779,16 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.body': '您的 AI 提供商未设置 API 密钥，请在提供商设置中添加以继续。',
   'userErrors.scope.chat': '聊天',
   'userErrors.scope.cron': '定时任务',
+  'userErrors.memoryBudgetExhausted.title': '记忆已停止增长',
+  'userErrors.memoryBudgetExhausted.body':
+    '你的嵌入额度已用尽，新内容不会再加入记忆。设置本地嵌入或添加你自己的 API 密钥即可恢复。',
+  'memoryBudget.approachingTitle': '记忆即将达到嵌入额度上限',
+  'memoryBudget.approachingMessage':
+    '你已使用 {pct}% 的嵌入额度。设置本地嵌入或添加你自己的 API 密钥，让记忆不中断地继续增长。',
+  'memoryBudget.exhaustedTitle': '记忆已停止增长',
+  'memoryBudget.exhaustedMessage':
+    '你的嵌入额度已用尽，新内容不会再加入记忆。设置本地嵌入或添加你自己的 API 密钥即可恢复。',
+  'memoryBudget.cta': '设置嵌入',
   // Agent World：Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '金额',
   'agentWorld.trading.networkLabel': '网络',
