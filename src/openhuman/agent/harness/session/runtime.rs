@@ -436,13 +436,30 @@ impl Agent {
             return false;
         }
 
-        let session_raw_dir = self.workspace_dir.join(&self.session_raw_subdir);
+        // The thread's conversation belongs to the THREAD, not the active
+        // profile. Resolve via the cross-dir finder, which scans the shared
+        // `session_raw/` AND every profile-scoped `session_raw-<id>/` for this
+        // exact `thread_id` and returns the NEWEST match. So switching the active
+        // profile mid-thread (e.g. the Quick↔Reasoning toggle) continues the same
+        // conversation even when earlier turns were written under a different
+        // profile's subtree — a dedicated-memory personality, or a profile an
+        // earlier build wrongly scoped (#5351).
+        //
+        // Deliberately NOT own-dir-first (`in_dir(session_raw_subdir).or_else(…)`):
+        // that would let an *older* transcript in the agent's own dir shadow a
+        // *newer* one a sibling scoped dir holds for the same thread — dropping
+        // the most recent turns, and diverging from the transcript view + turn
+        // mirror, which both use this same newest-across-dirs resolver. The own
+        // dir is already included in the scan, so newest-wins is a superset.
+        // Keyed on `thread_id`, so it never bleeds an unrelated session across
+        // profiles; a blank id short-circuits to `None`.
         let Some(path) =
-            super::transcript::find_root_transcript_for_thread_in_dir(&session_raw_dir, thread_id)
+            super::transcript::find_root_transcript_for_thread(&self.workspace_dir, thread_id)
         else {
             log::debug!(
-                "[web-channel] no root session_raw transcript for thread={thread_id} — \
-                 falling back to conversation-log prose seeding"
+                "[web-channel] no root session_raw transcript for thread={thread_id} in any \
+                 (shared or profile-scoped) session_raw dir — falling back to \
+                 conversation-log prose seeding"
             );
             return false;
         };
