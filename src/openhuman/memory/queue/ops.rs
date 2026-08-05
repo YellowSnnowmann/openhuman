@@ -58,10 +58,15 @@ pub fn ensure_reembed_backfill(config: &crate::openhuman::config::Config) {
 /// fails once more and re-parks, and this only runs on an explicit user
 /// config change, never on a timer or on login.
 ///
-/// Non-fatal by design: an enqueue failure must never fail the user's
-/// settings save, so errors are logged and swallowed. Returns the number of
-/// jobs flipped back to `ready` (0 on error) for the caller's RPC log line.
-pub fn requeue_failed_after_provider_change(config: &crate::openhuman::config::Config) -> u64 {
+/// Non-fatal to the settings save by design, but NOT silent: on a store
+/// failure this returns `Err` rather than a `0` that reads identically to
+/// "nothing to requeue". The caller keeps the save successful and surfaces the
+/// recovery failure in its RPC outcome, so a queue that stayed parked is never
+/// presented to the user as remediated. `Ok(n)` is the number of jobs flipped
+/// back to `ready` (`Ok(0)` = nothing was parked).
+pub fn requeue_failed_after_provider_change(
+    config: &crate::openhuman::config::Config,
+) -> Result<u64, String> {
     // Entry record (see AGENTS.md "Debug logging"): state-transition op, so log
     // entry + every branch + outcome. Prefix matches this module's sibling
     // `ensure_reembed_backfill` (`[memory::jobs]`) — a stable, grep-friendly
@@ -70,7 +75,7 @@ pub fn requeue_failed_after_provider_change(config: &crate::openhuman::config::C
     match super::store::requeue_failed(config) {
         Ok(0) => {
             log::debug!("[memory::jobs] provider change: no failed jobs to requeue");
-            0
+            Ok(0)
         }
         Ok(requeued) => {
             log::info!(
@@ -79,11 +84,11 @@ pub fn requeue_failed_after_provider_change(config: &crate::openhuman::config::C
             // Wake the worker pool so the un-parked jobs are picked up
             // promptly rather than at the next scheduled flush window.
             super::wake_workers();
-            requeued
+            Ok(requeued)
         }
         Err(error) => {
             log::warn!("[memory::jobs] provider change: requeue_failed failed: {error:#}");
-            0
+            Err(format!("{error:#}"))
         }
     }
 }
@@ -107,7 +112,7 @@ mod tests {
     #[test]
     fn requeue_after_provider_change_is_zero_on_an_empty_queue() {
         let (_tmp, cfg) = test_config();
-        assert_eq!(requeue_failed_after_provider_change(&cfg), 0);
+        assert_eq!(requeue_failed_after_provider_change(&cfg).unwrap(), 0);
     }
 
     /// The #5324 case: jobs parked as `budget_exhausted` (unrecoverable, so
@@ -143,7 +148,7 @@ mod tests {
             "precondition: parked as unrecoverable, so periodic retry skips it"
         );
 
-        assert_eq!(requeue_failed_after_provider_change(&cfg), 1);
+        assert_eq!(requeue_failed_after_provider_change(&cfg).unwrap(), 1);
 
         assert_eq!(
             store::count_by_status(&cfg, JobStatus::Ready).unwrap(),
@@ -174,7 +179,27 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(requeue_failed_after_provider_change(&cfg), 1);
-        assert_eq!(requeue_failed_after_provider_change(&cfg), 0);
+        assert_eq!(requeue_failed_after_provider_change(&cfg).unwrap(), 1);
+        assert_eq!(requeue_failed_after_provider_change(&cfg).unwrap(), 0);
+    }
+
+    /// CodeRabbit (#5324): a store failure must SURFACE as `Err`, not collapse
+    /// into a `0` that reads identically to "nothing to requeue" and makes a
+    /// still-parked queue look remediated.
+    #[test]
+    fn requeue_after_provider_change_surfaces_store_errors() {
+        let tmp = TempDir::new().unwrap();
+        // Point workspace_dir at a regular file, so the queue DB underneath it
+        // cannot be opened (ENOTDIR). The failure must propagate to the caller.
+        let as_file = tmp.path().join("workspace-is-a-file");
+        std::fs::write(&as_file, b"not a directory").unwrap();
+        let mut cfg = Config::default();
+        cfg.workspace_dir = as_file;
+
+        let out = requeue_failed_after_provider_change(&cfg);
+        assert!(
+            out.is_err(),
+            "a store failure must surface as Err, not a misleading Ok(0): {out:?}"
+        );
     }
 }

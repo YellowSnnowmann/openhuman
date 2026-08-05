@@ -154,10 +154,13 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
         const nextProvider = settings.provider;
         setProvider(nextProvider);
         // Only reach for the direct budget read when it is actually needed:
-        // embeddings bill against the managed budget AND `useUsageState` gave
-        // us nothing (chat routed away). The common managed user keeps using
-        // `useUsageState`'s cached figure — no extra call.
-        if (isManagedEmbeddingProvider(nextProvider) && !hasUsage) {
+        // embeddings bill against the managed budget AND `useUsageState` has
+        // SETTLED with no payload (chat routed away). `teamUsage` is also null
+        // while `useUsageState`'s own request is still in flight, so gate on
+        // `!usageLoading` too — otherwise a normal managed user whose provider
+        // read resolves first fires a redundant `getTeamUsage()` that
+        // `useUsageState` is about to make anyway.
+        if (isManagedEmbeddingProvider(nextProvider) && !hasUsage && !usageLoading) {
           try {
             const usage = await creditsApi.getTeamUsage();
             if (!cancelled) setFallbackUsage(deriveBudget(usage));
@@ -192,7 +195,7 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
     return () => {
       cancelled = true;
     };
-  }, [reloadCount, isAuthenticated, hasUsage]);
+  }, [reloadCount, isAuthenticated, hasUsage, usageLoading]);
 
   const isManagedEmbeddings = isManagedEmbeddingProvider(provider);
 

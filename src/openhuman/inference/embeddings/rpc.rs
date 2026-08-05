@@ -380,10 +380,19 @@ pub async fn update_settings(
     // covers re-selecting the *same* provider after fixing the account behind
     // it (a legitimate remediation even when the signature is unchanged).
     let is_embedding_remediation = sig_changed || provider.is_some() || custom_endpoint.is_some();
-    let requeued = if is_embedding_remediation {
+    // #5324: the settings save has already succeeded. A failed un-park must not
+    // fail the RPC, but it must be surfaced (not reported as `0`) so a queue
+    // that stayed parked isn't presented as remediated.
+    let requeue_result = if is_embedding_remediation {
         crate::openhuman::memory::queue::requeue_failed_after_provider_change(&config)
     } else {
-        0
+        Ok(0)
+    };
+    let requeued_count = *requeue_result.as_ref().unwrap_or(&0);
+    let requeue_error = requeue_result.as_ref().err().cloned();
+    let requeued_note = match &requeue_error {
+        None => requeued_count.to_string(),
+        Some(e) => format!("error ({e})"),
     };
 
     tracing::info!(
@@ -391,7 +400,8 @@ pub async fn update_settings(
         model = config.memory.embedding_model.as_str(),
         dimensions = config.memory.embedding_dimensions,
         sig_changed,
-        requeued,
+        requeued = requeued_count,
+        requeue_error = requeue_error.as_deref().unwrap_or(""),
         "{LOG_PREFIX} update_settings applied"
     );
 
@@ -401,13 +411,14 @@ pub async fn update_settings(
         "dimensions": config.memory.embedding_dimensions,
         "signature_changed": sig_changed,
         "new_signature": new_sig,
-        "requeued_failed_jobs": requeued,
+        "requeued_failed_jobs": requeued_count,
+        "requeue_error": requeue_error,
     });
 
     Ok(RpcOutcome::new(
         payload,
         vec![format!(
-            "embeddings settings updated (sig_changed={sig_changed} requeued_failed={requeued})"
+            "embeddings settings updated (sig_changed={sig_changed} requeued_failed={requeued_note})"
         )],
     ))
 }
@@ -434,19 +445,29 @@ pub async fn set_api_key(
     // `ensure_reembed_backfill` has nothing to enqueue — but it is precisely
     // the action that unblocks jobs parked on `budget_exhausted` /
     // `auth_missing`. Requeue them here or they stay dead until the user
-    // separately discovers the "Retry failed" button.
-    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
+    // separately discovers the "Retry failed" button. A store failure is
+    // surfaced (not reported as `0`) so the key-stored response can't imply the
+    // parked queue was recovered when it wasn't.
+    let requeue_result =
+        crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
+    let requeued_count = *requeue_result.as_ref().unwrap_or(&0);
+    let requeue_error = requeue_result.as_ref().err().cloned();
+    let requeued_note = match &requeue_error {
+        None => requeued_count.to_string(),
+        Some(e) => format!("error ({e})"),
+    };
 
     tracing::info!(
         provider = provider_slug,
-        requeued,
+        requeued = requeued_count,
+        requeue_error = requeue_error.as_deref().unwrap_or(""),
         "{LOG_PREFIX} set_api_key stored"
     );
 
     Ok(RpcOutcome::new(
-        serde_json::json!({ "stored": true, "provider": provider_slug, "requeued_failed_jobs": requeued }),
+        serde_json::json!({ "stored": true, "provider": provider_slug, "requeued_failed_jobs": requeued_count, "requeue_error": requeue_error }),
         vec![format!(
-            "embedding API key stored for {provider_slug} (requeued_failed={requeued})"
+            "embedding API key stored for {provider_slug} (requeued_failed={requeued_note})"
         )],
     ))
 }

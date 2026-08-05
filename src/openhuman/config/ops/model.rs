@@ -260,16 +260,23 @@ pub async fn apply_model_settings(
     // when the embedder selection actually changed, so a chat/vision/etc. model
     // save leaves terminally-failed jobs parked instead of re-failing them.
     let embedder_changed = config.embeddings_provider != prev_embeddings_provider;
-    let requeued = if embedder_changed {
-        crate::openhuman::memory::queue::requeue_failed_after_provider_change(config)
+    // #5324: the save has already succeeded, so a failed un-park must NOT fail
+    // the RPC — but it must not be reported as `requeued_failed=0` either, which
+    // would read identically to "nothing was parked" and hide that the parked
+    // jobs are still stuck. Surface the error in the outcome line instead.
+    let requeued_note = if embedder_changed {
+        match crate::openhuman::memory::queue::requeue_failed_after_provider_change(config) {
+            Ok(n) => n.to_string(),
+            Err(e) => format!("error ({e})"),
+        }
     } else {
-        0
+        "0".to_string()
     };
     let snapshot = snapshot_config_json(config)?;
     Ok(RpcOutcome::new(
         snapshot,
         vec![format!(
-            "model settings saved to {} (requeued_failed={requeued})",
+            "model settings saved to {} (requeued_failed={requeued_note})",
             config.config_path.display()
         )],
     ))
@@ -349,16 +356,21 @@ pub async fn apply_memory_settings(
     let embedder_changed = config.memory.embedding_provider != prev_embedding_provider
         || config.memory.embedding_model != prev_embedding_model
         || config.memory.embedding_dimensions != prev_embedding_dimensions;
-    let requeued = if embedder_changed {
-        crate::openhuman::memory::queue::requeue_failed_after_provider_change(config)
+    // #5324: same as the model-settings path — keep the save successful but
+    // report an un-park failure instead of a misleading `requeued_failed=0`.
+    let requeued_note = if embedder_changed {
+        match crate::openhuman::memory::queue::requeue_failed_after_provider_change(config) {
+            Ok(n) => n.to_string(),
+            Err(e) => format!("error ({e})"),
+        }
     } else {
-        0
+        "0".to_string()
     };
     let snapshot = snapshot_config_json(config)?;
     Ok(RpcOutcome::new(
         snapshot,
         vec![format!(
-            "memory settings saved to {} (requeued_failed={requeued})",
+            "memory settings saved to {} (requeued_failed={requeued_note})",
             config.config_path.display()
         )],
     ))

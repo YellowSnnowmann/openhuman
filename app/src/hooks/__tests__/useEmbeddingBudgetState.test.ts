@@ -252,4 +252,22 @@ describe('useEmbeddingBudgetState session + managed-embeddings gaps', () => {
     expect(result.current.level).toBe('none');
     expect(result.current.isManagedEmbeddings).toBe(false);
   });
+
+  // CodeRabbit: `teamUsage` is also null while useUsageState's own request is
+  // still in flight — the fallback must NOT fire then, or a normal managed user
+  // duplicates the getTeamUsage() call useUsageState is about to make.
+  it('does not read the managed budget while the primary usage request is loading', async () => {
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0,
+      isBudgetExhausted: false,
+      isLoading: true, // primary usage request pending, not routed-away
+      teamUsage: null,
+    });
+    mockLoadEmbeddingsSettings.mockResolvedValue({ provider: 'openhuman' });
+
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(mockLoadEmbeddingsSettings).toHaveBeenCalled());
+    expect(mockGetTeamUsage).not.toHaveBeenCalled();
+    expect(result.current.level).toBe('none'); // still loading → silent
+  });
 });
