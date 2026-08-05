@@ -2466,6 +2466,11 @@ const messages: TranslationMap = {
   'voice.mode.desc': 'Wybierz, jak asystent mówi w karcie Human.',
   'voice.mode.realtime': 'Głos w czasie rzeczywistym (beta)',
   'voice.mode.realtimeDesc': 'Prowadź rozmowę na żywo zamiast rozmawiać na zmianę.',
+  'voice.mode.start': 'Rozpocznij czat głosowy',
+  'voice.mode.stop': 'Zakończ czat głosowy',
+  'voice.mode.connecting': 'Łączenie…',
+  'voice.mode.listening': 'Słucha',
+  'voice.mode.speaking': 'Mówi',
   'voice.providers.title': 'Dostawcy głosu',
   'voice.providers.desc':
     'Wybierz, gdzie ma działać transkrypcja i synteza. Użyj przycisków „Zainstaluj lokalnie”, aby pobrać binarki i modele do przestrzeni roboczej. Lokalnych dostawców można zapisać przed zakończeniem instalacji: bez ręcznego ustawiania WHISPER_BIN czy PIPER_BIN.',

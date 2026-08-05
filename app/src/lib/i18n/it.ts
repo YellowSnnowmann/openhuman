@@ -2479,6 +2479,11 @@ const messages: TranslationMap = {
   'voice.mode.desc': 'Scegli come parla l’assistente nella scheda Human.',
   'voice.mode.realtime': 'Voce in tempo reale (beta)',
   'voice.mode.realtimeDesc': 'Fai una conversazione dal vivo invece di alternare i turni.',
+  'voice.mode.start': 'Avvia la chat vocale',
+  'voice.mode.stop': 'Termina la chat vocale',
+  'voice.mode.connecting': 'Connessione…',
+  'voice.mode.listening': 'In ascolto',
+  'voice.mode.speaking': 'Sta parlando',
   'voice.providers.title': 'Provider vocali',
   'voice.providers.desc':
     "Scegli dove vengono eseguiti la trascrizione e la sintesi. Usa i pulsanti Installa localmente per scaricare i binari e i modelli nel tuo workspace. I provider locali possono essere salvati prima del completamento dell'installazione: nessuna configurazione manuale di WHISPER_BIN o PIPER_BIN richiesta.",

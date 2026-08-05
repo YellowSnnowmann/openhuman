@@ -2508,6 +2508,11 @@ const messages: TranslationMap = {
   'voice.mode.desc': 'Lege fest, wie der Assistent im Human-Tab spricht.',
   'voice.mode.realtime': 'Echtzeit-Sprache (Beta)',
   'voice.mode.realtimeDesc': 'Führe ein flüssiges Live-Gespräch, statt abwechselnd zu sprechen.',
+  'voice.mode.start': 'Sprachchat starten',
+  'voice.mode.stop': 'Sprachchat beenden',
+  'voice.mode.connecting': 'Verbinden…',
+  'voice.mode.listening': 'Hört zu',
+  'voice.mode.speaking': 'Spricht',
   'voice.providers.title': 'Sprachanbieter',
   'voice.providers.desc':
     "Wähle, wo Transkription und Synthese ausgeführt werden. Mit den Schaltflächen 'Lokal installieren' werden die Binärdateien und Modelle in den Arbeitsbereich geladen. Lokale Anbieter können vor Abschluss der Installation gespeichert werden – keine manuelle WHISPER_BIN- oder PIPER_BIN-Konfiguration erforderlich.",

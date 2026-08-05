@@ -2429,6 +2429,11 @@ const messages: TranslationMap = {
   'voice.mode.desc': 'चुनें कि Human टैब में असिस्टेंट कैसे बात करे।',
   'voice.mode.realtime': 'रियलटाइम वॉइस (बीटा)',
   'voice.mode.realtimeDesc': 'बारी-बारी के बजाय सीधे लाइव बातचीत करें।',
+  'voice.mode.start': 'वॉइस चैट शुरू करें',
+  'voice.mode.stop': 'वॉइस चैट समाप्त करें',
+  'voice.mode.connecting': 'कनेक्ट हो रहा है…',
+  'voice.mode.listening': 'सुन रहा है',
+  'voice.mode.speaking': 'बोल रहा है',
   'voice.providers.title': 'आवाज प्रदाता',
   'voice.providers.desc':
     'चुनें कि ट्रांसक्रिप्शन और सिंथेसिस कहाँ चलें। बाइनरी और मॉडल डाउनलोड करने के लिए Install locally बटन उपयोग करें। स्थानीय प्रोवाइडर इंस्टॉल पूरा होने से पहले भी सहेजे जा सकते हैं: कोई मैन्युअल WHISPER_BIN या PIPER_BIN सेटअप आवश्यक नहीं।',

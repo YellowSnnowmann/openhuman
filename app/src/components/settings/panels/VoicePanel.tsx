@@ -3,9 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import PttSettingsPanel from '../../../pages/settings/voice/PttSettingsPanel';
-import { useAppDispatch, useAppSelector } from '../../../store/hooks';
-import { selectVoiceMode, setVoiceMode } from '../../../store/mascotSlice';
-import { VOICE_MODE_FLAG_ENABLED } from '../../../utils/config';
 import {
   installPiper,
   installWhisper,
@@ -22,6 +19,9 @@ import {
   type VoiceProviderView,
   type VoiceSettings,
 } from '../../../services/api/voiceSettingsApi';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { selectVoiceMode, setVoiceMode } from '../../../store/mascotSlice';
+import { VOICE_MODE_FLAG_ENABLED } from '../../../utils/config';
 import {
   openhumanGetVoiceServerSettings,
   openhumanUpdateVoiceServerSettings,
