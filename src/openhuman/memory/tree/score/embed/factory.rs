@@ -267,27 +267,31 @@ pub fn build_write_embedder(config: &Config) -> Result<Option<Box<dyn Embedder>>
 fn redact_ladder_error(config: &Config, err: &anyhow::Error) -> String {
     use crate::openhuman::memory::util::redact::redact_endpoint;
 
-    let mut msg = format!("{err:#}");
-    let mut scrub = |raw: &str| {
-        let raw = raw.trim();
-        if !raw.is_empty() {
-            msg = msg.replace(raw, &redact_endpoint(raw));
-        }
-    };
-
-    // The inline `custom:<url>` endpoint, if that is the configured form.
-    if let Some(url) = config
+    // Candidates: the inline `custom:<url>` endpoint (when that is the
+    // configured form) plus every configured OpenAI-compatible endpoint
+    // (LM Studio, vLLM, …), any of which the ladder may have been resolving.
+    let mut endpoints: Vec<&str> = config
         .memory
         .embedding_provider
         .trim()
         .strip_prefix("custom:")
-    {
-        scrub(url);
-    }
-    // Every configured OpenAI-compatible endpoint (LM Studio, vLLM, …), any of
-    // which the ladder may have been resolving when it failed.
-    for entry in &config.cloud_providers {
-        scrub(&entry.endpoint);
+        .into_iter()
+        .chain(config.cloud_providers.iter().map(|e| e.endpoint.as_str()))
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .collect();
+
+    // Longest first. Substring replacement is order-sensitive: if a short
+    // endpoint is a strict prefix of a longer one (`https://host` vs
+    // `https://host/v1?key=…`), scrubbing the short one first rewrites the
+    // longer one's prefix, so its own replacement no longer matches and the
+    // credential-bearing suffix survives in the log (CodeRabbit, #5402).
+    endpoints.sort_by_key(|e| std::cmp::Reverse(e.len()));
+    endpoints.dedup();
+
+    let mut msg = format!("{err:#}");
+    for endpoint in endpoints {
+        msg = msg.replace(endpoint, &redact_endpoint(endpoint));
     }
     msg
 }
@@ -793,6 +797,52 @@ mod tests {
 
         // And the caller degrades to not-managed rather than to `cloud`.
         assert_eq!(effective_embedder_slug(&cfg), "unknown");
+    }
+
+    /// Substring replacement is order-sensitive. With a short endpoint that is a
+    /// strict prefix of the long one, scrubbing shortest-first rewrites the long
+    /// endpoint's prefix, its own replacement then fails to match, and the
+    /// credential-bearing suffix survives in the log. Longest-first is the fix
+    /// (CodeRabbit, #5402).
+    #[test]
+    fn ladder_error_redaction_handles_prefix_overlapping_endpoints() {
+        use crate::openhuman::config::schema::cloud_providers::CloudProviderCreds;
+        let (_tmp, mut cfg) = test_config();
+        // The SHORT endpoint is the one the old code scrubbed first (the inline
+        // `custom:` form led the list), and it is a strict prefix of the long
+        // one. That ordering is what let the long endpoint's secret survive:
+        // scrubbing `https://embed.example.com` first rewrote the long string's
+        // prefix, so the long string's own replacement no longer matched.
+        cfg.memory.embedding_provider = "custom:https://embed.example.com".to_string();
+        cfg.cloud_providers = vec![CloudProviderCreds {
+            id: "p_long".to_string(),
+            slug: "longpfx".to_string(),
+            endpoint: "https://embed.example.com/v1?key=super-secret".to_string(),
+            ..Default::default()
+        }];
+
+        // Synthesize the error rather than driving the ladder: this pins the
+        // redaction function's ordering contract for ANY message carrying both
+        // endpoints, which is the property at risk. Which ladder branch happens
+        // to surface a `cloud_providers` endpoint today is beside the point.
+        let err = anyhow::anyhow!(
+            "build custom embedder failed (provider='custom:https://embed.example.com', \
+             endpoint='https://embed.example.com/v1?key=super-secret')"
+        );
+        let rendered = redact_ladder_error(&cfg, &err);
+
+        assert!(
+            !rendered.contains("super-secret"),
+            "the long endpoint's query must not survive the short endpoint's scrub: {rendered}"
+        );
+        assert!(
+            !rendered.contains("/v1"),
+            "the long endpoint's path must not survive either: {rendered}"
+        );
+        assert!(
+            rendered.contains("embed.example.com"),
+            "host is still kept: {rendered}"
+        );
     }
 
     #[test]
