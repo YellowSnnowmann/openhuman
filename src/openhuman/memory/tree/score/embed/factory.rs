@@ -250,6 +250,47 @@ pub fn build_write_embedder(config: &Config) -> Result<Option<Box<dyn Embedder>>
     })
 }
 
+/// Slug naming the embedder ingestion will **actually** use, walking the same
+/// [`resolve_embedder_choice`] ladder the read and write factories walk.
+///
+/// This exists because `config.memory.embedding_provider` is *not* authoritative
+/// for how embeddings are funded, and reading it as if it were produces a false
+/// alarm. The ladder resolves local Ollama from `memory_tree.embedding_endpoint`
+/// or from the unified `workload_local_model("embeddings")` setting (the "Memory
+/// embeddings" toggle in Local AI Settings), and **neither path rewrites
+/// `memory.embedding_provider`** — so a user running fully local still reads as
+/// `"cloud"` there. Any surface that asks "do these embeddings bill against the
+/// managed budget?" must ask this function, not that field (reviewer M3gA-Mind,
+/// #5402: otherwise a local-embeddings user whose *chat* budget crosses 90% is
+/// told memory has stopped growing while it is growing fine).
+///
+/// Slugs are stable wire values consumed by the frontend:
+/// - `"ollama"` — local daemon; user-funded.
+/// - `"custom"` — user's own OpenAI-compatible endpoint / key; user-funded.
+/// - `"cloud"` — managed OpenHuman backend; **bills the managed cycle budget**.
+/// - `"none"` — deliberate opt-out (`embeddings_provider = "none"`).
+/// - `"unconfigured"` — no usable provider (signed out); nothing is billed.
+/// - `"unknown"` — the ladder itself failed to resolve. Deliberately not
+///   `"cloud"`: an unresolvable config must never manufacture a budget warning.
+pub fn effective_embedder_slug(config: &Config) -> &'static str {
+    let slug = match resolve_embedder_choice(config) {
+        Ok(EmbedderChoice::Ollama { .. }) => "ollama",
+        Ok(EmbedderChoice::OptOut) => "none",
+        Ok(EmbedderChoice::OpenAiCompat(_)) => "custom",
+        Ok(EmbedderChoice::Cloud) => "cloud",
+        Ok(EmbedderChoice::NoProvider) => "unconfigured",
+        Err(err) => {
+            log::warn!(
+                "[memory_tree::embed::factory] effective_embedder_slug: ladder failed to \
+                 resolve ({err}) — reporting 'unknown' (treated as NOT managed)"
+            );
+            "unknown"
+        }
+    };
+    log::debug!("[memory_tree::embed::factory] effective_embedder_slug → {slug}");
+    slug
+}
+
 fn build_ollama_embedder(endpoint: &str, model: &str, timeout_ms: u64) -> Result<ProviderEmbedder> {
     let timeout = Duration::from_millis(if timeout_ms == 0 { 10_000 } else { timeout_ms });
     let client = reqwest::Client::builder()
@@ -605,5 +646,78 @@ mod tests {
         cfg.local_ai.usage.embeddings = true;
         let e = build_embedder_from_config(&cfg).expect("override path should build");
         assert_eq!(e.name(), "ollama");
+    }
+
+    /// The regression this whole helper exists for (reviewer M3gA-Mind, #5402):
+    /// a user who enabled local embeddings through Local AI Settings still has
+    /// `memory.embedding_provider == "cloud"` (nothing rewrites it), so any
+    /// surface reading that field concludes they bill against the managed
+    /// budget and warns them their memory has stopped growing — while it is
+    /// growing fine, fully locally, costing them nothing.
+    #[test]
+    fn effective_slug_reports_ollama_when_local_ai_overrides_cloud_setting() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        cfg.embeddings_provider = Some("ollama:all-minilm:latest".into());
+        cfg.local_ai.runtime_enabled = true;
+        cfg.local_ai.embedding_model_id = "all-minilm:latest".to_string();
+        touch_auth_profile(&cfg);
+
+        // The stale per-section field still says cloud …
+        assert_eq!(cfg.memory.embedding_provider, "cloud");
+        // … but the ladder — and therefore the wire field — says local.
+        assert_eq!(effective_embedder_slug(&cfg), "ollama");
+    }
+
+    #[test]
+    fn effective_slug_reports_ollama_for_explicit_endpoint_override() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        cfg.memory_tree.embedding_endpoint = Some("http://localhost:11434".into());
+        cfg.memory_tree.embedding_model = Some("bge-m3".into());
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "ollama");
+    }
+
+    #[test]
+    fn effective_slug_reports_cloud_only_for_a_real_managed_session() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "cloud");
+    }
+
+    #[test]
+    fn effective_slug_reports_unconfigured_without_a_session() {
+        // No auth-profiles.json → nothing is billed, so this must not read as
+        // managed even though the per-section field defaults to cloud.
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        assert_eq!(effective_embedder_slug(&cfg), "unconfigured");
+    }
+
+    #[test]
+    fn effective_slug_reports_none_for_deliberate_opt_out() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.embeddings_provider = Some("none".into());
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "none");
+    }
+
+    #[test]
+    fn effective_slug_reports_custom_for_byo_openai_compatible() {
+        use crate::openhuman::config::schema::cloud_providers::CloudProviderCreds;
+        let (_tmp, mut cfg) = test_config();
+        cfg.embeddings_provider = None;
+        cfg.memory.embedding_provider = "lmstudio".to_string();
+        cfg.memory.embedding_model = "bge-m3".to_string();
+        cfg.cloud_providers = vec![CloudProviderCreds {
+            id: "p_lmstudio".to_string(),
+            slug: "lmstudio".to_string(),
+            endpoint: "http://localhost:1234/v1".to_string(),
+            ..Default::default()
+        }];
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "custom");
     }
 }

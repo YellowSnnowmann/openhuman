@@ -93,8 +93,19 @@ pub async fn get_settings(config: &Config) -> Result<RpcOutcome<serde_json::Valu
         slug != "none"
     };
 
+    // The embedder ingestion will *actually* use. `provider` above is the
+    // per-section setting the picker writes; it is NOT authoritative for how
+    // embeddings are funded, because the Local AI "Memory embeddings" toggle and
+    // the `memory_tree.embedding_endpoint` override both route to local Ollama
+    // without rewriting it. Additive field — callers that only need the picker
+    // value are unaffected; callers asking "does this bill the managed budget?"
+    // must read this one (#5402).
+    let effective_provider =
+        crate::openhuman::memory::tree::score::embed::effective_embedder_slug(config);
+
     let payload = serde_json::json!({
         "provider": provider,
+        "effective_provider": effective_provider,
         "model": model,
         "dimensions": dimensions,
         "rate_limit_per_min": rate_limit,
@@ -104,6 +115,7 @@ pub async fn get_settings(config: &Config) -> Result<RpcOutcome<serde_json::Valu
 
     tracing::debug!(
         provider = provider.as_str(),
+        effective_provider,
         model = model.as_str(),
         dimensions,
         vector_search_enabled,
@@ -1074,6 +1086,38 @@ mod tests {
         // Resolve returns it; a provider with no stored key stays empty.
         assert_eq!(resolve_api_key(&config, "cohere"), "sk-cohere-test");
         assert_eq!(resolve_api_key(&config, "voyage"), "");
+    }
+
+    /// `get_settings` must report the embedder ingestion will **actually** use
+    /// alongside the picker's own setting (#5402). The two disagree whenever
+    /// the user enabled local embeddings through Local AI Settings: that path
+    /// never rewrites `memory.embedding_provider`, so `provider` still reads
+    /// `"cloud"` while nothing bills the managed budget. A consumer that gated
+    /// a "your memory has stopped growing" banner on `provider` would fire it
+    /// at a user whose memory is growing fine.
+    #[tokio::test]
+    async fn get_settings_reports_effective_provider_separately_from_the_setting() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = Config::default();
+        config.config_path = tmp.path().join("config.toml");
+        config.workspace_dir = tmp.path().to_path_buf();
+        config.memory.embedding_provider = "cloud".to_string();
+        // A managed session exists, so the ladder would resolve to cloud …
+        std::fs::write(tmp.path().join("auth-profiles.json"), "{}").unwrap();
+        // … except the unified workload setting routes embeddings to Ollama.
+        config.embeddings_provider = Some("ollama:all-minilm:latest".into());
+
+        let out = get_settings(&config)
+            .await
+            .expect("get_settings must succeed");
+        assert_eq!(
+            out.value["provider"], "cloud",
+            "the picker setting is unchanged"
+        );
+        assert_eq!(
+            out.value["effective_provider"], "ollama",
+            "the effective embedder is local, so nothing bills the managed budget"
+        );
     }
 
     /// `custom:<url>` providers must look up under the `embeddings:custom`

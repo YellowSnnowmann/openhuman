@@ -270,4 +270,75 @@ describe('useEmbeddingBudgetState session + managed-embeddings gaps', () => {
     expect(mockGetTeamUsage).not.toHaveBeenCalled();
     expect(result.current.level).toBe('none'); // still loading → silent
   });
+
+  // Reviewer M3gA-Mind (#5402): `provider` is the picker's own setting and is
+  // NOT authoritative for how embeddings are funded. A user who enabled local
+  // embeddings through Local AI Settings runs fully local, bills nothing — and
+  // still reads `provider: "cloud"`, because nothing rewrites that field. The
+  // core now resolves the real ladder and sends `effective_provider`; gating on
+  // the stale field would put a non-dismissible "memory has stopped growing"
+  // banner on every screen the moment their CHAT budget crossed 90%.
+  it('gates on the effective embedder, not the stale provider setting', async () => {
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0.95,
+      isBudgetExhausted: false,
+      isLoading: false,
+      teamUsage: { cycleBudgetUsd: 10, remainingUsd: 0.5 },
+    });
+    mockLoadEmbeddingsSettings.mockResolvedValue({
+      provider: 'cloud',
+      effective_provider: 'ollama',
+    });
+
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(mockLoadEmbeddingsSettings).toHaveBeenCalled());
+    expect(result.current.isManagedEmbeddings).toBe(false);
+    expect(result.current.level).toBe('none');
+  });
+
+  // The other direction: `effective_provider` must be able to turn the warning
+  // ON as well, so it is a correction of the signal and not a mute switch.
+  it('warns when the effective embedder is the managed cloud one', async () => {
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0.95,
+      isBudgetExhausted: false,
+      isLoading: false,
+      teamUsage: { cycleBudgetUsd: 10, remainingUsd: 0.5 },
+    });
+    mockLoadEmbeddingsSettings.mockResolvedValue({
+      provider: 'ollama:nomic-embed-text',
+      effective_provider: 'cloud',
+    });
+
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(result.current.isManagedEmbeddings).toBe(true));
+    expect(result.current.level).toBe('urgent');
+  });
+
+  // `unconfigured` (signed in, but the ladder found no usable provider) bills
+  // nothing, so it must not be treated as managed either.
+  it('treats an unconfigured effective embedder as unmanaged', async () => {
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0.95,
+      isBudgetExhausted: true,
+      isLoading: false,
+      teamUsage: { cycleBudgetUsd: 10, remainingUsd: 0 },
+    });
+    mockLoadEmbeddingsSettings.mockResolvedValue({
+      provider: 'cloud',
+      effective_provider: 'unconfigured',
+    });
+
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(mockLoadEmbeddingsSettings).toHaveBeenCalled());
+    expect(result.current.isManagedEmbeddings).toBe(false);
+    expect(result.current.level).toBe('none');
+  });
+
+  // A core old enough not to send the field must keep working off `provider`.
+  it('falls back to the provider setting when the core sends no effective_provider', async () => {
+    mockLoadEmbeddingsSettings.mockResolvedValue({ provider: 'openhuman' });
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(result.current.isManagedEmbeddings).toBe(true));
+  });
 });

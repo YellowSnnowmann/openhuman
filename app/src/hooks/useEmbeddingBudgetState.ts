@@ -38,10 +38,25 @@ export const EMBEDDING_BUDGET_URGENT_PCT = 0.9;
 
 /**
  * Provider slugs that bill against the managed cycle budget. Everything else
- * (`ollama:*`, `openai`, `voyage`, `custom:*`, …) is funded by the user, so
- * the managed budget running out does not stop their memory from growing.
+ * (`ollama:*`, `openai`, `voyage`, `custom:*`, `none`, `unconfigured`,
+ * `unknown`, …) is funded by the user — or by nobody — so the managed budget
+ * running out does not stop their memory from growing.
  */
 const MANAGED_PROVIDER_SLUGS = ['openhuman', 'managed', 'cloud'];
+
+/** Grep prefix for this hook's lifecycle diagnostics. */
+const LOG = '[embedding-budget]';
+
+/**
+ * Privacy-safe error label. Never log the raw error: it can carry endpoint
+ * URLs, request bodies, or backend messages quoting user content. A kind plus
+ * (for our own typed errors) the stable discriminator is enough to diagnose.
+ */
+function errorKind(err: unknown): string {
+  if (err instanceof CoreRpcError) return `core_rpc:${err.kind}`;
+  if (err instanceof Error) return `error:${err.name}`;
+  return 'unknown';
+}
 
 export type EmbeddingBudgetLevel = 'none' | 'warn' | 'urgent' | 'exhausted';
 
@@ -140,6 +155,7 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
     // before the fresh read resolves). Then skip the RPCs, which require a
     // session anyway.
     if (!isAuthenticated) {
+      console.debug(`${LOG} skip: not authenticated — cleared provider + fallback budget`);
       setProvider(null);
       setFallbackUsage(null);
       setProviderLoading(false);
@@ -147,11 +163,24 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
     }
     let cancelled = false;
     setProviderLoading(true);
+    console.debug(`${LOG} provider read start (hasUsage=${hasUsage} usageLoading=${usageLoading})`);
     void (async () => {
       try {
         const settings = await loadEmbeddingsSettings();
         if (cancelled) return;
-        const nextProvider = settings.provider;
+        // Gate on the *effective* embedder, not the picker setting. The core
+        // resolves local Ollama from the Local AI "Memory embeddings" toggle or
+        // the `memory_tree.embedding_endpoint` override, and neither rewrites
+        // `provider` — so a fully-local user still reads `provider: "cloud"`
+        // there and would be told their memory stopped growing while it is
+        // growing fine (reviewer M3gA-Mind, #5402). Fall back to `provider`
+        // only for a core old enough not to send the field.
+        const nextProvider = settings.effective_provider ?? settings.provider;
+        const managed = isManagedEmbeddingProvider(nextProvider);
+        console.debug(
+          `${LOG} provider read ok: effective=${nextProvider} ` +
+            `configured=${settings.provider} managed=${managed}`
+        );
         setProvider(nextProvider);
         // Only reach for the direct budget read when it is actually needed:
         // embeddings bill against the managed budget AND `useUsageState` has
@@ -160,30 +189,37 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
         // `!usageLoading` too — otherwise a normal managed user whose provider
         // read resolves first fires a redundant `getTeamUsage()` that
         // `useUsageState` is about to make anyway.
-        if (isManagedEmbeddingProvider(nextProvider) && !hasUsage && !usageLoading) {
+        if (managed && !hasUsage && !usageLoading) {
+          console.debug(`${LOG} fallback budget read start (managed + usage settled empty)`);
           try {
             const usage = await creditsApi.getTeamUsage();
             if (!cancelled) setFallbackUsage(deriveBudget(usage));
+            console.debug(`${LOG} fallback budget read ok`);
           } catch (err) {
             // Auth-expired is handled globally by coreRpcClient; any failure
             // here just means "no budget data", so stay silent rather than
             // guess. Never manufacture a warning from a failed read.
             if (err instanceof CoreRpcError && err.kind === 'auth_expired') {
+              console.debug(`${LOG} fallback budget read skipped: session expired`);
               if (!cancelled) setFallbackUsage(null);
             } else {
-              console.warn('[embedding-budget] managed-embeddings usage read failed', err);
+              console.warn(`${LOG} fallback budget read failed kind=${errorKind(err)}`);
               if (!cancelled) setFallbackUsage(null);
             }
           }
         } else if (!cancelled) {
           // Not needed (BYO/local, or `useUsageState` already has the figure).
+          console.debug(
+            `${LOG} fallback budget read not needed ` +
+              `(managed=${managed} hasUsage=${hasUsage} usageLoading=${usageLoading})`
+          );
           setFallbackUsage(null);
         }
       } catch (err) {
         // Conservative on failure: an unknown provider is treated as
         // NOT managed, so a transient RPC error can never manufacture a
         // budget warning for a user who funds their own embeddings.
-        console.warn('[embedding-budget] provider read failed', err);
+        console.warn(`${LOG} provider read failed kind=${errorKind(err)} — treating as unmanaged`);
         if (!cancelled) {
           setProvider(null);
           setFallbackUsage(null);
@@ -209,9 +245,16 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
   // the majority of users (BYO key, local) cost nothing. The subscription
   // below covers the other direction.
   useEffect(() => {
-    if (!isManagedEmbeddings) return;
+    if (!isManagedEmbeddings) {
+      console.debug(`${LOG} polling off (embeddings do not bill the managed budget)`);
+      return;
+    }
+    console.debug(`${LOG} polling on every ${PROVIDER_RECHECK_MS}ms`);
     const id = window.setInterval(reload, PROVIDER_RECHECK_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      console.debug(`${LOG} polling stopped`);
+      window.clearInterval(id);
+    };
   }, [isManagedEmbeddings, reload]);
 
   // Any usage refresh (sign-in, plan change, manual refresh) also re-reads the
