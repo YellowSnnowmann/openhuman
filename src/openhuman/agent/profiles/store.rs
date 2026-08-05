@@ -476,6 +476,11 @@ fn normalise_state(state: AgentProfilesState) -> AgentProfilesState {
             profile.is_master = true;
             profile.memory_dir_suffix = Some(String::new());
         } else if built_in_ids.contains(&profile.id) && !profile.dedicated_memory {
+            tracing::debug!(
+                profile_id = %profile.id,
+                had_suffix = profile.memory_dir_suffix.is_some(),
+                "[profiles] normalise pinning built-in profile to shared memory/session_raw subtree"
+            );
             // #5351: the built-in helper profiles (reasoning/research/planner/
             // review) ship `dedicated_memory: false` and are meant to SHARE the
             // default memory + `session_raw` subtree. An earlier `upsert` path
