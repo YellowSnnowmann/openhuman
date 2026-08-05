@@ -295,8 +295,9 @@ async fn deadline_after_poll_errors_still_errors() {
     // Submit is accepted but stays non-terminal, and every status poll fails.
     // Transient poll errors must not abort the paid generation, but once the wait
     // budget elapses the tool must surface an error (never a false success),
-    // remembering the last poll failure. A 1s budget against the 4s poll interval
-    // yields exactly one erroring poll before the deadline.
+    // remembering the last poll failure. The 1s budget caps the first sleep to the
+    // remaining time (not the full 4s interval), so exactly one failing poll runs
+    // before the deadline fires.
     Mock::given(method("POST"))
         .and(path("/agent-integrations/media-generation/images"))
         .respond_with(ResponseTemplate::new(200).set_body_json(

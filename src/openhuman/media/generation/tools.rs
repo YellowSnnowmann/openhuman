@@ -83,20 +83,25 @@ async fn generate_and_persist(
             // The generation never reached a terminal state within the budget, so
             // no artifact was downloaded. Surface an error rather than a false
             // success — a caller told "success" would report a file that was never
-            // produced. It was accepted and billed, so it may still finish
-            // server-side.
-            let mut msg = format!(
-                "Media generation did not complete within {max_wait_secs}s \
-                 (request_id: {request_id}, last status: {}). It was accepted and \
-                 billed and may still finish — try again shortly.",
+            // produced. Keep the message stable and free of upstream error text
+            // (that stays in the log line above): the request was accepted and
+            // billed and may still be running server-side, and there is no
+            // resume-by-id path, so retrying submits and bills a brand-new
+            // generation.
+            return ToolResult::error(format!(
+                "Media generation did not complete within {max_wait_secs}s (request_id: \
+                 {request_id}, last status: {}). The request was accepted and billed and may \
+                 still be running on the server. Calling this tool again starts and bills a \
+                 separate generation (there is no resume-by-id), so do not retry automatically — \
+                 report this to the user and let them decide.",
                 latest.status
-            );
-            if let Some(err) = &last_poll_error {
-                msg.push_str(&format!(" Last polling error: {err}"));
-            }
-            return ToolResult::error(msg);
+            ));
         }
-        tokio::time::sleep(POLL_INTERVAL).await;
+        // Don't sleep past the deadline: cap the poll interval to the time left so
+        // the wait budget is enforced before each poll. The poll request itself is
+        // bounded by the integration client's request timeout.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        tokio::time::sleep(POLL_INTERVAL.min(remaining)).await;
         match client.get::<MediaResponse>(&status_path).await {
             Ok(resp) => {
                 tracing::debug!(
