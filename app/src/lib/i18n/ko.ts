@@ -7084,6 +7084,7 @@ const messages: TranslationMap = {
     'AI 제공업체에 API 키가 설정되지 않았습니다. 제공업체 설정에서 추가하세요.',
   'userErrors.scope.chat': '채팅',
   'userErrors.scope.cron': '예약된 작업',
+  'userErrors.scope.workspace': '작업 공간',
   'userErrors.memoryBudgetExhausted.title': '메모리가 더 이상 늘어나지 않습니다',
   'userErrors.memoryBudgetExhausted.body':
     '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',

@@ -7366,12 +7366,13 @@ const messages: TranslationMap = {
     'Für deinen KI-Anbieter ist kein API-Schlüssel hinterlegt. Füge in den Anbietereinstellungen einen hinzu, um fortzufahren.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Geplante Aufgabe',
+  'userErrors.scope.workspace': 'Arbeitsbereich',
   'userErrors.memoryBudgetExhausted.title': 'Das Gedächtnis wächst nicht mehr',
   'userErrors.memoryBudgetExhausted.body':
     'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
   'memoryBudget.approachingTitle': 'Das Gedächtnis nähert sich seinem Embedding-Limit',
   'memoryBudget.approachingMessage':
-    'Du hast {pct}% deines Embedding-Budgets verbraucht. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, damit das Gedächtnis ohne Unterbrechung weiterwächst.',
+    'Du hast {pct} % deines Embedding-Budgets verbraucht. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, damit das Gedächtnis ohne Unterbrechung weiterwächst.',
   'memoryBudget.exhaustedTitle': 'Das Gedächtnis wächst nicht mehr',
   'memoryBudget.exhaustedMessage':
     'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',

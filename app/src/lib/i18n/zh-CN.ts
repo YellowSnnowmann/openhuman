@@ -6779,6 +6779,7 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.body': '您的 AI 提供商未设置 API 密钥，请在提供商设置中添加以继续。',
   'userErrors.scope.chat': '聊天',
   'userErrors.scope.cron': '定时任务',
+  'userErrors.scope.workspace': '工作区',
   'userErrors.memoryBudgetExhausted.title': '记忆已停止增长',
   'userErrors.memoryBudgetExhausted.body':
     '你的嵌入额度已用尽，新内容不会再加入记忆。设置本地嵌入或添加你自己的 API 密钥即可恢复。',

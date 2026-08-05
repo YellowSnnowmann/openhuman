@@ -744,9 +744,22 @@ fn queue_idle_ms(config: &Config, now_ms: i64) -> Result<Option<i64>, String> {
     if eligible_ready <= 0 {
         return Ok(None);
     }
-    // Prefer "time since the queue last settled anything". Fall back to the
-    // oldest eligible job's wait when the queue has never settled a job at all.
-    let reference_ms = last_settled_ms.or(oldest_eligible_ms);
+    // Idle time is "how long since the queue last made progress on the work
+    // that is waiting *now*" — so start the clock at the LATER of the last
+    // settle and the oldest eligible job's arrival. Using `last_settled_ms`
+    // alone (`.or`) mis-reads a real shape: if the queue drained everything,
+    // sat empty for days, then a fresh job arrives, the stale completion is
+    // hours/days old while the new work is seconds old. Taking the max means
+    // freshly-enqueued work starts its own idle window instead of inheriting
+    // an ancient completion, so a just-arrived job can't be flagged `degraded`
+    // before the worker has had a chance to touch it. Fall back to the oldest
+    // eligible job's wait when the queue has never settled a job at all.
+    let reference_ms = match (last_settled_ms, oldest_eligible_ms) {
+        (Some(last_settled), Some(oldest_eligible)) => Some(last_settled.max(oldest_eligible)),
+        (Some(last_settled), None) => Some(last_settled),
+        (None, Some(oldest_eligible)) => Some(oldest_eligible),
+        (None, None) => None,
+    };
     // Clamp at zero: clock skew / a future-dated row must read as "just now",
     // never as a negative age.
     Ok(reference_ms.map(|since| (now_ms - since).max(0)))
@@ -1730,6 +1743,65 @@ mod tests {
             queue_idle_ms(&cfg, now).unwrap(),
             None,
             "wholly-deferred work is asleep, not stalled"
+        );
+    }
+
+    /// #5324 regression (CodeRabbit/Codex): a queue that drained everything,
+    /// sat quiet for two days, then received one fresh eligible job must start
+    /// the idle clock at the NEW job's arrival — not inherit the ancient
+    /// completion. The prior `last_settled_ms.or(oldest_eligible_ms)` picked
+    /// the stale 48h-old settle and reported `degraded` the instant new work
+    /// appeared, before the worker had any chance to touch it.
+    #[tokio::test]
+    async fn queue_idle_ms_starts_from_fresh_work_not_ancient_completion() {
+        use crate::openhuman::memory::queue::store as queue_store;
+        use crate::openhuman::memory::queue::types::{FlushStalePayload, NewJob};
+
+        let (_tmp, cfg) = test_config();
+        let now = 1_800_000_000_000_i64;
+        let long_ago = now - 48 * 60 * 60 * 1000;
+        let just_now = now - 60_000;
+
+        // Job A: the last thing the queue settled, 48h ago, then it went quiet.
+        let job_a = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-01", 3).unwrap();
+        let id_a = queue_store::enqueue(&cfg, &job_a)
+            .unwrap()
+            .expect("enqueue A");
+        // Job B: a brand-new eligible job that arrived a minute ago.
+        let job_b = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-02", 3).unwrap();
+        let id_b = queue_store::enqueue(&cfg, &job_b)
+            .unwrap()
+            .expect("enqueue B");
+
+        chunk_store::with_connection(&cfg, |conn| {
+            conn.execute(
+                "UPDATE mem_tree_jobs
+                    SET status = 'done', completed_at_ms = ?2, available_at_ms = ?2
+                  WHERE id = ?1",
+                rusqlite::params![id_a, long_ago],
+            )?;
+            conn.execute(
+                "UPDATE mem_tree_jobs
+                    SET status = 'ready', completed_at_ms = NULL, available_at_ms = ?2
+                  WHERE id = ?1",
+                rusqlite::params![id_b, just_now],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        let idle = queue_idle_ms(&cfg, now)
+            .unwrap()
+            .expect("fresh work is waiting");
+        assert!(
+            idle < QUEUE_STALL_THRESHOLD_MS,
+            "freshly-enqueued work must start its own idle window, not inherit a 48h-old \
+             completion (idle={idle}ms)"
+        );
+        assert_eq!(
+            idle,
+            now - just_now,
+            "the idle clock starts at the new job's arrival, not the stale settle"
         );
     }
 

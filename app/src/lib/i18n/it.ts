@@ -7298,6 +7298,7 @@ const messages: TranslationMap = {
     'Il tuo provider IA non ha una chiave API impostata. Aggiungine una nelle impostazioni del provider per continuare.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Attività pianificata',
+  'userErrors.scope.workspace': 'Spazio di lavoro',
   'userErrors.memoryBudgetExhausted.title': 'La memoria ha smesso di crescere',
   'userErrors.memoryBudgetExhausted.body':
     'Il tuo budget di embedding è esaurito, quindi i nuovi contenuti non vengono più aggiunti alla memoria. Configura embedding locali o aggiungi la tua chiave API per riprendere.',

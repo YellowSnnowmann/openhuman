@@ -368,13 +368,23 @@ pub async fn update_settings(
     }
 
     // #5324: this is the exact screen the "embedding budget reached" alert
-    // deep-links to, so a save here is the user completing the remediation.
-    // Un-park the jobs that failed under the old (budget-exhausted /
-    // misconfigured) provider so memory resumes growing without the user
-    // also having to find "Retry failed" in Memory Tree settings.
-    // Unconditional on `sig_changed`: re-saving the *same* signature after
-    // fixing the account behind it is a legitimate remediation too.
-    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(&config);
+    // deep-links to, so a provider/endpoint save here is the user completing
+    // the remediation. Un-park the jobs that failed under the old
+    // (budget-exhausted / misconfigured) provider so memory resumes growing
+    // without the user also having to find "Retry failed" in Memory Tree
+    // settings.
+    //
+    // Gated on an actual provider/endpoint/signature touch — NOT unconditional:
+    // a save that only nudges `rate_limit_per_min` does not remediate the
+    // embedder, so it must leave terminally-failed jobs parked. `provider`
+    // covers re-selecting the *same* provider after fixing the account behind
+    // it (a legitimate remediation even when the signature is unchanged).
+    let is_embedding_remediation = sig_changed || provider.is_some() || custom_endpoint.is_some();
+    let requeued = if is_embedding_remediation {
+        crate::openhuman::memory::queue::requeue_failed_after_provider_change(&config)
+    } else {
+        0
+    };
 
     tracing::info!(
         provider = config.memory.embedding_provider.as_str(),

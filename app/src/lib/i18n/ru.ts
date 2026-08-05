@@ -7243,6 +7243,7 @@ const messages: TranslationMap = {
     'У провайдера ИИ не задан ключ API. Добавьте его в настройках провайдера.',
   'userErrors.scope.chat': 'Чат',
   'userErrors.scope.cron': 'Запланированная задача',
+  'userErrors.scope.workspace': 'Рабочая область',
   'userErrors.memoryBudgetExhausted.title': 'Память перестала расти',
   'userErrors.memoryBudgetExhausted.body':
     'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',

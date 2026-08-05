@@ -7281,6 +7281,7 @@ const messages: TranslationMap = {
     'Seu provedor de IA não tem uma chave de API definida. Adicione uma nas configurações do provedor para continuar.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tarefa agendada',
+  'userErrors.scope.workspace': 'Espaço de trabalho',
   'userErrors.memoryBudgetExhausted.title': 'A memória parou de crescer',
   'userErrors.memoryBudgetExhausted.body':
     'Seu orçamento de embeddings acabou, então novos conteúdos não estão mais sendo adicionados à memória. Configure embeddings locais ou adicione sua própria chave de API para retomar.',

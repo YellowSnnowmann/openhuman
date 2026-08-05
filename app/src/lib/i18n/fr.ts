@@ -7345,10 +7345,11 @@ const messages: TranslationMap = {
     "Aucune clé API n'est définie pour votre fournisseur d'IA. Ajoutez-en une dans les paramètres du fournisseur pour continuer.",
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tâche planifiée',
+  'userErrors.scope.workspace': 'Espace de travail',
   'userErrors.memoryBudgetExhausted.title': 'La mémoire a cessé de grandir',
   'userErrors.memoryBudgetExhausted.body':
     "Votre budget d'embeddings est épuisé, les nouveaux contenus ne sont donc plus ajoutés à la mémoire. Configurez des embeddings locaux ou ajoutez votre propre clé API pour reprendre.",
-  'memoryBudget.approachingTitle': "La mémoire approche de sa limite d'embeddings",
+  'memoryBudget.approachingTitle': "La mémoire approche de la limite de son budget d'embeddings",
   'memoryBudget.approachingMessage':
     "Vous avez utilisé {pct}% de votre budget d'embeddings. Configurez des embeddings locaux ou ajoutez votre propre clé API pour que la mémoire continue de croître sans interruption.",
   'memoryBudget.exhaustedTitle': 'La mémoire a cessé de grandir',

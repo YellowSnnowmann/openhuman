@@ -7201,6 +7201,7 @@ const messages: TranslationMap = {
     'Penyedia AI Anda belum memiliki kunci API. Tambahkan satu di pengaturan penyedia untuk melanjutkan.',
   'userErrors.scope.chat': 'Obrolan',
   'userErrors.scope.cron': 'Tugas terjadwal',
+  'userErrors.scope.workspace': 'Ruang kerja',
   'userErrors.memoryBudgetExhausted.title': 'Memori berhenti bertambah',
   'userErrors.memoryBudgetExhausted.body':
     'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',

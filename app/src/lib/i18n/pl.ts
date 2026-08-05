@@ -7270,6 +7270,7 @@ const messages: TranslationMap = {
     'Twój dostawca AI nie ma ustawionego klucza API. Dodaj go w ustawieniach dostawcy, aby kontynuować.',
   'userErrors.scope.chat': 'Czat',
   'userErrors.scope.cron': 'Zaplanowane zadanie',
+  'userErrors.scope.workspace': 'Obszar roboczy',
   'userErrors.memoryBudgetExhausted.title': 'Pamięć przestała rosnąć',
   'userErrors.memoryBudgetExhausted.body':
     'Twój budżet osadzeń został wyczerpany, więc nowe treści nie są już dodawane do pamięci. Skonfiguruj lokalne osadzenia lub dodaj własny klucz API, aby wznowić.',

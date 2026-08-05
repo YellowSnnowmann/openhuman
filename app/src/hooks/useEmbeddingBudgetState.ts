@@ -24,7 +24,10 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
+import { useCoreState } from '../providers/CoreStateProvider';
+import { creditsApi, type TeamUsage } from '../services/api/creditsApi';
 import { loadEmbeddingsSettings } from '../services/api/embeddingsApi';
+import { CoreRpcError } from '../services/coreRpcClient';
 import { subscribeUsageRefresh } from './usageRefresh';
 import { useUsageState } from './useUsageState';
 
@@ -77,6 +80,26 @@ export function embeddingBudgetLevel(usagePct: number, isExhausted: boolean): Em
   return 'none';
 }
 
+/** Derived budget snapshot: percent consumed + hard-exhausted verdict. */
+interface DerivedBudget {
+  pct: number;
+  exhausted: boolean;
+}
+
+/**
+ * Percent-consumed + exhausted verdict from a raw `TeamUsage`. Byte-identical
+ * to `useUsageState`'s own derivation so the fallback path (below) can never
+ * disagree with the primary path on the same underlying budget.
+ */
+function deriveBudget(usage: TeamUsage): DerivedBudget {
+  const pct =
+    usage.cycleBudgetUsd > 0.01
+      ? Math.max(0, Math.min(1, (usage.cycleBudgetUsd - usage.remainingUsd) / usage.cycleBudgetUsd))
+      : 0;
+  const exhausted = usage.cycleBudgetUsd > 0.01 && usage.remainingUsd <= 0.01;
+  return { pct, exhausted };
+}
+
 /**
  * How often the embeddings provider is re-read while it still bills against
  * the managed budget. Matches `useUsageState`'s cache TTL.
@@ -84,9 +107,17 @@ export function embeddingBudgetLevel(usagePct: number, isExhausted: boolean): Em
 const PROVIDER_RECHECK_MS = 60_000;
 
 export function useEmbeddingBudgetState(): EmbeddingBudgetState {
+  const { snapshot } = useCoreState();
+  const isAuthenticated = snapshot.auth.isAuthenticated;
   const { usagePct, isBudgetExhausted, isLoading: usageLoading, teamUsage } = useUsageState();
   const [provider, setProvider] = useState<string | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
+  // Fallback budget snapshot for the routed-away-but-managed-embeddings case.
+  // `useUsageState` deliberately returns no `teamUsage` when every chat +
+  // background workload is routed off OpenHuman (#2020 privacy optimisation) —
+  // but managed embeddings still bill against the managed cycle budget, so we
+  // read it directly there rather than letting that bypass silence the warning.
+  const [fallbackUsage, setFallbackUsage] = useState<DerivedBudget | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
 
   const reload = useCallback(() => setReloadCount(n => n + 1), []);
@@ -98,26 +129,62 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
   const hasUsage = teamUsage !== null;
 
   useEffect(() => {
-    // No usage payload means signed out / fully routed away / offline — no
-    // banner can render in any case, so skip the RPC entirely. Without this
-    // the hook fires a core call (and logs a warning) on every cold launch
-    // before login, when the core may not even be serving yet.
-    if (!hasUsage) {
+    // Gate the provider/budget reads on a live session, NOT on the presence of
+    // a usage payload. `teamUsage` is null both when signed out AND when an
+    // authenticated user has routed chat away while keeping managed embeddings
+    // — the two must be handled differently, so `hasUsage` cannot be the gate.
+    //
+    // Signed out / offline: clear any provider carried over from a previous
+    // user so the next session cannot combine this user's usage with the prior
+    // user's managed provider (which would show a false managed-budget warning
+    // before the fresh read resolves). Then skip the RPCs, which require a
+    // session anyway.
+    if (!isAuthenticated) {
+      setProvider(null);
+      setFallbackUsage(null);
       setProviderLoading(false);
       return;
     }
     let cancelled = false;
+    setProviderLoading(true);
     void (async () => {
       try {
         const settings = await loadEmbeddingsSettings();
         if (cancelled) return;
-        setProvider(settings.provider);
+        const nextProvider = settings.provider;
+        setProvider(nextProvider);
+        // Only reach for the direct budget read when it is actually needed:
+        // embeddings bill against the managed budget AND `useUsageState` gave
+        // us nothing (chat routed away). The common managed user keeps using
+        // `useUsageState`'s cached figure — no extra call.
+        if (isManagedEmbeddingProvider(nextProvider) && !hasUsage) {
+          try {
+            const usage = await creditsApi.getTeamUsage();
+            if (!cancelled) setFallbackUsage(deriveBudget(usage));
+          } catch (err) {
+            // Auth-expired is handled globally by coreRpcClient; any failure
+            // here just means "no budget data", so stay silent rather than
+            // guess. Never manufacture a warning from a failed read.
+            if (err instanceof CoreRpcError && err.kind === 'auth_expired') {
+              if (!cancelled) setFallbackUsage(null);
+            } else {
+              console.warn('[embedding-budget] managed-embeddings usage read failed', err);
+              if (!cancelled) setFallbackUsage(null);
+            }
+          }
+        } else if (!cancelled) {
+          // Not needed (BYO/local, or `useUsageState` already has the figure).
+          setFallbackUsage(null);
+        }
       } catch (err) {
         // Conservative on failure: an unknown provider is treated as
         // NOT managed, so a transient RPC error can never manufacture a
         // budget warning for a user who funds their own embeddings.
         console.warn('[embedding-budget] provider read failed', err);
-        if (!cancelled) setProvider(null);
+        if (!cancelled) {
+          setProvider(null);
+          setFallbackUsage(null);
+        }
       } finally {
         if (!cancelled) setProviderLoading(false);
       }
@@ -125,7 +192,7 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
     return () => {
       cancelled = true;
     };
-  }, [reloadCount, hasUsage]);
+  }, [reloadCount, isAuthenticated, hasUsage]);
 
   const isManagedEmbeddings = isManagedEmbeddingProvider(provider);
 
@@ -150,13 +217,18 @@ export function useEmbeddingBudgetState(): EmbeddingBudgetState {
   useEffect(() => subscribeUsageRefresh(reload), [reload]);
   const isLoading = usageLoading || providerLoading;
 
-  // No usage payload means the session never reached the billing API (fully
-  // routed away, signed out, offline). Claiming a budget state from that is
-  // guesswork, so stay silent.
-  const level =
-    isLoading || !teamUsage || !isManagedEmbeddings
-      ? 'none'
-      : embeddingBudgetLevel(usagePct, isBudgetExhausted);
+  // Prefer `useUsageState`'s figure; fall back to the direct read for the
+  // routed-away managed-embeddings case. When neither is available the session
+  // never reached the billing API (signed out / offline) — claiming a budget
+  // state from that is guesswork, so stay silent.
+  const budget: DerivedBudget | null = teamUsage
+    ? { pct: usagePct, exhausted: isBudgetExhausted }
+    : fallbackUsage;
 
-  return { level, pct: Math.round(usagePct * 100), isLoading, isManagedEmbeddings };
+  const level =
+    isLoading || !isManagedEmbeddings || !budget
+      ? 'none'
+      : embeddingBudgetLevel(budget.pct, budget.exhausted);
+
+  return { level, pct: Math.round((budget?.pct ?? 0) * 100), isLoading, isManagedEmbeddings };
 }

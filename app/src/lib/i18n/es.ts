@@ -7313,6 +7313,7 @@ const messages: TranslationMap = {
     'Tu proveedor de IA no tiene una clave de API configurada. Añade una en los ajustes del proveedor para continuar.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tarea programada',
+  'userErrors.scope.workspace': 'Espacio de trabajo',
   'userErrors.memoryBudgetExhausted.title': 'La memoria dejó de crecer',
   'userErrors.memoryBudgetExhausted.body':
     'Tu presupuesto de embeddings se agotó, así que el contenido nuevo ya no se añade a la memoria. Configura embeddings locales o añade tu propia clave de API para reanudar.',

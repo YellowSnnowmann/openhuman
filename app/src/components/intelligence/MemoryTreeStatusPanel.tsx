@@ -339,13 +339,22 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
   const { status, integrations, loading, error, refresh } = useMemoryTreeStatus();
   const [toggleBusy, setToggleBusy] = useState(false);
 
+  // #002 (FR-004): the single first blocking cause. Prefer the explicit
+  // `first_blocking_cause`; fall back to the active degradation cause so older
+  // payload shapes still surface something actionable. Derived ONCE here so the
+  // escalation, the status label, the CTA, and the banner all key off the same
+  // cause — a payload that carries only `degraded.cause` (and no
+  // `first_blocking_cause`) must not render the banner one way while the
+  // escalation and budget label read a different, empty cause.
+  const blockingCause = status?.first_blocking_cause ?? status?.degraded?.cause ?? null;
+
   // #5324: this panel was the ONLY place a budget-exhausted memory pipeline
   // was ever surfaced, so users who never opened it experienced weeks of
   // silently broken memory. Escalate the typed cause into the shell-mounted
   // UserErrorCenter, which stays visible across routes and after the panel
   // unmounts. The store dedupes on descriptor id, so polling re-reports bump
   // the recurrence count rather than stacking entries.
-  const blockingCauseCode = status?.first_blocking_cause?.code ?? null;
+  const blockingCauseCode = blockingCause?.code ?? null;
   useEffect(() => {
     reportMemoryPipelineFailure(dispatch, blockingCauseCode);
   }, [dispatch, blockingCauseCode]);
@@ -379,7 +388,7 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
   // tree themselves, so without this guard a manually-paused tree carrying an
   // old budget failure would be relabelled and hide the real reason it stopped.
   const isBudgetExhausted =
-    status?.first_blocking_cause?.code === 'budget_exhausted' &&
+    blockingCause?.code === 'budget_exhausted' &&
     (statusKind === 'error' || statusKind === 'degraded');
   const statusLabel: string = (() => {
     if (isBudgetExhausted) return t('memoryTree.status.statusBudgetExhausted');
@@ -400,11 +409,8 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
     }
   })();
 
-  // #002 (FR-004): the single first blocking cause, rendered verbatim with a
-  // localized remediation. Prefer the explicit `first_blocking_cause`; fall
-  // back to the active degradation cause so older payload shapes still surface
-  // something actionable.
-  const blockingCause = status?.first_blocking_cause ?? status?.degraded?.cause ?? null;
+  // `blockingCause` (derived above) is rendered verbatim in the banner below
+  // with a localized remediation.
   const degraded = status?.degraded;
 
   const checked = !(status?.is_paused ?? false);

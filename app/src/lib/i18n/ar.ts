@@ -7006,6 +7006,7 @@ const messages: TranslationMap = {
     'لا يوجد مفتاح API لمزوّد الذكاء الاصطناعي. أضِفه في إعدادات المزوّد للمتابعة.',
   'userErrors.scope.chat': 'الدردشة',
   'userErrors.scope.cron': 'مهمة مجدوَلة',
+  'userErrors.scope.workspace': 'مساحة العمل',
   'userErrors.memoryBudgetExhausted.title': 'توقفت الذاكرة عن النمو',
   'userErrors.memoryBudgetExhausted.body':
     'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',

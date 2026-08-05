@@ -99,6 +99,12 @@ pub async fn apply_model_settings(
     config: &mut Config,
     update: ModelSettingsPatch,
 ) -> Result<RpcOutcome<serde_json::Value>, String> {
+    // #5324: snapshot the embedder selection BEFORE applying the patch so the
+    // failed-job un-park below only fires when the embedder actually changed.
+    // This path also saves chat/reasoning/vision/etc. providers; without this
+    // gate, saving an unrelated model setting would restart every terminally
+    // `unrecoverable` embedding job and re-run the same external failure.
+    let prev_embeddings_provider = config.embeddings_provider.clone();
     if let Some(api_url) = update.api_url {
         config.api_url = if api_url.trim().is_empty() {
             None
@@ -250,8 +256,15 @@ pub async fn apply_model_settings(
     crate::openhuman::memory::queue::ensure_reembed_backfill(config);
     // #5324: the embedder may have just moved off the exhausted managed
     // budget onto local Ollama / a BYO provider. Give the jobs that parked as
-    // `unrecoverable` under the old provider a fresh attempt budget.
-    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
+    // `unrecoverable` under the old provider a fresh attempt budget — but ONLY
+    // when the embedder selection actually changed, so a chat/vision/etc. model
+    // save leaves terminally-failed jobs parked instead of re-failing them.
+    let embedder_changed = config.embeddings_provider != prev_embeddings_provider;
+    let requeued = if embedder_changed {
+        crate::openhuman::memory::queue::requeue_failed_after_provider_change(config)
+    } else {
+        0
+    };
     let snapshot = snapshot_config_json(config)?;
     Ok(RpcOutcome::new(
         snapshot,
@@ -275,6 +288,13 @@ pub async fn apply_memory_settings(
     config: &mut Config,
     update: MemorySettingsPatch,
 ) -> Result<RpcOutcome<serde_json::Value>, String> {
+    // #5324: snapshot the embedding signature BEFORE applying the patch. This
+    // path also saves `backend` / `auto_save` / `memory_window`, none of which
+    // remediate a budget-exhausted embedder — so the failed-job un-park below
+    // must fire only when the provider/model/dimensions actually changed.
+    let prev_embedding_provider = config.memory.embedding_provider.clone();
+    let prev_embedding_model = config.memory.embedding_model.clone();
+    let prev_embedding_dimensions = config.memory.embedding_dimensions;
     if let Some(backend) = update.backend {
         config.memory.backend = backend;
     }
@@ -323,8 +343,17 @@ pub async fn apply_memory_settings(
     // one-shot so it does not cover a later switch — this does.
     crate::openhuman::memory::queue::ensure_reembed_backfill(config);
     // #5324: same rationale as the model-settings path — a switch away from
-    // the exhausted managed budget must un-park the jobs that failed under it.
-    let requeued = crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
+    // the exhausted managed budget must un-park the jobs that failed under it,
+    // but a `memory_window` / `auto_save` / `backend` save must not. Gate on a
+    // real embedder change (provider/model/dimensions).
+    let embedder_changed = config.memory.embedding_provider != prev_embedding_provider
+        || config.memory.embedding_model != prev_embedding_model
+        || config.memory.embedding_dimensions != prev_embedding_dimensions;
+    let requeued = if embedder_changed {
+        crate::openhuman::memory::queue::requeue_failed_after_provider_change(config)
+    } else {
+        0
+    };
     let snapshot = snapshot_config_json(config)?;
     Ok(RpcOutcome::new(
         snapshot,

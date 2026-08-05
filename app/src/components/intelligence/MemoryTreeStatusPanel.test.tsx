@@ -511,6 +511,41 @@ describe('<MemoryTreeStatusPanel />', () => {
     expect(screen.queryByTestId('memory-tree-budget-cta')).not.toBeInTheDocument();
     expect(screen.getByTestId('memory-tree-status-label')).toHaveTextContent(/error/i);
   });
+
+  it('handles the legacy degraded.cause payload shape (no first_blocking_cause)', async () => {
+    // Older/degraded-only payloads carry the cause on `degraded.cause` and omit
+    // `first_blocking_cause`. The label, CTA, and escalation must all key off
+    // the same resolved cause, so this shape must behave exactly like the
+    // `first_blocking_cause` one — not render the banner while silently
+    // dropping the budget label, CTA, and the global escalation.
+    mockPipelineStatus.mockResolvedValueOnce(
+      payload({
+        status: 'degraded',
+        reason: 'queue has not completed any job in 8h — memory is not growing',
+        degraded: {
+          semantic_recall: false,
+          structure: false,
+          cause: {
+            code: 'budget_exhausted',
+            class: 'unrecoverable',
+            remediation_key: 'memory.health.remediation.budget_exhausted',
+          },
+        },
+      })
+    );
+    render(<MemoryTreeStatusPanel />);
+
+    // Named budget state, not a bare "degraded".
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-tree-status-label')).toHaveTextContent(
+        /embedding budget reached/i
+      );
+    });
+    // CTA present…
+    expect(screen.getByTestId('memory-tree-budget-cta')).toBeInTheDocument();
+    // …and the cause still escalates out of this panel.
+    expect(mockDispatch).toHaveBeenCalled();
+  });
 });
 
 describe('integration health helpers', () => {

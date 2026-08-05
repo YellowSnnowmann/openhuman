@@ -7165,6 +7165,7 @@ const messages: TranslationMap = {
     'আপনার AI প্রদানকারীর কোনো API কী সেট নেই। চালিয়ে যেতে প্রদানকারী সেটিংসে একটি যোগ করুন।',
   'userErrors.scope.chat': 'চ্যাট',
   'userErrors.scope.cron': 'নির্ধারিত কাজ',
+  'userErrors.scope.workspace': 'ওয়ার্কস্পেস',
   'userErrors.memoryBudgetExhausted.title': 'মেমরি আর বাড়ছে না',
   'userErrors.memoryBudgetExhausted.body':
     'আপনার এমবেডিং বাজেট শেষ, তাই নতুন কনটেন্ট আর মেমরিতে যুক্ত হচ্ছে না। আবার শুরু করতে লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',

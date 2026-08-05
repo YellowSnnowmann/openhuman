@@ -19,21 +19,32 @@ import {
 } from '../useEmbeddingBudgetState';
 
 const mockLoadEmbeddingsSettings = vi.hoisted(() => vi.fn());
+const mockUseUsageState = vi.hoisted(() => vi.fn());
+const mockUseCoreState = vi.hoisted(() => vi.fn());
+const mockGetTeamUsage = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api/embeddingsApi', () => ({
   loadEmbeddingsSettings: mockLoadEmbeddingsSettings,
 }));
 
-// The hook under test only needs a stable usage payload here; the threshold
-// mapping is covered by the pure-function tests above.
-vi.mock('../useUsageState', () => ({
-  useUsageState: () => ({
+vi.mock('../useUsageState', () => ({ useUsageState: mockUseUsageState }));
+
+vi.mock('../../providers/CoreStateProvider', () => ({ useCoreState: mockUseCoreState }));
+
+vi.mock('../../services/api/creditsApi', () => ({
+  creditsApi: { getTeamUsage: mockGetTeamUsage },
+}));
+
+/** Authenticated session with a managed cycle budget half-consumed. */
+function defaultMocks() {
+  mockUseCoreState.mockReturnValue({ snapshot: { auth: { isAuthenticated: true } } });
+  mockUseUsageState.mockReturnValue({
     usagePct: 0.5,
     isBudgetExhausted: false,
     isLoading: false,
     teamUsage: { cycleBudgetUsd: 10, remainingUsd: 5 },
-  }),
-}));
+  });
+}
 
 describe('embeddingBudgetLevel', () => {
   it('stays silent below the warning threshold', () => {
@@ -93,6 +104,8 @@ describe('isManagedEmbeddingProvider', () => {
 describe('useEmbeddingBudgetState provider refresh', () => {
   beforeEach(() => {
     mockLoadEmbeddingsSettings.mockReset();
+    mockGetTeamUsage.mockReset();
+    defaultMocks();
   });
 
   it('re-reads the provider on an interval while embeddings are managed', async () => {
@@ -137,5 +150,106 @@ describe('useEmbeddingBudgetState provider refresh', () => {
     // being warned without waiting for a remount.
     requestUsageRefresh();
     await vi.waitFor(() => expect(mockLoadEmbeddingsSettings).toHaveBeenCalledTimes(2));
+  });
+});
+
+// ── #5324: session boundaries + the routed-away managed-embeddings gap ──────
+
+describe('useEmbeddingBudgetState session + managed-embeddings gaps', () => {
+  beforeEach(() => {
+    mockLoadEmbeddingsSettings.mockReset();
+    mockGetTeamUsage.mockReset();
+    defaultMocks();
+  });
+
+  // CodeRabbit: a managed provider carried over from a previous user must not
+  // combine with a new session's usage into a false warning.
+  it('clears a stale managed provider when the session ends', async () => {
+    mockLoadEmbeddingsSettings.mockResolvedValue({ provider: 'openhuman' });
+    const { result, rerender } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(result.current.isManagedEmbeddings).toBe(true));
+
+    // Sign out: no live session, no usage payload.
+    mockUseCoreState.mockReturnValue({ snapshot: { auth: { isAuthenticated: false } } });
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0,
+      isBudgetExhausted: false,
+      isLoading: false,
+      teamUsage: null,
+    });
+    rerender();
+
+    await vi.waitFor(() => {
+      expect(result.current.isManagedEmbeddings).toBe(false);
+      expect(result.current.level).toBe('none');
+    });
+  });
+
+  // Codex: chat + background workloads routed off OpenHuman (so useUsageState
+  // reports no payload) while embeddings stay on the managed budget. The
+  // warning must still reach this user via a direct budget read.
+  it('warns a routed-away user whose embeddings still bill against the managed budget', async () => {
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0,
+      isBudgetExhausted: false,
+      isLoading: false,
+      teamUsage: null,
+    });
+    mockLoadEmbeddingsSettings.mockResolvedValue({ provider: 'openhuman' });
+    mockGetTeamUsage.mockResolvedValue({ cycleBudgetUsd: 10, remainingUsd: 1 });
+
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+
+    await vi.waitFor(() => {
+      expect(mockGetTeamUsage).toHaveBeenCalledTimes(1);
+      expect(result.current.level).toBe('urgent');
+      expect(result.current.pct).toBe(90);
+    });
+  });
+
+  // A failed direct read must never manufacture a warning.
+  it('stays silent when the direct budget read fails', async () => {
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0,
+      isBudgetExhausted: false,
+      isLoading: false,
+      teamUsage: null,
+    });
+    mockLoadEmbeddingsSettings.mockResolvedValue({ provider: 'openhuman' });
+    mockGetTeamUsage.mockRejectedValue(new Error('usage unavailable'));
+
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+
+    await vi.waitFor(() => expect(mockGetTeamUsage).toHaveBeenCalled());
+    expect(result.current.level).toBe('none');
+    expect(result.current.isManagedEmbeddings).toBe(true);
+  });
+
+  // The common managed user (useUsageState already has the figure) must not
+  // pay for a second billing round-trip.
+  it('does not issue a direct budget read when useUsageState already has usage', async () => {
+    mockLoadEmbeddingsSettings.mockResolvedValue({ provider: 'openhuman' });
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(result.current.isManagedEmbeddings).toBe(true));
+    expect(mockGetTeamUsage).not.toHaveBeenCalled();
+    expect(result.current.pct).toBe(50);
+  });
+
+  // A routed-away user on local/BYO embeddings still sees nothing — and we do
+  // not even issue the direct read for them.
+  it('never reads the managed budget for a routed-away BYO-embeddings user', async () => {
+    mockUseUsageState.mockReturnValue({
+      usagePct: 0,
+      isBudgetExhausted: false,
+      isLoading: false,
+      teamUsage: null,
+    });
+    mockLoadEmbeddingsSettings.mockResolvedValue({ provider: 'ollama:nomic-embed-text' });
+
+    const { result } = renderHook(() => useEmbeddingBudgetState());
+    await vi.waitFor(() => expect(mockLoadEmbeddingsSettings).toHaveBeenCalled());
+    expect(mockGetTeamUsage).not.toHaveBeenCalled();
+    expect(result.current.level).toBe('none');
+    expect(result.current.isManagedEmbeddings).toBe(false);
   });
 });

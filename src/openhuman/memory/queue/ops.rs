@@ -62,6 +62,11 @@ pub fn ensure_reembed_backfill(config: &crate::openhuman::config::Config) {
 /// settings save, so errors are logged and swallowed. Returns the number of
 /// jobs flipped back to `ready` (0 on error) for the caller's RPC log line.
 pub fn requeue_failed_after_provider_change(config: &crate::openhuman::config::Config) -> u64 {
+    // Entry record (see AGENTS.md "Debug logging"): state-transition op, so log
+    // entry + every branch + outcome. Prefix matches this module's sibling
+    // `ensure_reembed_backfill` (`[memory::jobs]`) — a stable, grep-friendly
+    // domain prefix.
+    log::debug!("[memory::jobs] provider change: evaluating parked failed jobs for requeue");
     match super::store::requeue_failed(config) {
         Ok(0) => {
             log::debug!("[memory::jobs] provider change: no failed jobs to requeue");
