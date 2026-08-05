@@ -93,6 +93,19 @@ describe('useRealtimeVoiceSession', () => {
     expect(result.current.error).toBe('microphone blocked');
   });
 
+  it('returns to idle when the SDK disconnects', async () => {
+    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
+    const { result } = renderHook(() => useRealtimeVoiceSession());
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => captured?.onConnect());
+    expect(result.current.state).toBe('active');
+
+    act(() => captured?.onDisconnect());
+    expect(result.current.state).toBe('idle');
+  });
+
   it('tears down a live session on unmount', async () => {
     mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
     const { result, unmount } = renderHook(() => useRealtimeVoiceSession());

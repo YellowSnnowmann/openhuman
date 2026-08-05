@@ -44,11 +44,11 @@ fn ensure_secure_backend_url(api_url: &str) -> Result<(), String> {
     if lowered.starts_with("https://") {
         return Ok(());
     }
-    let host = lowered
+    let is_loopback = lowered
         .strip_prefix("http://")
-        .map(|rest| rest.split(['/', ':']).next().unwrap_or(""))
-        .unwrap_or("");
-    let is_loopback = matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]");
+        .map(authority_host)
+        .map(|host| matches!(host, "localhost" | "127.0.0.1" | "::1"))
+        .unwrap_or(false);
     if is_loopback {
         return Ok(());
     }
@@ -56,6 +56,22 @@ fn ensure_secure_backend_url(api_url: &str) -> Result<(), String> {
         "refusing to send the session token to a non-HTTPS backend ({api_url}); \
          set a https:// api_url"
     ))
+}
+
+/// Extract the host from an `http://`-stripped remainder, preserving a bracketed
+/// IPv6 literal. Splitting on the first `:` (as the previous impl did) turned
+/// `[::1]:5005` into `"["`, so the documented IPv6 loopback backend could never
+/// match. Parse the authority structurally instead: `[::1]:5005` → `::1`,
+/// `127.0.0.1:5005` → `127.0.0.1`, `localhost/path` → `localhost`.
+fn authority_host(rest: &str) -> &str {
+    // The authority ends at the first path separator.
+    let authority = rest.split('/').next().unwrap_or("");
+    if let Some(after_bracket) = authority.strip_prefix('[') {
+        // Bracketed IPv6 literal: the host sits between '[' and ']'.
+        return after_bracket.split(']').next().unwrap_or("");
+    }
+    // Otherwise the host is everything before the optional `:port`.
+    authority.split(':').next().unwrap_or("")
 }
 
 /// Mint a realtime voice-agent signed URL by proxying the hosted backend.
@@ -162,6 +178,18 @@ mod tests {
         assert!(ensure_secure_backend_url("http://localhost:5005").is_ok());
         assert!(ensure_secure_backend_url("http://127.0.0.1:5005/").is_ok());
         let err = ensure_secure_backend_url("http://api.tinyhumans.ai").unwrap_err();
+        assert!(err.contains("non-HTTPS"), "{err}");
+    }
+
+    #[test]
+    fn secure_url_guard_allows_ipv6_loopback() {
+        // Bracketed IPv6 loopback must be accepted — the previous first-`:`
+        // split turned `[::1]:5005` into `"["` and wrongly rejected it.
+        assert!(ensure_secure_backend_url("http://[::1]:5005").is_ok());
+        assert!(ensure_secure_backend_url("http://[::1]:5005/").is_ok());
+        assert!(ensure_secure_backend_url("http://[::1]").is_ok());
+        // A non-loopback bracketed IPv6 host is still rejected over http://.
+        let err = ensure_secure_backend_url("http://[2001:db8::1]:5005").unwrap_err();
         assert!(err.contains("non-HTTPS"), "{err}");
     }
 
