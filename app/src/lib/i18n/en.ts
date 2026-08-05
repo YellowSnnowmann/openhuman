@@ -7565,9 +7565,13 @@ const en: TranslationMap = {
   'userErrors.memoryBudgetExhausted.title': 'Memory has stopped growing',
   'userErrors.memoryBudgetExhausted.body':
     'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'userErrors.localModelUnavailable.title': 'Local model unavailable',
+  'userErrors.localModelUnavailable.body':
+    'Ollama is not reachable at the configured endpoint, or the required model is not installed there. Start Ollama and pull the model at that endpoint, or switch this workload to a cloud provider.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Scheduled job',
   'userErrors.scope.workspace': 'Workspace',
+  'userErrors.scope.memory': 'Memory',
 
   // Memory embedding budget banners (#5324)
   'memoryBudget.approachingTitle': 'Memory is approaching its embedding limit',
@@ -7580,8 +7584,15 @@ const en: TranslationMap = {
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',
-  'memorySources.codingSessions.ingest': 'Ingest new sessions',
-  'memorySources.codingSessions.ingesting': 'Ingesting…',
+  'memorySources.codingSessions.importAll': 'Import all sessions',
+  'memorySources.codingSessions.draining': 'Importing… pass {passes}',
+  'memorySources.codingSessions.stop': 'Stop',
+  'memorySources.codingSessions.progress':
+    '{processed} sessions imported · {observations} observations',
+  'memorySources.codingSessions.remaining': 'about {remaining} left',
+  'memorySources.codingSessions.stopped': 'Import paused',
+  'memorySources.codingSessions.stoppedMessage':
+    'Imported {processed} sessions. Run import again to continue the remaining {remaining}.',
   'memorySources.codingSessions.claude': 'Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessions · {evidence} human turns',
@@ -7593,8 +7604,6 @@ const en: TranslationMap = {
     '{processed} sessions produced {observations} persona observations.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessions failed while {processed} were processed. Run ingestion again to retry them.',
-  'memorySources.codingSessions.moreRemaining':
-    'The session batch limit was reached. Run ingestion again to continue importing your history.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
   'notifications.configRecovered.title': 'Settings file recovered',
   'notifications.configRecovered.body':

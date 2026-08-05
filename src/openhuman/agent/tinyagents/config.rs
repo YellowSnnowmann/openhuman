@@ -148,11 +148,18 @@ pub fn apply_team_models(session: &mut SessionConfig, config: &Config, team: &st
         );
         return;
     };
-    if let Some(lead) = pins.lead_model.as_ref() {
-        session.lead_model = Some(lead.clone());
+    // Resolve through `model_for_role` rather than copying the raw options.
+    // That helper owns three behaviours this mapper must not re-derive: it
+    // trims, it drops empty strings (so a blank pin cannot displace a valid
+    // default), and it falls back across the pair — a team that sets only
+    // `lead_model` means that model for *both* tiers. Copying the fields
+    // directly left the unset tier on the global default, which is a different
+    // model from the one the user configured.
+    if let Some(lead) = pins.model_for_role(true) {
+        session.lead_model = Some(lead.to_string());
     }
-    if let Some(agent) = pins.agent_model.as_ref() {
-        session.subagent_model = Some(agent.clone());
+    if let Some(agent) = pins.model_for_role(false) {
+        session.subagent_model = Some(agent.to_string());
     }
 }
 
@@ -163,7 +170,20 @@ pub fn apply_team_models(session: &mut SessionConfig, config: &Config, team: &st
 /// `lead_model`: a delegate *is* the agent running this session, so it is the
 /// base model, not an override layered over some other base.
 pub fn apply_delegate(session: &mut SessionConfig, delegate: &DelegateAgentConfig) {
-    session.model = delegate.model.clone();
+    // `DelegateAgentConfig::model` is a bare `String`, and TOML happily accepts
+    // `model = ""`. Assigning that unchecked would replace a working session
+    // model with the empty string and fail at dispatch rather than here, so a
+    // blank pin leaves the session default alone — the same trim-and-drop rule
+    // `TeamModelConfig::model_for_role` applies to team pins.
+    let model = delegate.model.trim();
+    if model.is_empty() {
+        tracing::warn!(
+            target: "tinyagents",
+            "[tinyagents] delegate model pin is blank; keeping the session default model"
+        );
+    } else {
+        session.model = model.to_string();
+    }
     if let Some(t) = delegate.temperature {
         session.temperature = Some(t);
     }
@@ -204,6 +224,14 @@ mod tests {
         c.agent.parallel_tools = true;
         c.agent.max_parallel_tools = 3;
         c.agent.agent_timeout_secs = 45;
+        // Set away from the default so a dropped assignment fails here. A
+        // default-valued field is invisible to `default_config_maps_to_the_
+        // crate_defaults` (it compares against `TurnConfig::default()`) and to
+        // `per_section_mappers_agree_with_the_composed_one` (which compares
+        // `turn_config_from` against itself), so this is the only test that can
+        // catch it.
+        c.agent.compact_context = !AgentConfig::default().compact_context;
+        c.agent.tool_result_budget_bytes = 4242;
 
         let t = session_config_from(&c).turn;
         assert_eq!(t.max_tool_iterations, 7);
@@ -211,6 +239,8 @@ mod tests {
         assert!(t.parallel_tools);
         assert_eq!(t.max_parallel_tools, 3);
         assert_eq!(t.timeout_secs, 45);
+        assert_eq!(t.compact_context, !AgentConfig::default().compact_context);
+        assert_eq!(t.tool_result_budget_bytes, 4242);
     }
 
     #[test]
@@ -367,8 +397,13 @@ mod tests {
         assert_eq!(untouched, before);
     }
 
+    /// `TeamModelConfig`'s own doc: "Callers fall back across the pair so
+    /// configs can specify only one tier without breaking routing." A team that
+    /// pins one model means that model for both tiers — leaving the other on the
+    /// **global** default would silently run half the team on a model the user
+    /// did not choose for this team.
     #[test]
-    fn a_team_pinning_only_one_tier_leaves_the_other_on_the_default() {
+    fn a_team_pinning_only_one_tier_applies_it_to_both() {
         let mut c = base();
         c.default_model = Some("sonnet".into());
         c.teams.insert(
@@ -382,7 +417,48 @@ mod tests {
         let mut s = session_config_from(&c);
         apply_team_models(&mut s, &c, "solo");
         assert_eq!(s.effective_lead_model(), "opus");
+        assert_eq!(
+            s.effective_subagent_model(),
+            "opus",
+            "a single pin covers both tiers"
+        );
+    }
+
+    /// A blank pin is not a pin. Without the trim-and-drop it would replace a
+    /// working default with the empty string and fail at dispatch instead.
+    #[test]
+    fn a_blank_team_pin_does_not_displace_the_default() {
+        let mut c = base();
+        c.default_model = Some("sonnet".into());
+        c.teams.insert(
+            "blank".into(),
+            crate::openhuman::config::TeamModelConfig {
+                lead_model: Some("   ".into()),
+                agent_model: None,
+            },
+        );
+
+        let mut s = session_config_from(&c);
+        apply_team_models(&mut s, &c, "blank");
+        assert_eq!(s.effective_lead_model(), "sonnet");
         assert_eq!(s.effective_subagent_model(), "sonnet");
+    }
+
+    #[test]
+    fn a_blank_delegate_model_keeps_the_session_default() {
+        let mut c = base();
+        c.default_model = Some("sonnet".into());
+        let mut s = session_config_from(&c);
+        apply_delegate(
+            &mut s,
+            &DelegateAgentConfig {
+                model: "  ".into(),
+                system_prompt: None,
+                temperature: None,
+                max_depth: 1,
+            },
+        );
+        assert_eq!(s.model, "sonnet");
     }
 
     #[test]

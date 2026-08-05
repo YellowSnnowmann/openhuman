@@ -7241,6 +7241,9 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Требуется ключ API',
   'userErrors.apiKeyMissing.body':
     'У провайдера ИИ не задан ключ API. Добавьте его в настройках провайдера.',
+  'userErrors.localModelUnavailable.title': 'Локальная модель недоступна',
+  'userErrors.localModelUnavailable.body':
+    'Ollama недоступен по настроенному адресу, либо нужная модель там не установлена. Запустите Ollama и загрузите модель по этому адресу или переведите эту работу на облачного провайдера.',
   'userErrors.scope.chat': 'Чат',
   'userErrors.scope.cron': 'Запланированная задача',
   'userErrors.scope.workspace': 'Рабочая область',
@@ -7254,6 +7257,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
   'memoryBudget.cta': 'Настроить эмбеддинги',
+  'userErrors.scope.memory': 'Память',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Сумма',
   'agentWorld.trading.networkLabel': 'Сеть',
@@ -7314,8 +7318,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Сеансы агентов программирования',
   'memorySources.codingSessions.description':
     'Превратите решения и исправления из Codex и Claude Code в приватную память персоны.',
-  'memorySources.codingSessions.ingest': 'Загрузить новые сеансы',
-  'memorySources.codingSessions.ingesting': 'Загрузка…',
+  'memorySources.codingSessions.importAll': 'Импортировать все сеансы',
+  'memorySources.codingSessions.draining': 'Импорт… проход {passes}',
+  'memorySources.codingSessions.stop': 'Остановить',
+  'memorySources.codingSessions.progress':
+    'Импортировано {processed} сеансов · {observations} наблюдений',
+  'memorySources.codingSessions.remaining': 'осталось около {remaining}',
+  'memorySources.codingSessions.stopped': 'Импорт приостановлен',
+  'memorySources.codingSessions.stoppedMessage':
+    'Импортировано {processed} сеансов. Запустите импорт снова, чтобы продолжить оставшиеся {remaining}.',
   'memorySources.codingSessions.claude': 'Клод Код',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': 'Сеансы: {files} · Сообщения пользователя: {evidence}',
@@ -7327,8 +7338,6 @@ const messages: TranslationMap = {
     'Обработано сеансов: {processed}; наблюдений персоны: {observations}.',
   'memorySources.codingSessions.partialFailure':
     'Не удалось обработать сеансов: {failed}; обработано: {processed}. Запустите загрузку ещё раз для повтора.',
-  'memorySources.codingSessions.moreRemaining':
-    'Достигнут лимит сеансов в пакете. Запустите загрузку ещё раз, чтобы продолжить импорт истории.',
   'memorySources.codingSessions.failed': 'Не удалось загрузить сеансы программирования',
   'flows.canvas.sidePanelToggle': 'Боковая панель',
   'flows.canvas.legendTab': 'Вручную',

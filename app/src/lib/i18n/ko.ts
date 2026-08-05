@@ -7082,6 +7082,9 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API 키 필요',
   'userErrors.apiKeyMissing.body':
     'AI 제공업체에 API 키가 설정되지 않았습니다. 제공업체 설정에서 추가하세요.',
+  'userErrors.localModelUnavailable.title': '로컬 모델을 사용할 수 없음',
+  'userErrors.localModelUnavailable.body':
+    '구성된 엔드포인트에서 Ollama에 연결할 수 없거나 필요한 모델이 그곳에 설치되어 있지 않습니다. Ollama를 실행하고 해당 엔드포인트에 모델을 내려받거나, 이 작업을 클라우드 제공업체로 전환하세요.',
   'userErrors.scope.chat': '채팅',
   'userErrors.scope.cron': '예약된 작업',
   'userErrors.scope.workspace': '작업 공간',
@@ -7095,6 +7098,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',
   'memoryBudget.cta': '임베딩 설정',
+  'userErrors.scope.memory': '메모리',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '금액',
   'agentWorld.trading.networkLabel': '네트워크',
@@ -7155,8 +7159,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': '코딩 에이전트 세션',
   'memorySources.codingSessions.description':
     'Codex와 Claude Code의 결정 및 수정 사항을 비공개 페르소나 메모리로 변환합니다.',
-  'memorySources.codingSessions.ingest': '새 세션 수집',
-  'memorySources.codingSessions.ingesting': '수집 중…',
+  'memorySources.codingSessions.importAll': '모든 세션 가져오기',
+  'memorySources.codingSessions.draining': '가져오는 중… {passes}회차',
+  'memorySources.codingSessions.stop': '중지',
+  'memorySources.codingSessions.progress': '{processed}개 세션 가져옴 · 관찰 {observations}개',
+  'memorySources.codingSessions.remaining': '약 {remaining}개 남음',
+  'memorySources.codingSessions.stopped': '가져오기 일시중지됨',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed}개 세션을 가져왔습니다. 남은 {remaining}개를 계속하려면 가져오기를 다시 실행하세요.',
   'memorySources.codingSessions.claude': '클로드 코드',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '세션 {files}개 · 사용자 입력 {evidence}개',
@@ -7168,8 +7178,6 @@ const messages: TranslationMap = {
     '세션 {processed}개에서 페르소나 관찰 {observations}개를 만들었습니다.',
   'memorySources.codingSessions.partialFailure':
     '세션 {processed}개를 처리하는 동안 {failed}개가 실패했습니다. 다시 시도하려면 수집을 다시 실행하세요.',
-  'memorySources.codingSessions.moreRemaining':
-    '세션 배치 한도에 도달했습니다. 기록 가져오기를 계속하려면 수집을 다시 실행하세요.',
   'memorySources.codingSessions.failed': '코딩 세션 수집 실패',
   'flows.canvas.sidePanelToggle': '사이드 패널',
   'flows.canvas.legendTab': '수동',

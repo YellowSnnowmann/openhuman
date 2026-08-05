@@ -7199,6 +7199,9 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Kunci API diperlukan',
   'userErrors.apiKeyMissing.body':
     'Penyedia AI Anda belum memiliki kunci API. Tambahkan satu di pengaturan penyedia untuk melanjutkan.',
+  'userErrors.localModelUnavailable.title': 'Model lokal tidak tersedia',
+  'userErrors.localModelUnavailable.body':
+    'Ollama tidak dapat dijangkau di endpoint yang dikonfigurasi, atau model yang dibutuhkan belum terpasang di sana. Jalankan Ollama dan unduh modelnya di endpoint tersebut, atau alihkan pekerjaan ini ke penyedia cloud.',
   'userErrors.scope.chat': 'Obrolan',
   'userErrors.scope.cron': 'Tugas terjadwal',
   'userErrors.scope.workspace': 'Ruang kerja',
@@ -7212,6 +7215,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
   'memoryBudget.cta': 'Siapkan embedding',
+  'userErrors.scope.memory': 'Memori',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',
   'agentWorld.trading.networkLabel': 'Jaringan',
@@ -7273,8 +7277,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sesi agen pemrograman',
   'memorySources.codingSessions.description':
     'Ubah keputusan dan koreksi Codex serta Claude Code menjadi memori persona pribadi.',
-  'memorySources.codingSessions.ingest': 'Serap sesi baru',
-  'memorySources.codingSessions.ingesting': 'Menyerap…',
+  'memorySources.codingSessions.importAll': 'Impor semua sesi',
+  'memorySources.codingSessions.draining': 'Mengimpor… lintasan {passes}',
+  'memorySources.codingSessions.stop': 'Hentikan',
+  'memorySources.codingSessions.progress': '{processed} sesi diimpor · {observations} observasi',
+  'memorySources.codingSessions.remaining': 'sekitar {remaining} tersisa',
+  'memorySources.codingSessions.stopped': 'Impor dijeda',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} sesi diimpor. Jalankan impor lagi untuk melanjutkan {remaining} yang tersisa.',
   'memorySources.codingSessions.claude': 'Riwayat Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sesi · {evidence} masukan manusia',
@@ -7286,8 +7296,6 @@ const messages: TranslationMap = {
     '{processed} sesi menghasilkan {observations} pengamatan persona.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sesi gagal sementara {processed} berhasil diproses. Jalankan penyerapan lagi untuk mencoba ulang.',
-  'memorySources.codingSessions.moreRemaining':
-    'Batas batch sesi tercapai. Jalankan penyerapan lagi untuk melanjutkan impor riwayat Anda.',
   'memorySources.codingSessions.failed': 'Gagal menyerap sesi pemrograman',
   'flows.canvas.sidePanelToggle': 'Panel samping',
   'flows.canvas.legendTab': 'Manual',

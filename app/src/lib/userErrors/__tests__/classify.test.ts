@@ -64,6 +64,50 @@ describe('classifyUserActionableError', () => {
     expect(classifyUserActionableError({ message: 'Incorrect API key provided' })).toBeNull();
   });
 
+  it('classifies an unusable local model runtime (memory user_error kind token)', () => {
+    // Core's memory embedder health gate emits the stable kind token with
+    // error_source=memory (#5354); socketService maps that to the memory scope.
+    const a = classifyUserActionableError({
+      errorType: 'local_model_unavailable',
+      scope: 'memory',
+      sourceDomain: 'memory',
+    });
+    expect(a?.kind).toBe('local_model_unavailable');
+    expect(a?.scope).toBe('memory');
+    expect(a?.action).toBe('open_provider_settings');
+    expect(a?.titleKey).toBe('userErrors.localModelUnavailable.title');
+    expect(a?.bodyKey).toBe('userErrors.localModelUnavailable.body');
+    expect(a?.id).toBe(userErrorId('local_model_unavailable', 'memory', undefined));
+
+    // …and every prose shape the local embedder / health gate / doctor
+    // produce. Both Rust-side shapes are covered so the two classifiers stay
+    // symmetric — daemon-not-listening AND model-never-pulled.
+    for (const msg of [
+      'ollama embed request failed (is Ollama running at http://localhost:11434?)',
+      'Ollama embedding model `bge-m3` is not installed at http://localhost:11434. Run `ollama pull bge-m3`',
+      'Ollama daemon unreachable at http://localhost:11434',
+      'ollama embeddings opted-in but daemon unreachable at http://localhost:11434',
+    ]) {
+      expect(classifyUserActionableError({ message: msg })?.kind).toBe('local_model_unavailable');
+    }
+  });
+
+  it('does NOT promote a bare "daemon unreachable" from another domain', () => {
+    // Backend connection-health logs use this phrase too. Matching it loosely
+    // would tell a user with a flaky backend link to install Ollama. The Rust
+    // matcher anchors on the full producer wording for the same reason.
+    expect(
+      classifyUserActionableError({ message: 'backend daemon unreachable at api.tinyhumans.ai' })
+    ).toBeNull();
+  });
+
+  it('keeps billing remediation for a credits error that also names Ollama', () => {
+    // The local-runtime rule is last on purpose: an out-of-credits provider
+    // must not be told to install Ollama.
+    const a = classifyUserActionableError({ message: 'ollama proxy requires more credits' });
+    expect(a?.kind).toBe('insufficient_credits');
+  });
+
   it('returns null for generic / non-actionable errors and empty input', () => {
     expect(classifyUserActionableError({ message: GENERIC_MSG })).toBeNull();
     expect(classifyUserActionableError({ message: '', errorType: 'inference' })).toBeNull();

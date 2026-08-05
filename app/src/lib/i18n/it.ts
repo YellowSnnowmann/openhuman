@@ -7296,6 +7296,9 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Chiave API richiesta',
   'userErrors.apiKeyMissing.body':
     'Il tuo provider IA non ha una chiave API impostata. Aggiungine una nelle impostazioni del provider per continuare.',
+  'userErrors.localModelUnavailable.title': 'Modello locale non disponibile',
+  'userErrors.localModelUnavailable.body':
+    "Ollama non è raggiungibile sull'endpoint configurato, oppure il modello necessario non è installato lì. Avvia Ollama e scarica il modello su quell'endpoint, oppure sposta questo lavoro su un provider cloud.",
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Attività pianificata',
   'userErrors.scope.workspace': 'Spazio di lavoro',
@@ -7309,6 +7312,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Il tuo budget di embedding è esaurito, quindi i nuovi contenuti non vengono più aggiunti alla memoria. Configura embedding locali o aggiungi la tua chiave API per riprendere.',
   'memoryBudget.cta': 'Configura gli embedding',
+  'userErrors.scope.memory': 'Memoria',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Importo',
   'agentWorld.trading.networkLabel': 'Rete',
@@ -7370,8 +7374,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sessioni degli agenti di programmazione',
   'memorySources.codingSessions.description':
     'Trasforma decisioni e correzioni di Codex e Claude Code in memoria privata della persona.',
-  'memorySources.codingSessions.ingest': 'Acquisisci nuove sessioni',
-  'memorySources.codingSessions.ingesting': 'Acquisizione…',
+  'memorySources.codingSessions.importAll': 'Importa tutte le sessioni',
+  'memorySources.codingSessions.draining': 'Importazione… passaggio {passes}',
+  'memorySources.codingSessions.stop': 'Arresta',
+  'memorySources.codingSessions.progress':
+    '{processed} sessioni importate · {observations} osservazioni',
+  'memorySources.codingSessions.remaining': 'ne restano circa {remaining}',
+  'memorySources.codingSessions.stopped': 'Importazione in pausa',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} sessioni importate. Avvia di nuovo l’importazione per continuare con le {remaining} restanti.',
   'memorySources.codingSessions.claude': 'Cronologia Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessioni · {evidence} interventi umani',
@@ -7384,8 +7395,6 @@ const messages: TranslationMap = {
     '{processed} sessioni hanno prodotto {observations} osservazioni della persona.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessioni non sono riuscite mentre {processed} sono state elaborate. Avvia di nuovo l’acquisizione per riprovare.',
-  'memorySources.codingSessions.moreRemaining':
-    'È stato raggiunto il limite di sessioni del batch. Avvia di nuovo l’acquisizione per continuare a importare la cronologia.',
   'memorySources.codingSessions.failed':
     'Acquisizione delle sessioni di programmazione non riuscita',
   'flows.canvas.sidePanelToggle': 'Pannello laterale',

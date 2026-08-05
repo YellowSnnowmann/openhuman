@@ -7311,6 +7311,9 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Se requiere clave de API',
   'userErrors.apiKeyMissing.body':
     'Tu proveedor de IA no tiene una clave de API configurada. Añade una en los ajustes del proveedor para continuar.',
+  'userErrors.localModelUnavailable.title': 'Modelo local no disponible',
+  'userErrors.localModelUnavailable.body':
+    'No se puede acceder a Ollama en el punto de conexión configurado, o el modelo necesario no está instalado allí. Inicia Ollama y descarga el modelo en ese punto de conexión, o cambia este trabajo a un proveedor en la nube.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tarea programada',
   'userErrors.scope.workspace': 'Espacio de trabajo',
@@ -7324,6 +7327,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Tu presupuesto de embeddings se agotó, así que el contenido nuevo ya no se añade a la memoria. Configura embeddings locales o añade tu propia clave de API para reanudar.',
   'memoryBudget.cta': 'Configurar embeddings',
+  'userErrors.scope.memory': 'Memoria',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Importe',
   'agentWorld.trading.networkLabel': 'Red',
@@ -7384,8 +7388,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sesiones de agentes de programación',
   'memorySources.codingSessions.description':
     'Convierte tus decisiones y correcciones de Codex y Claude Code en memoria privada de personalidad.',
-  'memorySources.codingSessions.ingest': 'Ingerir sesiones nuevas',
-  'memorySources.codingSessions.ingesting': 'Ingiriendo…',
+  'memorySources.codingSessions.importAll': 'Importar todas las sesiones',
+  'memorySources.codingSessions.draining': 'Importando… lote {passes}',
+  'memorySources.codingSessions.stop': 'Detener',
+  'memorySources.codingSessions.progress':
+    '{processed} sesiones importadas · {observations} observaciones',
+  'memorySources.codingSessions.remaining': 'quedan unas {remaining}',
+  'memorySources.codingSessions.stopped': 'Importación en pausa',
+  'memorySources.codingSessions.stoppedMessage':
+    'Se importaron {processed} sesiones. Ejecuta la importación de nuevo para continuar con las {remaining} restantes.',
   'memorySources.codingSessions.claude': 'Historial de Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sesiones · {evidence} intervenciones humanas',
@@ -7398,8 +7409,6 @@ const messages: TranslationMap = {
     '{processed} sesiones produjeron {observations} observaciones de personalidad.',
   'memorySources.codingSessions.partialFailure':
     'Fallaron {failed} sesiones mientras se procesaron {processed}. Ejecuta la ingesta de nuevo para reintentarlas.',
-  'memorySources.codingSessions.moreRemaining':
-    'Se alcanzó el límite de sesiones del lote. Ejecuta la ingesta de nuevo para seguir importando tu historial.',
   'memorySources.codingSessions.failed': 'Falló la ingesta de sesiones de programación',
   'flows.canvas.sidePanelToggle': 'Panel lateral',
   'flows.canvas.legendTab': 'Manual',

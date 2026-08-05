@@ -7004,6 +7004,9 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'مطلوب مفتاح API',
   'userErrors.apiKeyMissing.body':
     'لا يوجد مفتاح API لمزوّد الذكاء الاصطناعي. أضِفه في إعدادات المزوّد للمتابعة.',
+  'userErrors.localModelUnavailable.title': 'النموذج المحلي غير متاح',
+  'userErrors.localModelUnavailable.body':
+    'لا يمكن الوصول إلى Ollama على النقطة الطرفية المُهيأة، أو أن النموذج المطلوب غير مثبّت عليها. شغّل Ollama ونزّل النموذج على تلك النقطة الطرفية، أو حوّل هذا العمل إلى مزوّد سحابي.',
   'userErrors.scope.chat': 'الدردشة',
   'userErrors.scope.cron': 'مهمة مجدوَلة',
   'userErrors.scope.workspace': 'مساحة العمل',
@@ -7017,6 +7020,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
   'memoryBudget.cta': 'إعداد التضمينات',
+  'userErrors.scope.memory': 'الذاكرة',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'المبلغ',
   'agentWorld.trading.networkLabel': 'الشبكة',
@@ -7076,8 +7080,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'جلسات وكلاء البرمجة',
   'memorySources.codingSessions.description':
     'حوّل قرارات وتصحيحات Codex وClaude Code إلى ذاكرة شخصية خاصة.',
-  'memorySources.codingSessions.ingest': 'استيعاب الجلسات الجديدة',
-  'memorySources.codingSessions.ingesting': 'جارٍ الاستيعاب…',
+  'memorySources.codingSessions.importAll': 'استيراد كل الجلسات',
+  'memorySources.codingSessions.draining': 'جارٍ الاستيراد… الدفعة {passes}',
+  'memorySources.codingSessions.stop': 'إيقاف',
+  'memorySources.codingSessions.progress': 'تم استيراد {processed} جلسة · {observations} ملاحظة',
+  'memorySources.codingSessions.remaining': 'يتبقى نحو {remaining}',
+  'memorySources.codingSessions.stopped': 'تم إيقاف الاستيراد مؤقتًا',
+  'memorySources.codingSessions.stoppedMessage':
+    'تم استيراد {processed} جلسة. شغّل الاستيراد مرة أخرى لمتابعة الـ {remaining} المتبقية.',
   'memorySources.codingSessions.claude': 'كلود كود',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} جلسات · {evidence} مداخلات بشرية',
@@ -7089,8 +7099,6 @@ const messages: TranslationMap = {
     'أنتجت {processed} جلسات {observations} ملاحظات شخصية.',
   'memorySources.codingSessions.partialFailure':
     'فشلت {failed} جلسات بينما تمت معالجة {processed}. شغّل الاستيعاب مرة أخرى لإعادة المحاولة.',
-  'memorySources.codingSessions.moreRemaining':
-    'تم بلوغ حد دفعة الجلسات. شغّل الاستيعاب مرة أخرى لمتابعة استيراد سجلك.',
   'memorySources.codingSessions.failed': 'فشل استيعاب جلسات البرمجة',
   'flows.canvas.sidePanelToggle': 'اللوحة الجانبية',
   'flows.canvas.legendTab': 'يدوي',
