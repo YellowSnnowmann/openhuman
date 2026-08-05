@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import PttSettingsPanel from '../../../pages/settings/voice/PttSettingsPanel';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { selectVoiceMode, setVoiceMode } from '../../../store/mascotSlice';
+import { VOICE_MODE_FLAG_ENABLED } from '../../../utils/config';
 import {
   installPiper,
   installWhisper,
@@ -103,6 +106,8 @@ interface VoicePanelProps {
 
 const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   const { t } = useT();
+  const dispatch = useAppDispatch();
+  const voiceMode = useAppSelector(selectVoiceMode);
   const { navigateBack, navigateToSettings } = useSettingsNavigation();
   const [settings, setSettings] = useState<VoiceServerSettings | null>(null);
   const [savedSettings, setSavedSettings] = useState<VoiceServerSettings | null>(null);
@@ -622,6 +627,26 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
             }
           />
         </SettingsSection>
+
+        {/* ─── Realtime voice mode (beta, flag-gated) ──────────────────── */}
+        {VOICE_MODE_FLAG_ENABLED && (
+          <SettingsSection title={t('voice.mode.title')} description={t('voice.mode.desc')}>
+            <SettingsRow
+              htmlFor="voice-mode-realtime"
+              label={t('voice.mode.realtime')}
+              description={t('voice.mode.realtimeDesc')}
+              control={
+                <SettingsSwitch
+                  id="voice-mode-realtime"
+                  data-testid="voice-mode-realtime-toggle"
+                  checked={voiceMode === 'realtime'}
+                  onCheckedChange={next => dispatch(setVoiceMode(next ? 'realtime' : 'classic'))}
+                  aria-label={t('voice.mode.realtime')}
+                />
+              }
+            />
+          </SettingsSection>
+        )}
 
         {/* ─── Section 1: Voice Provider Chips ─────────────────────────── */}
         {/* Provider chips are intentional bespoke UI — kept as-is. */}

@@ -2425,6 +2425,10 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'पाइपर तैयार है.',
   'voice.providers.piperInstallStarted': 'पाइपर स्थापित करना प्रारंभ हो गया',
   'voice.providers.failedToInstallPiper': 'पाइपर स्थापित करने में विफल',
+  'voice.mode.title': 'वॉइस मोड',
+  'voice.mode.desc': 'चुनें कि Human टैब में असिस्टेंट कैसे बात करे।',
+  'voice.mode.realtime': 'रियलटाइम वॉइस (बीटा)',
+  'voice.mode.realtimeDesc': 'बारी-बारी के बजाय सीधे लाइव बातचीत करें।',
   'voice.providers.title': 'आवाज प्रदाता',
   'voice.providers.desc':
     'चुनें कि ट्रांसक्रिप्शन और सिंथेसिस कहाँ चलें। बाइनरी और मॉडल डाउनलोड करने के लिए Install locally बटन उपयोग करें। स्थानीय प्रोवाइडर इंस्टॉल पूरा होने से पहले भी सहेजे जा सकते हैं: कोई मैन्युअल WHISPER_BIN या PIPER_BIN सेटअप आवश्यक नहीं।',

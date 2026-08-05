@@ -2462,6 +2462,10 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper jest gotowy.',
   'voice.providers.piperInstallStarted': 'Instalacja Piper rozpoczęta',
   'voice.providers.failedToInstallPiper': 'Nie udało się zainstalować Piper',
+  'voice.mode.title': 'Tryb głosowy',
+  'voice.mode.desc': 'Wybierz, jak asystent mówi w karcie Human.',
+  'voice.mode.realtime': 'Głos w czasie rzeczywistym (beta)',
+  'voice.mode.realtimeDesc': 'Prowadź rozmowę na żywo zamiast rozmawiać na zmianę.',
   'voice.providers.title': 'Dostawcy głosu',
   'voice.providers.desc':
     'Wybierz, gdzie ma działać transkrypcja i synteza. Użyj przycisków „Zainstaluj lokalnie”, aby pobrać binarki i modele do przestrzeni roboczej. Lokalnych dostawców można zapisać przed zakończeniem instalacji: bez ręcznego ustawiania WHISPER_BIN czy PIPER_BIN.',

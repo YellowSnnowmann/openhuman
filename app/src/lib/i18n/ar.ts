@@ -2372,6 +2372,10 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper جاهز.',
   'voice.providers.piperInstallStarted': 'بدأ تثبيت Piper',
   'voice.providers.failedToInstallPiper': 'فشل تثبيت Piper',
+  'voice.mode.title': 'وضع الصوت',
+  'voice.mode.desc': 'اختر طريقة تحدث المساعد في تبويب Human.',
+  'voice.mode.realtime': 'الصوت الفوري (تجريبي)',
+  'voice.mode.realtimeDesc': 'أجرِ محادثة مباشرة ومتدفقة بدلاً من تبادل الأدوار.',
   'voice.providers.title': 'موفري الصوت',
   'voice.providers.desc':
     'اختر مكان تشغيل النسخ والتوليف. استخدم أزرار «التثبيت محلياً» لتنزيل الملفات الثنائية والنماذج في مساحة عملك. يمكن حفظ الموفرين المحليين قبل اكتمال التثبيت: لا حاجة لإعداد WHISPER_BIN أو PIPER_BIN يدوياً.',
