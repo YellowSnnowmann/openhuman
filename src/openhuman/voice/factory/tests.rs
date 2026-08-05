@@ -7,7 +7,9 @@ use super::entry::{
 use super::helpers::{effective_stt_provider, effective_tts_provider, split_slug_model};
 use super::stt_providers::WhisperSttProvider;
 use super::traits::SttProvider;
-use crate::openhuman::config::schema::voice_providers::{SttApiStyle, VoiceCapability};
+use crate::openhuman::config::schema::voice_providers::{
+    SttApiStyle, TtsApiStyle, VoiceCapability,
+};
 use crate::openhuman::config::Config;
 
 fn cfg() -> Config {
@@ -132,6 +134,66 @@ fn tts_factory_piper_empty_voice_uses_default() {
 fn tts_factory_openhuman_sentinel() {
     let p = create_tts_provider("openhuman", "alloy", &cfg()).unwrap();
     assert_eq!(p.name(), "cloud");
+}
+
+#[test]
+fn tts_factory_cloud_empty_voice_stays_none() {
+    // #5355 regression: an empty voice on the cloud provider must NOT inherit the
+    // Piper default `en_US-lessac-medium`. That id is invalid for the
+    // ElevenLabs-backed cloud proxy and returns HTTP 400. Empty resolves to
+    // `None` so the backend picks its own default voice.
+    let p = create_tts_provider("cloud", "", &cfg()).unwrap();
+    assert_eq!(p.name(), "cloud");
+    assert_eq!(p.configured_voice(), None);
+}
+
+#[test]
+fn tts_factory_openhuman_empty_voice_stays_none() {
+    // The `openhuman` sentinel resolves to the same cloud path, so it carries
+    // the identical guarantee.
+    let p = create_tts_provider("openhuman", "", &cfg()).unwrap();
+    assert_eq!(p.name(), "cloud");
+    assert_eq!(p.configured_voice(), None);
+}
+
+#[test]
+fn tts_factory_cloud_keeps_explicit_voice() {
+    let p = create_tts_provider("cloud", "Rachel", &cfg()).unwrap();
+    assert_eq!(p.name(), "cloud");
+    assert_eq!(p.configured_voice().as_deref(), Some("Rachel"));
+}
+
+#[test]
+fn tts_factory_piper_empty_voice_resolves_piper_default() {
+    // Piper is the one provider whose default voice legitimately is
+    // `en_US-lessac-medium`, so the fallback still applies here.
+    let p = create_tts_provider("piper", "", &cfg()).unwrap();
+    assert_eq!(p.name(), "piper");
+    assert_eq!(p.configured_voice().as_deref(), Some("en_US-lessac-medium"));
+}
+
+#[test]
+fn tts_factory_external_empty_voice_uses_registry_default_not_piper() {
+    // An external ElevenLabs provider with no explicit voice must fall back to
+    // the registry entry's `default_tts_voice`, never the Piper id (which would
+    // 400 upstream) — the latent form of #5355 on the BYOK path.
+    let mut config = cfg();
+    config.voice_providers.push(
+        crate::openhuman::config::schema::voice_providers::VoiceProviderCreds {
+            slug: "elevenlabs".into(),
+            endpoint: "https://api.elevenlabs.io/v1".into(),
+            capability: VoiceCapability::Both,
+            tts_api_style: TtsApiStyle::ElevenLabs,
+            default_tts_voice: Some("JBFqnCBsd6RMkjVDRZzb".into()),
+            ..Default::default()
+        },
+    );
+    let p = create_tts_provider("elevenlabs", "", &config).unwrap();
+    assert_eq!(p.name(), "external");
+    assert_eq!(
+        p.configured_voice().as_deref(),
+        Some("JBFqnCBsd6RMkjVDRZzb")
+    );
 }
 
 #[test]

@@ -56,6 +56,11 @@ impl TtsProvider for CloudTtsProvider {
         };
         synthesize_reply(config, text, &opts).await
     }
+
+    #[cfg(test)]
+    fn configured_voice(&self) -> Option<String> {
+        self.voice.clone()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +105,11 @@ impl TtsProvider for PiperTtsProvider {
             voice: Some(resolved_voice),
         };
         synthesize_piper(config, text, &opts).await
+    }
+
+    #[cfg(test)]
+    fn configured_voice(&self) -> Option<String> {
+        Some(self.voice.clone())
     }
 }
 
@@ -176,6 +186,11 @@ impl TtsProvider for ExternalTtsProvider {
             },
             format!("voice-factory: external TTS completed via {}", self.slug),
         ))
+    }
+
+    #[cfg(test)]
+    fn configured_voice(&self) -> Option<String> {
+        Some(self.default_voice.clone())
     }
 }
 

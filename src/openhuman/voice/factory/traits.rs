@@ -64,4 +64,14 @@ pub trait TtsProvider: Send + Sync {
         text: &str,
         voice: Option<&str>,
     ) -> Result<RpcOutcome<ReplySpeechResult>, String>;
+
+    /// Test-only accessor for the voice this provider was constructed with.
+    /// Used to assert the factory's provider-aware voice resolution — an empty
+    /// voice must resolve to the Piper default only for Piper, never leak that
+    /// id into the cloud provider (#5355). Defaults to `None`; concrete
+    /// providers that carry a configured voice override it.
+    #[cfg(test)]
+    fn configured_voice(&self) -> Option<String> {
+        None
+    }
 }

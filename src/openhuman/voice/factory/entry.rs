@@ -93,20 +93,31 @@ pub fn create_tts_provider(
     config: &Config,
 ) -> anyhow::Result<Box<dyn TtsProvider>> {
     debug!("{LOG_PREFIX} create_tts_provider provider={provider} voice={voice}");
-    let voice = if voice.trim().is_empty() {
-        DEFAULT_PIPER_VOICE
-    } else {
-        voice
-    };
+    let voice = voice.trim();
     match provider.trim() {
-        "cloud" | "openhuman" => Ok(Box::new(CloudTtsProvider::new(if voice.is_empty() {
-            None
-        } else {
-            Some(voice.to_string())
-        }))),
-        "piper" => Ok(Box::new(PiperTtsProvider::new(voice))),
+        // Cloud/ElevenLabs resolves its own default voice server-side — the
+        // hosted `/audio/speech` proxy omits `voice_id` when it is absent (see
+        // `reply_speech::synthesize_reply`), so an empty voice must stay empty
+        // (`None`). Injecting the Piper default `en_US-lessac-medium` here sent
+        // an invalid voice to the upstream ElevenLabs proxy and 400'd (#5355).
+        "cloud" | "openhuman" => Ok(Box::new(CloudTtsProvider::new(
+            (!voice.is_empty()).then(|| voice.to_string()),
+        ))),
+        // Piper is the only provider whose default voice is the local
+        // `en_US-lessac-medium` model, so the fallback lives in this arm only.
+        "piper" => {
+            let voice = if voice.is_empty() {
+                DEFAULT_PIPER_VOICE
+            } else {
+                voice
+            };
+            Ok(Box::new(PiperTtsProvider::new(voice)))
+        }
         other => {
             let (slug, slug_voice) = split_slug_model(other);
+            // An empty voice lets `create_tts_provider_by_slug` fall back to the
+            // registry entry's `default_tts_voice` (e.g. the ElevenLabs default),
+            // not the Piper voice id.
             let effective_voice = if slug_voice.is_empty() {
                 voice
             } else {
