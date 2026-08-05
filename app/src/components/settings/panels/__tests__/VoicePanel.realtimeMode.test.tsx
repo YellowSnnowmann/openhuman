@@ -13,8 +13,9 @@ import VoicePanel from '../VoicePanel';
 
 // Flip the realtime gate ON for this file; keep every other config export real.
 vi.mock('../../../../utils/config', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../../../utils/config')>('../../../../utils/config');
+  const actual = await vi.importActual<typeof import('../../../../utils/config')>(
+    '../../../../utils/config'
+  );
   return { ...actual, VOICE_MODE_FLAG_ENABLED: true };
 });
 

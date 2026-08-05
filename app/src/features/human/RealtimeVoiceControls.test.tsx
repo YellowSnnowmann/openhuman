@@ -24,9 +24,7 @@ const start = vi.fn();
 const stop = vi.fn();
 let session: RealtimeVoiceSession;
 
-vi.mock('./voice/useRealtimeVoiceSession', () => ({
-  useRealtimeVoiceSession: () => session,
-}));
+vi.mock('./voice/useRealtimeVoiceSession', () => ({ useRealtimeVoiceSession: () => session }));
 
 function makeSession(overrides: Partial<RealtimeVoiceSession> = {}): RealtimeVoiceSession {
   return {
