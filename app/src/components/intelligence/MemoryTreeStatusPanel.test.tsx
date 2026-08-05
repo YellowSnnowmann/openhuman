@@ -543,8 +543,12 @@ describe('<MemoryTreeStatusPanel />', () => {
     });
     // CTA present…
     expect(screen.getByTestId('memory-tree-budget-cta')).toBeInTheDocument();
-    // …and the cause still escalates out of this panel.
-    expect(mockDispatch).toHaveBeenCalled();
+    // …and the cause still escalates out of this panel. Escalation runs from an
+    // effect after the status resolves, so wait for it rather than asserting
+    // synchronously (matches the `first_blocking_cause` escalation test above).
+    await waitFor(() => {
+      expect(mockDispatch).toHaveBeenCalled();
+    });
   });
 });
 
