@@ -500,6 +500,7 @@ jobs:
           openhuman/inference/local/mod.rs
           openhuman/memory/people/address_book.rs
           openhuman/mcp/server/resources.rs
+          openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
           openhuman/tinyplace/manifest.rs
           openhuman/tools/registry/ops_tests.rs
