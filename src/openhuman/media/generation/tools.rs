@@ -11,7 +11,9 @@
 //! (`wait:false`, so the backend charges + returns a request id immediately),
 //! then poll the request until it reaches a terminal state, download each
 //! resulting artifact into the agent's `generated-media/` root, and return the
-//! local file paths. The backend owns GMI keys, billing, and rate limiting.
+//! local file paths. If the request does not reach a terminal state within the
+//! wait budget, the tool returns an error (never a success with no file). The
+//! backend owns GMI keys, billing, and rate limiting.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,7 +38,7 @@ const MODELS_PATH: &str = "/agent-integrations/media-generation/models";
 
 /// Poll cadence + caps. Images are fast; video can take minutes.
 const POLL_INTERVAL: Duration = Duration::from_secs(4);
-const IMAGE_MAX_WAIT_SECS: u64 = 180;
+const IMAGE_MAX_WAIT_SECS: u64 = 300;
 const VIDEO_MAX_WAIT_SECS: u64 = 420;
 
 /// Shared submit-then-poll-then-persist flow for both modalities.
@@ -68,19 +70,31 @@ async fn generate_and_persist(
     );
 
     let mut latest = submitted;
+    let mut last_poll_error: Option<String> = None;
     let deadline = Instant::now() + Duration::from_secs(max_wait_secs);
     while !latest.is_terminal() {
         if Instant::now() >= deadline {
             tracing::warn!(
-                "[media_generation] wait budget elapsed for request={} (status={})",
+                "[media_generation] wait budget elapsed for request={} (status={}, last_poll_error={:?})",
                 request_id,
+                latest.status,
+                last_poll_error
+            );
+            // The generation never reached a terminal state within the budget, so
+            // no artifact was downloaded. Surface an error rather than a false
+            // success — a caller told "success" would report a file that was never
+            // produced. It was accepted and billed, so it may still finish
+            // server-side.
+            let mut msg = format!(
+                "Media generation did not complete within {max_wait_secs}s \
+                 (request_id: {request_id}, last status: {}). It was accepted and \
+                 billed and may still finish — try again shortly.",
                 latest.status
             );
-            return ToolResult::success(format!(
-                "Media generation is still {} after {}s. It was accepted (request_id: {}) and \
-                 billed; it may finish shortly — check again later.",
-                latest.status, max_wait_secs, request_id
-            ));
+            if let Some(err) = &last_poll_error {
+                msg.push_str(&format!(" Last polling error: {err}"));
+            }
+            return ToolResult::error(msg);
         }
         tokio::time::sleep(POLL_INTERVAL).await;
         match client.get::<MediaResponse>(&status_path).await {
@@ -97,8 +111,10 @@ async fn generate_and_persist(
                     "[media_generation] poll error for request={}: {e}",
                     request_id
                 );
-                // Transient poll failures shouldn't abort a paid generation —
-                // keep polling until the deadline.
+                // Transient poll failures shouldn't abort a paid generation — keep
+                // polling until the deadline, but remember the last error so a
+                // timeout can explain why it never observed a terminal status.
+                last_poll_error = Some(e.to_string());
             }
         }
     }
