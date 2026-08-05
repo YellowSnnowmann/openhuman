@@ -56,6 +56,8 @@ mod ops;
 #[cfg(feature = "voice")]
 pub mod realtime;
 #[cfg(feature = "voice")]
+pub mod realtime_harness;
+#[cfg(feature = "voice")]
 pub mod reply_speech;
 #[cfg(feature = "voice")]
 mod schemas;
