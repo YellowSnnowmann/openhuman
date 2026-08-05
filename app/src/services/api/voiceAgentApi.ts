@@ -13,12 +13,19 @@ import { callCoreRpc } from '../coreRpcClient';
 export interface VoiceAgentSignedUrl {
   signedUrl: string;
   agentId: string;
+  /**
+   * Short-lived token binding this session to the signed-in user. Passed back as
+   * the ElevenLabs `userId` so the backend relay verifies it instead of trusting
+   * a raw id (#5399). Empty only against a backend that predates the binding.
+   */
+  userToken: string;
 }
 
 /** Snake-cased wire shape returned by the core RPC. */
 interface VoiceAgentSignedUrlRpc {
   signed_url: string;
   agent_id: string;
+  user_token?: string;
 }
 
 /**
@@ -30,5 +37,9 @@ export async function fetchVoiceAgentSignedUrl(): Promise<VoiceAgentSignedUrl> {
   const result = await callCoreRpc<VoiceAgentSignedUrlRpc>({
     method: 'openhuman.voice_agent_signed_url',
   });
-  return { signedUrl: result.signed_url, agentId: result.agent_id };
+  return {
+    signedUrl: result.signed_url,
+    agentId: result.agent_id,
+    userToken: result.user_token ?? '',
+  };
 }

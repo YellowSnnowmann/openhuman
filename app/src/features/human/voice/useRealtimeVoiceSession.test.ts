@@ -32,7 +32,7 @@ describe('useRealtimeVoiceSession', () => {
   });
 
   it('fetches a signed URL and opens a WebSocket session with the voice override', async () => {
-    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1' });
+    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
     const { result } = renderHook(() => useRealtimeVoiceSession({ voiceId: 'v9' }));
     expect(result.current.state).toBe('idle');
 
@@ -44,6 +44,7 @@ describe('useRealtimeVoiceSession', () => {
     expect(startSession).toHaveBeenCalledWith({
       signedUrl: 'wss://x',
       connectionType: 'websocket',
+      userId: 'tok-1',
       overrides: { tts: { voiceId: 'v9' } },
     });
 
@@ -52,7 +53,7 @@ describe('useRealtimeVoiceSession', () => {
   });
 
   it('falls back to the default mascot voice id', async () => {
-    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1' });
+    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
     const { result } = renderHook(() => useRealtimeVoiceSession());
     await act(async () => {
       await result.current.start();
@@ -74,7 +75,7 @@ describe('useRealtimeVoiceSession', () => {
   });
 
   it('stop() ends the session and returns to idle', async () => {
-    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1' });
+    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
     const { result } = renderHook(() => useRealtimeVoiceSession());
     await act(async () => {
       await result.current.start();
@@ -90,5 +91,22 @@ describe('useRealtimeVoiceSession', () => {
     act(() => captured?.onError('microphone blocked'));
     expect(result.current.state).toBe('error');
     expect(result.current.error).toBe('microphone blocked');
+  });
+
+  it('tears down a live session on unmount', async () => {
+    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
+    const { result, unmount } = renderHook(() => useRealtimeVoiceSession());
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => captured?.onConnect());
+    unmount();
+    expect(endSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call endSession on unmount when no session is live', () => {
+    const { unmount } = renderHook(() => useRealtimeVoiceSession());
+    unmount();
+    expect(endSession).not.toHaveBeenCalled();
   });
 });

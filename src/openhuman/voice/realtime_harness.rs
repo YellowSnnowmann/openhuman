@@ -12,16 +12,88 @@
 //! arriving over a channel, so `external_effect` tools route through the
 //! audit-trail path rather than running with trusted-CLI semantics.
 
+use std::collections::HashSet;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use log::{info, warn};
 use serde_json::{json, Value};
+use tokio::sync::Semaphore;
 
 use crate::openhuman::agent::harness::session::Agent;
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin};
 use crate::openhuman::platform::socket::manager::global_socket_manager;
 
 const TURN_TIMEOUT_SECS: u64 = 90;
+
+/// Voice-scoped transcript namespace. Building a fresh orchestrator per turn
+/// would otherwise resume the *chat* orchestrator's latest transcript by name,
+/// bleeding an unrelated conversation into (or out of) the voice session. A
+/// dedicated name isolates voice from chat; multi-turn context comes from the
+/// relayed `messages` we seed below, not from this resume path.
+const VOICE_AGENT_NAME: &str = "voice";
+
+/// Cap on concurrent local-agent turns driven by the relay. Each turn loads
+/// config, builds a full orchestrator, and runs for up to `TURN_TIMEOUT_SECS`,
+/// so an unbounded burst (or retry storm) would spawn unbounded heavy agent
+/// sessions. Excess turns queue on the permit rather than piling up.
+const MAX_CONCURRENT_VOICE_TURNS: usize = 3;
+
+static VOICE_TURN_LIMITER: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_VOICE_TURNS)));
+
+/// Correlation ids currently being processed, so a relay retry that re-delivers
+/// the same `voice:harness` event is deduplicated instead of running the turn
+/// (and charging/emitting) twice.
+static IN_FLIGHT_CORRELATIONS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// RAII claim on a correlation id: inserts on `claim`, removes on drop. `None`
+/// from `claim` means a turn for that id is already in flight.
+struct InFlightGuard(String);
+
+impl InFlightGuard {
+    fn claim(correlation_id: &str) -> Option<Self> {
+        let mut set = IN_FLIGHT_CORRELATIONS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if set.insert(correlation_id.to_string()) {
+            Some(Self(correlation_id.to_string()))
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        let mut set = IN_FLIGHT_CORRELATIONS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        set.remove(&self.0);
+    }
+}
+
+/// Convert an OpenAI-style `messages` array into `(role, content)` history pairs
+/// for [`Agent::seed_resume_from_messages`]. Drops `system` turns — the relayed
+/// system prompt is the ElevenLabs agent's, not ours — and flattens multimodal
+/// content the same way [`extract_prompt`] does. Pure + unit-tested.
+fn messages_to_history_pairs(messages: &[Value]) -> Vec<(String, String)> {
+    messages
+        .iter()
+        .filter_map(|msg| {
+            let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
+            if role != "user" && role != "assistant" && role != "agent" {
+                return None;
+            }
+            let text = content_to_text(msg.get("content"));
+            if text.trim().is_empty() {
+                return None;
+            }
+            Some((role.to_string(), text))
+        })
+        .collect()
+}
 
 /// Spoken-output directive appended to the orchestrator profile so replies read
 /// naturally through TTS instead of as markdown.
@@ -63,7 +135,17 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
         return;
     }
 
-    match run_agent_turn(&correlation_id, &prompt).await {
+    // Deduplicate a re-delivered turn (relay retry) before doing any work.
+    let Some(_in_flight) = InFlightGuard::claim(&correlation_id) else {
+        warn!("[voice-harness] duplicate turn correlation={correlation_id} already in flight — dropping");
+        return;
+    };
+
+    // Bound concurrent heavy agent turns; excess turns queue here rather than
+    // spawning unbounded orchestrators. Held for the duration of the turn.
+    let _permit = VOICE_TURN_LIMITER.acquire().await;
+
+    match run_agent_turn(&correlation_id, &messages, &prompt).await {
         Ok(reply) => {
             let spoken = reply.trim();
             if !spoken.is_empty() {
@@ -86,7 +168,11 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
     }
 }
 
-async fn run_agent_turn(correlation_id: &str, prompt: &str) -> Result<String, String> {
+async fn run_agent_turn(
+    correlation_id: &str,
+    messages: &[Value],
+    prompt: &str,
+) -> Result<String, String> {
     let config = crate::openhuman::config::ops::load_config_with_timeout().await?;
     let mut agent = Agent::from_config_for_agent_with_profile(
         &config,
@@ -97,10 +183,22 @@ async fn run_agent_turn(correlation_id: &str, prompt: &str) -> Result<String, St
     )
     .map_err(|e| format!("orchestrator build failed: {e}"))?;
     agent.set_event_context(format!("voice_{correlation_id}"), "voice_agent");
+    // Isolate the voice transcript namespace from the chat orchestrator so a
+    // fresh-per-turn agent can't resume an unrelated conversation by name.
+    agent.set_agent_definition_name(VOICE_AGENT_NAME);
+
+    // Seed the authoritative prior turns the relay carries (OpenAI `messages`),
+    // so follow-ups like "what about tomorrow?" keep their context. No-ops when
+    // there is nothing prior to the current user message.
+    let history = messages_to_history_pairs(messages);
+    if let Err(e) = agent.seed_resume_from_messages(history, prompt) {
+        warn!("[voice-harness] seed prior messages failed correlation={correlation_id}: {e}");
+    }
 
     info!(
-        "[voice-harness] orchestrator turn correlation={correlation_id} prompt_chars={}",
-        prompt.chars().count()
+        "[voice-harness] orchestrator turn correlation={correlation_id} prompt_chars={} history_msgs={}",
+        prompt.chars().count(),
+        messages.len()
     );
 
     let fut = with_origin(
@@ -174,5 +272,34 @@ mod tests {
         let messages = vec![json!({ "role": "assistant", "content": "hi" })];
         assert_eq!(extract_prompt(&messages), "");
         assert_eq!(extract_prompt(&[]), "");
+    }
+
+    #[test]
+    fn history_pairs_keep_user_and_assistant_turns_and_drop_system() {
+        let messages = vec![
+            json!({ "role": "system", "content": "eleven agent prompt" }),
+            json!({ "role": "user", "content": "what is the weather" }),
+            json!({ "role": "assistant", "content": "sunny" }),
+            json!({ "role": "user", "content": "what about tomorrow" }),
+        ];
+        let pairs = messages_to_history_pairs(&messages);
+        assert_eq!(
+            pairs,
+            vec![
+                ("user".to_string(), "what is the weather".to_string()),
+                ("assistant".to_string(), "sunny".to_string()),
+                ("user".to_string(), "what about tomorrow".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn history_pairs_flatten_multimodal_and_skip_empty() {
+        let messages = vec![
+            json!({ "role": "user", "content": [{ "type": "text", "text": "hello" }] }),
+            json!({ "role": "assistant", "content": "   " }),
+        ];
+        let pairs = messages_to_history_pairs(&messages);
+        assert_eq!(pairs, vec![("user".to_string(), "hello".to_string())]);
     }
 }

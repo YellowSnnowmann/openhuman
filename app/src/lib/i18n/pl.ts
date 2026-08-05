@@ -2469,8 +2469,8 @@ const messages: TranslationMap = {
   'voice.mode.start': 'Rozpocznij czat głosowy',
   'voice.mode.stop': 'Zakończ czat głosowy',
   'voice.mode.connecting': 'Łączenie…',
-  'voice.mode.listening': 'Słucha',
-  'voice.mode.speaking': 'Mówi',
+  'voice.mode.listening': 'Słucham…',
+  'voice.mode.speaking': 'Mówię…',
   'voice.providers.title': 'Dostawcy głosu',
   'voice.providers.desc':
     'Wybierz, gdzie ma działać transkrypcja i synteza. Użyj przycisków „Zainstaluj lokalnie”, aby pobrać binarki i modele do przestrzeni roboczej. Lokalnych dostawców można zapisać przed zakończeniem instalacji: bez ręcznego ustawiania WHISPER_BIN czy PIPER_BIN.',

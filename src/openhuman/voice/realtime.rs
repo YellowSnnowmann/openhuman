@@ -27,6 +27,35 @@ const LOG_PREFIX: &str = "[voice-realtime]";
 pub struct VoiceAgentSignedUrl {
     pub signed_url: String,
     pub agent_id: String,
+    /// Short-lived token binding this session to the signed-in user. The
+    /// renderer echoes it back as the ElevenLabs `userId`, which the backend
+    /// relay verifies — so the Custom-LLM relay never trusts a raw user id
+    /// (#5399). Empty only against an older backend that predates the binding.
+    #[serde(default)]
+    pub user_token: String,
+}
+
+/// Reject a plaintext backend URL for this credentialed request: the session
+/// token is a bearer credential, so it must not travel over `http://` to a
+/// remote host (CWE-319). Loopback stays allowed so local-backend development
+/// (`http://localhost:5005`) still works.
+fn ensure_secure_backend_url(api_url: &str) -> Result<(), String> {
+    let lowered = api_url.trim().to_ascii_lowercase();
+    if lowered.starts_with("https://") {
+        return Ok(());
+    }
+    let host = lowered
+        .strip_prefix("http://")
+        .map(|rest| rest.split(['/', ':']).next().unwrap_or(""))
+        .unwrap_or("");
+    let is_loopback = matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]");
+    if is_loopback {
+        return Ok(());
+    }
+    Err(format!(
+        "refusing to send the session token to a non-HTTPS backend ({api_url}); \
+         set a https:// api_url"
+    ))
 }
 
 /// Mint a realtime voice-agent signed URL by proxying the hosted backend.
@@ -51,6 +80,7 @@ pub async fn mint_voice_agent_signed_url(
         .ok_or_else(|| "no backend session token; sign in first".to_string())?;
 
     let api_url = effective_backend_api_url(&config.api_url);
+    ensure_secure_backend_url(&api_url)?;
     let client = BackendOAuthClient::new(&api_url).map_err(|e| e.to_string())?;
 
     let raw = client
@@ -81,6 +111,11 @@ fn parse_signed_url_response(raw: &Value) -> Result<VoiceAgentSignedUrl, String>
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
+    let user_token = data
+        .get("userToken")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
 
     if signed_url.is_empty() {
         return Err("backend returned no signed_url for the voice agent".to_string());
@@ -88,6 +123,7 @@ fn parse_signed_url_response(raw: &Value) -> Result<VoiceAgentSignedUrl, String>
     Ok(VoiceAgentSignedUrl {
         signed_url,
         agent_id,
+        user_token,
     })
 }
 
@@ -98,10 +134,11 @@ mod tests {
 
     #[test]
     fn parses_the_wrapped_success_envelope() {
-        let raw = json!({ "success": true, "data": { "signedUrl": "wss://x", "agentId": "a1" } });
+        let raw = json!({ "success": true, "data": { "signedUrl": "wss://x", "agentId": "a1", "userToken": "tok" } });
         let out = parse_signed_url_response(&raw).unwrap();
         assert_eq!(out.signed_url, "wss://x");
         assert_eq!(out.agent_id, "a1");
+        assert_eq!(out.user_token, "tok");
     }
 
     #[test]
@@ -110,6 +147,22 @@ mod tests {
         let out = parse_signed_url_response(&raw).unwrap();
         assert_eq!(out.signed_url, "wss://y");
         assert_eq!(out.agent_id, "a2");
+    }
+
+    #[test]
+    fn user_token_defaults_empty_against_an_older_backend() {
+        let raw = json!({ "data": { "signedUrl": "wss://y", "agentId": "a2" } });
+        let out = parse_signed_url_response(&raw).unwrap();
+        assert_eq!(out.user_token, "");
+    }
+
+    #[test]
+    fn secure_url_guard_allows_https_and_loopback_http_only() {
+        assert!(ensure_secure_backend_url("https://api.tinyhumans.ai").is_ok());
+        assert!(ensure_secure_backend_url("http://localhost:5005").is_ok());
+        assert!(ensure_secure_backend_url("http://127.0.0.1:5005/").is_ok());
+        let err = ensure_secure_backend_url("http://api.tinyhumans.ai").unwrap_err();
+        assert!(err.contains("non-HTTPS"), "{err}");
     }
 
     #[test]
@@ -124,9 +177,11 @@ mod tests {
         let json = serde_json::to_value(VoiceAgentSignedUrl {
             signed_url: "wss://z".into(),
             agent_id: "a4".into(),
+            user_token: "tok".into(),
         })
         .unwrap();
         assert_eq!(json.get("signed_url").unwrap(), "wss://z");
         assert_eq!(json.get("agent_id").unwrap(), "a4");
+        assert_eq!(json.get("user_token").unwrap(), "tok");
     }
 }

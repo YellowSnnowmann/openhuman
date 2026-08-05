@@ -2374,7 +2374,7 @@ const messages: TranslationMap = {
   'voice.providers.failedToInstallPiper': 'فشل تثبيت Piper',
   'voice.mode.title': 'وضع الصوت',
   'voice.mode.desc': 'اختر طريقة تحدث المساعد في تبويب Human.',
-  'voice.mode.realtime': 'الصوت الفوري (تجريبي)',
+  'voice.mode.realtime': 'الصوت في الوقت الفعلي (تجريبي)',
   'voice.mode.realtimeDesc': 'أجرِ محادثة مباشرة ومتدفقة بدلاً من تبادل الأدوار.',
   'voice.mode.start': 'بدء المحادثة الصوتية',
   'voice.mode.stop': 'إنهاء المحادثة الصوتية',

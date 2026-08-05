@@ -2506,7 +2506,7 @@ const messages: TranslationMap = {
   'voice.mode.stop': 'Terminer le chat vocal',
   'voice.mode.connecting': 'Connexion…',
   'voice.mode.listening': 'À l’écoute',
-  'voice.mode.speaking': 'Parle',
+  'voice.mode.speaking': 'En train de parler…',
   'voice.providers.title': 'Fournisseurs de voix',
   'voice.providers.desc':
     "Choisissez où la transcription et la synthèse s'exécutent. Utilisez les boutons Installer localement pour télécharger les binaires et modèles dans votre espace de travail. Les fournisseurs locaux peuvent être enregistrés avant la fin de l'installation: aucune configuration manuelle de WHISPER_BIN ou PIPER_BIN requise.",

@@ -1,8 +1,11 @@
 import { useConversation } from '@elevenlabs/react';
-import { useCallback, useRef, useState } from 'react';
+import createDebug from 'debug';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchVoiceAgentSignedUrl } from '../../../services/api/voiceAgentApi';
 import { MASCOT_VOICE_ID } from '../../../utils/config';
+
+const log = createDebug('app:human:realtime-voice');
 
 /**
  * Lifecycle of a realtime ElevenLabs Agents voice session (#5399).
@@ -32,30 +35,59 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
   const [state, setState] = useState<RealtimeSessionState>('idle');
   const [error, setError] = useState<string | null>(null);
   const startingRef = useRef(false);
+  // Tracks whether a session is live so the unmount teardown only ends a real
+  // session, and so the cleanup closure isn't tied to a stale `state`.
+  const liveRef = useRef(false);
 
   const conversation = useConversation({
-    onConnect: () => setState('active'),
-    onDisconnect: () => setState('idle'),
+    onConnect: () => {
+      liveRef.current = true;
+      log('connected');
+      setState('active');
+    },
+    onDisconnect: () => {
+      liveRef.current = false;
+      log('disconnected');
+      setState('idle');
+    },
+    // Errors from the SDK (mic denied, invalid/expired signed URL, WS handshake)
+    // arrive here — startSession itself returns void — so this is the single
+    // failure sink. Surface the message to the user (their own error) but log
+    // only a stable category, never the raw provider text.
     onError: (message: string) => {
+      liveRef.current = false;
+      log('session error');
       setError(message);
       setState('error');
     },
   });
+
+  // Keep a ref to the live conversation controls so the unmount effect can tear
+  // the session down without re-running on every render.
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
 
   const start = useCallback(async () => {
     if (startingRef.current || state === 'active' || state === 'connecting') return;
     startingRef.current = true;
     setError(null);
     setState('connecting');
+    log('start: requesting signed url');
     try {
-      const { signedUrl } = await fetchVoiceAgentSignedUrl();
+      const { signedUrl, userToken } = await fetchVoiceAgentSignedUrl();
+      log('start: signed url acquired, opening session');
+      // `userId` is the identity binding the backend relay verifies (#5399);
+      // ElevenLabs forwards it as the Custom-LLM `user` field.
       conversation.startSession({
         signedUrl,
         connectionType: 'websocket',
+        userId: userToken,
         overrides: { tts: { voiceId: opts?.voiceId ?? MASCOT_VOICE_ID } },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // Only the signed-url fetch rejects here; classify without leaking text.
+      log('start failed: signed url request rejected');
+      setError(err instanceof Error ? err.message : 'failed to start voice session');
       setState('error');
     } finally {
       startingRef.current = false;
@@ -63,9 +95,24 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
   }, [conversation, opts?.voiceId, state]);
 
   const stop = useCallback(() => {
+    log('stop requested');
     conversation.endSession();
+    liveRef.current = false;
     setState('idle');
   }, [conversation]);
+
+  // Tear the session down if the component unmounts mid-call (e.g. the user
+  // navigates away or switches voice mode) so the WebSocket and mic are released.
+  useEffect(
+    () => () => {
+      if (liveRef.current) {
+        log('unmount teardown: ending live session');
+        conversationRef.current.endSession();
+        liveRef.current = false;
+      }
+    },
+    []
+  );
 
   return {
     state,
