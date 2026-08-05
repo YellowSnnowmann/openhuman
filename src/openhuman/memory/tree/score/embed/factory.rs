@@ -250,6 +250,48 @@ pub fn build_write_embedder(config: &Config) -> Result<Option<Box<dyn Embedder>>
     })
 }
 
+/// Render a ladder-resolution error safely for a log line.
+///
+/// The only user-controlled values these errors interpolate are the configured
+/// provider string and model (see `openai_compat::try_from_config`), and one of
+/// them is an endpoint: in its `custom:<url>` form `memory.embedding_provider`
+/// *is* a URL, which may carry `user:pass@` userinfo. Configured
+/// `cloud_providers` endpoints can reach the message the same way through the
+/// underlying constructor's own context.
+///
+/// So rather than dropping the reason — which would cost the diagnostic that
+/// makes this log worth having ("dimension mismatch", "build failed") — replace
+/// each known endpoint substring with its [`redact_endpoint`] form. Scrubbing
+/// the exact strings we already hold is precise, where a generic URL-matching
+/// pass over free text would be guesswork (CodeRabbit, #5402 / CWE-532).
+fn redact_ladder_error(config: &Config, err: &anyhow::Error) -> String {
+    use crate::openhuman::memory::util::redact::redact_endpoint;
+
+    let mut msg = format!("{err:#}");
+    let mut scrub = |raw: &str| {
+        let raw = raw.trim();
+        if !raw.is_empty() {
+            msg = msg.replace(raw, &redact_endpoint(raw));
+        }
+    };
+
+    // The inline `custom:<url>` endpoint, if that is the configured form.
+    if let Some(url) = config
+        .memory
+        .embedding_provider
+        .trim()
+        .strip_prefix("custom:")
+    {
+        scrub(url);
+    }
+    // Every configured OpenAI-compatible endpoint (LM Studio, vLLM, …), any of
+    // which the ladder may have been resolving when it failed.
+    for entry in &config.cloud_providers {
+        scrub(&entry.endpoint);
+    }
+    msg
+}
+
 /// Slug naming the embedder ingestion will **actually** use, walking the same
 /// [`resolve_embedder_choice`] ladder the read and write factories walk.
 ///
@@ -282,7 +324,8 @@ pub fn effective_embedder_slug(config: &Config) -> &'static str {
         Err(err) => {
             log::warn!(
                 "[memory_tree::embed::factory] effective_embedder_slug: ladder failed to \
-                 resolve ({err}) — reporting 'unknown' (treated as NOT managed)"
+                 resolve ({}) — reporting 'unknown' (treated as NOT managed)",
+                redact_ladder_error(config, &err)
             );
             "unknown"
         }
@@ -702,6 +745,54 @@ mod tests {
         cfg.embeddings_provider = Some("none".into());
         touch_auth_profile(&cfg);
         assert_eq!(effective_embedder_slug(&cfg), "none");
+    }
+
+    /// The ladder error quotes `memory.embedding_provider` verbatim, and in the
+    /// `custom:<url>` form that string is a full endpoint URL — potentially with
+    /// `user:pass@` userinfo. Logging it raw would write credentials to disk
+    /// (CodeRabbit, #5402 / CWE-532). Scrub the endpoint, keep the reason.
+    #[test]
+    fn ladder_error_log_redacts_custom_endpoint_credentials() {
+        let (_tmp, mut cfg) = test_config();
+        // No model + a non-tree dimension → `try_from_config` bails, and its
+        // message interpolates the provider string.
+        cfg.memory.embedding_provider = "custom:https://user:pass@embed.example.com/v1".to_string();
+        cfg.memory.embedding_model = String::new();
+        cfg.memory.embedding_dimensions = 512;
+
+        // `EmbedderChoice` is not `Debug` (it holds a live embedder), so unwrap
+        // the error by hand rather than via `expect_err`.
+        let err = match resolve_embedder_choice(&cfg) {
+            Err(e) => e,
+            Ok(_) => panic!("a non-tree dimension with no model must fail to resolve"),
+        };
+        let raw = format!("{err:#}");
+        assert!(
+            raw.contains("user:pass"),
+            "precondition: the unredacted error really does carry the credentials — \
+             otherwise this test proves nothing. Got: {raw}"
+        );
+
+        let rendered = redact_ladder_error(&cfg, &err);
+        assert!(
+            !rendered.contains("user:pass"),
+            "userinfo must not reach the log: {rendered}"
+        );
+        assert!(
+            !rendered.contains("/v1"),
+            "path must not reach the log: {rendered}"
+        );
+        assert!(
+            rendered.contains("embed.example.com"),
+            "host is kept so the line stays diagnosable: {rendered}"
+        );
+        assert!(
+            rendered.contains("1024"),
+            "the failure reason must survive redaction: {rendered}"
+        );
+
+        // And the caller degrades to not-managed rather than to `cloud`.
+        assert_eq!(effective_embedder_slug(&cfg), "unknown");
     }
 
     #[test]
