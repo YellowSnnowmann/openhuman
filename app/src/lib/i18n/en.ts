@@ -1249,7 +1249,7 @@ const en: TranslationMap = {
   'memoryTree.status.retryFailed': 'Retry failed jobs',
   'memoryTree.status.retryFailedBusy': 'Retrying...',
   'memoryTree.status.retryFailedDone': 'Failed jobs requeued',
-  'memoryTree.status.retryFailedCount': '{count} job(s) queued to run again.',
+  'memoryTree.status.retryFailedCount': 'Jobs queued to run again: {count}.',
   'memoryTree.status.retryFailedError': 'Could not requeue the failed jobs',
   'memoryTree.status.toggleFailed': "Couldn't toggle auto-sync",
   // Relative-time buckets surfaced by the last-sync tile. `{count}` is

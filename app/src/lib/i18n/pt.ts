@@ -1331,7 +1331,7 @@ const messages: TranslationMap = {
   'memoryTree.status.retryFailed': 'Repetir tarefas com falha',
   'memoryTree.status.retryFailedBusy': 'Tentando novamente...',
   'memoryTree.status.retryFailedDone': 'Tarefas com falha recolocadas na fila',
-  'memoryTree.status.retryFailedCount': '{count} tarefa(s) na fila para rodar de novo.',
+  'memoryTree.status.retryFailedCount': 'Tarefas na fila para executar de novo: {count}.',
   'memoryTree.status.retryFailedError': 'Não foi possível recolocar as tarefas com falha na fila',
   'memoryTree.status.toggleFailed': 'Não foi possível ativar/desativar a sincronização automática',
   'memoryTree.status.justNow': 'agora mesmo',

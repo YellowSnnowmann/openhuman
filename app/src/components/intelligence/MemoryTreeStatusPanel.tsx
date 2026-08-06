@@ -34,6 +34,7 @@ import {
   memoryTreeRetryFailed,
   memoryTreeSetEnabled,
 } from '../../utils/tauriCommands';
+import { trackAnalyticsEvent } from '../analytics';
 import Button from '../ui/Button';
 
 /** Translator function shape exposed by `useT()`. */
@@ -389,12 +390,19 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
    * and no way to clear it.
    */
   const handleRetryFailed = useCallback(async () => {
-    if (retryBusy) return;
+    if (retryBusy) {
+      console.debug('[ui-flow][memory-tree-status] retryFailed: skipped busy=true');
+      return;
+    }
     console.debug('[ui-flow][memory-tree-status] retryFailed: entry');
     setRetryBusy(true);
+    console.debug('[ui-flow][memory-tree-status] retryFailed: busy=true rpc:start');
     try {
       const { requeued } = await memoryTreeRetryFailed();
-      console.debug('[ui-flow][memory-tree-status] retryFailed: requeued=%d', requeued);
+      console.debug('[ui-flow][memory-tree-status] retryFailed: rpc:ok requeued=%d', requeued);
+      // Record the successful domain outcome (not just the click). Privacy-safe:
+      // a non-identifying count only, no ids or user text.
+      trackAnalyticsEvent('memory_tree_retry_succeeded', { count: requeued });
       onToast?.({
         type: 'success',
         title: t('memoryTree.status.retryFailedDone'),
@@ -406,6 +414,7 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
       console.warn('[ui-flow][memory-tree-status] retryFailed: error %s', message);
       onToast?.({ type: 'error', title: t('memoryTree.status.retryFailedError'), message });
     } finally {
+      console.debug('[ui-flow][memory-tree-status] retryFailed: busy=false exit');
       setRetryBusy(false);
     }
   }, [retryBusy, refresh, onToast, t]);

@@ -1333,8 +1333,8 @@ const messages: TranslationMap = {
   'memoryTree.status.retry': 'Rever',
   'memoryTree.status.retryFailed': 'Reintentar los trabajos fallidos',
   'memoryTree.status.retryFailedBusy': 'Reintentando...',
-  'memoryTree.status.retryFailedDone': 'Trabajos fallidos vueltos a la cola',
-  'memoryTree.status.retryFailedCount': '{count} trabajo(s) en cola para ejecutarse de nuevo.',
+  'memoryTree.status.retryFailedDone': 'Trabajos fallidos añadidos de nuevo a la cola',
+  'memoryTree.status.retryFailedCount': 'Trabajos en cola para ejecutarse de nuevo: {count}.',
   'memoryTree.status.retryFailedError':
     'No se pudieron volver a poner en cola los trabajos fallidos',
   'memoryTree.status.toggleFailed': 'No se pudo activar la sincronización automática',

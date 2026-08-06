@@ -64,8 +64,13 @@ impl OpenHumanCloudEmbedding {
 /// "No backend session for cloud embeddings" on every call.
 ///
 /// Resolution mirrors `config::load`'s own directory choice:
-/// 1. `OPENHUMAN_WORKSPACE` when set — that deployment keeps config, workspace
-///    and credentials together at one root, so the root *is* the scope.
+/// 1. `OPENHUMAN_WORKSPACE` when set — resolved through the **same**
+///    workspace→config-dir mapping `config::load` uses
+///    (`resolve_config_dir_for_workspace`), not the raw env value. A legacy
+///    `.../workspace` override maps back to its sibling `.openhuman` root, which
+///    is where `auth-profiles.json` actually lives; returning the workspace dir
+///    itself would reintroduce the "No backend session" failure for that
+///    deployment.
 /// 2. otherwise `{root}/users/{active_user_id}`, falling back to the pre-login
 ///    user (`users/local`) when no user has signed in yet — the same directory
 ///    the pre-login config was written to, so a pre-login process still reads
@@ -75,14 +80,16 @@ impl OpenHumanCloudEmbedding {
 /// (`create_embedding_provider_with_config`); this is the best available
 /// resolution for the call sites that have no `Config` in scope.
 fn default_state_dir() -> PathBuf {
+    log::debug!("[embeddings::cloud] default credential scope: resolving");
     if let Some(workspace) = std::env::var_os("OPENHUMAN_WORKSPACE")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
     {
+        // Never log the resolved path: it identifies the user's home layout.
         log::debug!(
-            "[embeddings::cloud] default credential scope = OPENHUMAN_WORKSPACE root (env-scoped deployment)"
+            "[embeddings::cloud] default credential scope = OPENHUMAN_WORKSPACE-derived config dir (env-scoped deployment)"
         );
-        return workspace;
+        return env_workspace_state_dir(&workspace);
     }
 
     let root = crate::openhuman::config::default_root_openhuman_dir().unwrap_or_else(|error| {
@@ -96,10 +103,24 @@ fn default_state_dir() -> PathBuf {
     // Never log the resolved path or the user id: both identify the user.
     let user_id = crate::openhuman::config::read_active_user_id(&root);
     log::debug!(
-        "[embeddings::cloud] default credential scope = user-scoped dir (active_user_present={})",
+        "[embeddings::cloud] default credential scope resolved = user-scoped dir (active_user_present={})",
         user_id.is_some()
     );
     user_scoped_state_dir(&root, user_id.as_deref())
+}
+
+/// Pure core of [`default_state_dir`]'s `OPENHUMAN_WORKSPACE` branch, split out
+/// so the workspace→config-dir invariant is unit-testable without touching the
+/// process environment.
+///
+/// Mirrors `config::load`: the credential scope for a workspace override is the
+/// config dir [`resolve_config_dir_for_workspace`] derives from it — for a
+/// legacy `.../workspace` path that is the sibling `.openhuman` root (which
+/// holds `auth-profiles.json`), **not** the workspace dir (which holds none).
+fn env_workspace_state_dir(workspace: &std::path::Path) -> PathBuf {
+    let (config_dir, _workspace_dir) =
+        crate::openhuman::config::resolve_config_dir_for_workspace(workspace);
+    config_dir
 }
 
 /// Pure core of [`default_state_dir`]'s non-env branch, split out so the
@@ -212,6 +233,31 @@ mod tests {
             root.join("users")
                 .join(crate::openhuman::config::PRE_LOGIN_USER_ID),
             "a pre-login process must read its own store, not the empty root"
+        );
+    }
+
+    /// `OPENHUMAN_WORKSPACE` must resolve through the same workspace→config-dir
+    /// mapping `config::load` uses, not return the raw workspace path. A legacy
+    /// `<X>/workspace` override keeps its credentials in the sibling
+    /// `<X>/.openhuman` dir; returning the workspace dir itself would send the
+    /// keyless embedder to a directory with no `auth-profiles.json` and
+    /// reintroduce "No backend session" for that deployment.
+    #[test]
+    fn env_workspace_scope_is_the_config_dir_not_the_raw_workspace() {
+        // A path that does not exist on disk, so the resolver's `config.toml`
+        // probes both miss and the `"workspace"` basename rule decides.
+        let workspace = std::path::Path::new("/nonexistent-openhuman-test-root/workspace");
+
+        let resolved = env_workspace_state_dir(workspace);
+
+        assert_eq!(
+            resolved,
+            std::path::Path::new("/nonexistent-openhuman-test-root/.openhuman"),
+            "a `.../workspace` override must resolve to its sibling .openhuman config dir"
+        );
+        assert_ne!(
+            resolved, workspace,
+            "returning the raw workspace dir is the regression this guards against"
         );
     }
 }

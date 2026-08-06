@@ -677,43 +677,74 @@ fn latest_failed_job_failure(
 ) -> Result<Option<crate::openhuman::memory::tree::health::PipelineFailure>, String> {
     use crate::openhuman::memory::tree::health::{FailureClass, FailureCode, PipelineFailure};
 
-    let row: Option<(Option<String>, Option<String>, Option<i64>)> =
-        chunk_store::with_connection(config, |conn| {
-            conn.query_row(
+    // Read the newest failed row AND the success watermark on the SAME
+    // connection. `with_connection` holds the process-global connection mutex
+    // for the whole closure, so no job can settle between the two reads and
+    // flip the supersession decision (a race the #5427 review flagged). The
+    // watermark is only queried when the failed row carries a timestamp to
+    // compare against.
+    type FailureWatermark = (Option<String>, Option<String>, Option<i64>, Option<i64>);
+    let row: Option<FailureWatermark> = chunk_store::with_connection(config, |conn| {
+        let failed: Option<(Option<String>, Option<String>, Option<i64>)> = conn
+            .query_row(
                 "SELECT failure_reason, failure_class, completed_at_ms FROM mem_tree_jobs
               WHERE status = 'failed' AND failure_reason IS NOT NULL
               ORDER BY completed_at_ms DESC LIMIT 1",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
-            .optional()
-            .map_err(Into::into)
-        })
-        .map_err(|e| format!("latest_failed_job_failure: {e:#}"))?;
+            .optional()?;
 
-    let Some((Some(reason), class, failed_at_ms)) = row else {
-        return Ok(None);
-    };
+        let Some((reason, class, failed_at_ms)) = failed else {
+            return Ok(None);
+        };
 
-    if let Some(failed_at_ms) = failed_at_ms {
-        let last_success_ms: Option<i64> = chunk_store::with_connection(config, |conn| {
+        let last_success_ms: Option<i64> = if failed_at_ms.is_some() {
             conn.query_row(
                 "SELECT MAX(completed_at_ms) FROM mem_tree_jobs WHERE status = 'done'",
                 [],
                 |r| r.get(0),
             )
             .optional()
-            .map(Option::flatten)
-            .map_err(Into::into)
-        })
-        .map_err(|e| format!("latest_failed_job_failure: last-success watermark: {e:#}"))?;
+            .map(Option::flatten)?
+        } else {
+            None
+        };
 
-        if last_success_ms.is_some_and(|success_ms| success_ms > failed_at_ms) {
+        Ok(Some((reason, class, failed_at_ms, last_success_ms)))
+    })
+    .map_err(|e| format!("latest_failed_job_failure: {e:#}"))?;
+
+    let Some((Some(reason), class, failed_at_ms, last_success_ms)) = row else {
+        log::debug!(
+            "[memory-tree][rpc] pipeline_status: no typed failed row present — no blocking cause"
+        );
+        return Ok(None);
+    };
+
+    // Log every supersession branch, not only the withheld one, so the decision
+    // is greppable from the logs alone.
+    match failed_at_ms {
+        Some(failed_at_ms)
+            if last_success_ms.is_some_and(|success_ms| success_ms > failed_at_ms) =>
+        {
             log::debug!(
                 "[memory-tree][rpc] pipeline_status: withholding blocking cause reason={reason} \
                  — the queue has completed a job since it failed (superseded)"
             );
             return Ok(None);
+        }
+        Some(_) => {
+            log::debug!(
+                "[memory-tree][rpc] pipeline_status: blocking cause is live reason={reason} \
+                 — no successful settle since it failed"
+            );
+        }
+        None => {
+            log::debug!(
+                "[memory-tree][rpc] pipeline_status: blocking cause reason={reason} has no \
+                 completion timestamp — surfacing unconditionally (legacy row)"
+            );
         }
     }
 

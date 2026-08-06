@@ -1347,8 +1347,7 @@ const messages: TranslationMap = {
   'memoryTree.status.retryFailed': 'Relancer les tâches en échec',
   'memoryTree.status.retryFailedBusy': 'Nouvelle tentative...',
   'memoryTree.status.retryFailedDone': 'Tâches en échec remises en file',
-  'memoryTree.status.retryFailedCount':
-    '{count} tâche(s) replanifiée(s) pour une nouvelle exécution.',
+  'memoryTree.status.retryFailedCount': "Tâches remises en file d'attente : {count}.",
   'memoryTree.status.retryFailedError': 'Impossible de remettre en file les tâches en échec',
   'memoryTree.status.toggleFailed':
     "Impossible d'activer/désactiver la synchronisation automatique",

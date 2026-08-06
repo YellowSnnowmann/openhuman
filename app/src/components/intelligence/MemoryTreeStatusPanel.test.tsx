@@ -28,9 +28,16 @@ const mockRetryFailed = vi.fn();
 // suite keeps rendering the panel bare, without a Router or a Redux store.
 const mockNavigate = vi.fn();
 const mockDispatch = vi.fn();
+// Analytics is a consent-gated side effect that reaches into the core-state
+// snapshot; stub it so the panel renders bare and the retry-success path can be
+// asserted without a real analytics pipeline.
+const mockTrackAnalyticsEvent = vi.fn();
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
 vi.mock('../../store/hooks', () => ({ useAppDispatch: () => mockDispatch }));
+vi.mock('../analytics', () => ({
+  trackAnalyticsEvent: (...args: unknown[]) => mockTrackAnalyticsEvent(...args),
+}));
 
 vi.mock('../../utils/tauriCommands', async importOriginal => {
   // Inherit everything else (types, sibling wrappers) verbatim so the panel
@@ -76,6 +83,7 @@ describe('<MemoryTreeStatusPanel />', () => {
     mockSetEnabled.mockReset();
     mockSyncStatusList.mockReset();
     mockRetryFailed.mockReset();
+    mockTrackAnalyticsEvent.mockReset();
     mockSyncStatusList.mockResolvedValue([]); // default: empty, harmless to existing tests
   });
 
@@ -627,10 +635,18 @@ describe('<MemoryTreeStatusPanel />', () => {
     });
 
     expect(mockRetryFailed).toHaveBeenCalledTimes(1);
+    // Successful domain outcome is tracked with the privacy-safe count only.
+    expect(mockTrackAnalyticsEvent).toHaveBeenCalledWith('memory_tree_retry_succeeded', {
+      count: 29,
+    });
     await waitFor(() => {
       expect(onToast).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'success', message: expect.stringContaining('29') })
       );
+    });
+    // Successful domain outcome is tracked with a privacy-safe count only.
+    expect(mockTrackAnalyticsEvent).toHaveBeenCalledWith('memory_tree_retry_succeeded', {
+      count: 29,
     });
     await waitFor(() => {
       expect(mockPipelineStatus.mock.calls.length).toBeGreaterThan(callsBefore);

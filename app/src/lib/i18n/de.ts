@@ -1354,7 +1354,7 @@ const messages: TranslationMap = {
   'memoryTree.status.retryFailed': 'Fehlgeschlagene Jobs erneut ausführen',
   'memoryTree.status.retryFailedBusy': 'Wird wiederholt...',
   'memoryTree.status.retryFailedDone': 'Fehlgeschlagene Jobs neu eingereiht',
-  'memoryTree.status.retryFailedCount': '{count} Job(s) für einen neuen Durchlauf eingeplant.',
+  'memoryTree.status.retryFailedCount': 'Erneut eingereihte Jobs: {count}.',
   'memoryTree.status.retryFailedError':
     'Die fehlgeschlagenen Jobs konnten nicht neu eingereiht werden',
   'memoryTree.status.toggleFailed':
