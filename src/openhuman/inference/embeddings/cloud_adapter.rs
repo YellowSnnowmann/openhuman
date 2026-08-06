@@ -52,16 +52,64 @@ impl OpenHumanCloudEmbedding {
     }
 }
 
+/// Credential scope used when the caller passes `openhuman_dir = None`.
+///
+/// `None` means "wherever this process keeps its credentials", and on a shipped
+/// desktop that is **not** the root `~/.openhuman`. Sign-in stores the
+/// `app-session` token through `AuthService::from_config`, whose state dir is
+/// `config.config_path.parent()` — the user-scoped
+/// `~/.openhuman/users/<user_id>/`. This function previously returned the root,
+/// so every keyless managed embedder resolved a directory with no
+/// `auth-profiles.json` in it and a signed-in user's embeds failed with
+/// "No backend session for cloud embeddings" on every call.
+///
+/// Resolution mirrors `config::load`'s own directory choice:
+/// 1. `OPENHUMAN_WORKSPACE` when set — that deployment keeps config, workspace
+///    and credentials together at one root, so the root *is* the scope.
+/// 2. otherwise `{root}/users/{active_user_id}`, falling back to the pre-login
+///    user (`users/local`) when no user has signed in yet — the same directory
+///    the pre-login config was written to, so a pre-login process still reads
+///    its own store instead of an empty root.
+///
+/// Callers holding a `&Config` should still pass the scope explicitly
+/// (`create_embedding_provider_with_config`); this is the best available
+/// resolution for the call sites that have no `Config` in scope.
 fn default_state_dir() -> PathBuf {
     if let Some(workspace) = std::env::var_os("OPENHUMAN_WORKSPACE")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
     {
+        log::debug!(
+            "[embeddings::cloud] default credential scope = OPENHUMAN_WORKSPACE root (env-scoped deployment)"
+        );
         return workspace;
     }
-    directories::UserDirs::new()
-        .map(|dirs| dirs.home_dir().join(".openhuman"))
-        .unwrap_or_else(|| PathBuf::from(".openhuman"))
+
+    let root = crate::openhuman::config::default_root_openhuman_dir().unwrap_or_else(|error| {
+        log::warn!(
+            "[embeddings::cloud] could not resolve the openhuman root dir ({error}); \
+             falling back to a relative .openhuman path"
+        );
+        PathBuf::from(".openhuman")
+    });
+
+    // Never log the resolved path or the user id: both identify the user.
+    let user_id = crate::openhuman::config::read_active_user_id(&root);
+    log::debug!(
+        "[embeddings::cloud] default credential scope = user-scoped dir (active_user_present={})",
+        user_id.is_some()
+    );
+    user_scoped_state_dir(&root, user_id.as_deref())
+}
+
+/// Pure core of [`default_state_dir`]'s non-env branch, split out so the
+/// user-scoping invariant is unit-testable without a home directory or a real
+/// `active_user.toml`.
+fn user_scoped_state_dir(root: &std::path::Path, active_user_id: Option<&str>) -> PathBuf {
+    crate::openhuman::config::user_openhuman_dir(
+        root,
+        active_user_id.unwrap_or(crate::openhuman::config::PRE_LOGIN_USER_ID),
+    )
 }
 
 #[async_trait]
@@ -123,6 +171,47 @@ mod tests {
             err.to_string()
                 .contains("Local-only privacy mode is active"),
             "unexpected error: {err}"
+        );
+    }
+
+    /// The keyless credential scope must land in the **user-scoped** directory,
+    /// never the root. Sign-in writes `auth-profiles.json` to
+    /// `{root}/users/<user_id>/`; the root itself holds no such file, so the
+    /// previous root-returning implementation made every keyless managed
+    /// embedder fail with "No backend session for cloud embeddings" for a user
+    /// who was signed in.
+    #[test]
+    fn default_scope_is_the_active_user_dir_not_the_root() {
+        let root = std::path::Path::new("/tmp/openhuman-root");
+
+        let resolved = user_scoped_state_dir(root, Some("user-abc123"));
+
+        assert_eq!(
+            resolved,
+            root.join("users").join("user-abc123"),
+            "managed embedder must read credentials from the active user's dir"
+        );
+        assert_ne!(
+            resolved, root,
+            "the root dir holds no auth-profiles.json — resolving to it is the bug"
+        );
+    }
+
+    /// With no user signed in yet, the scope is the pre-login user dir — the
+    /// same directory the pre-login config and its credential store live in.
+    /// Falling back to the root here would reintroduce the same empty-store
+    /// failure one login earlier.
+    #[test]
+    fn default_scope_falls_back_to_the_pre_login_user_dir() {
+        let root = std::path::Path::new("/tmp/openhuman-root");
+
+        let resolved = user_scoped_state_dir(root, None);
+
+        assert_eq!(
+            resolved,
+            root.join("users")
+                .join(crate::openhuman::config::PRE_LOGIN_USER_ID),
+            "a pre-login process must read its own store, not the empty root"
         );
     }
 }

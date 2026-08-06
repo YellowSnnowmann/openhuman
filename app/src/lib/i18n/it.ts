@@ -1335,6 +1335,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Mai',
   'memoryTree.status.fetchError': "Impossibile recuperare lo stato dell'Albero della Memoria",
   'memoryTree.status.retry': 'Riprova',
+  'memoryTree.status.retryFailed': 'Riprova i lavori non riusciti',
+  'memoryTree.status.retryFailedBusy': 'Nuovo tentativo...',
+  'memoryTree.status.retryFailedDone': 'Lavori non riusciti rimessi in coda',
+  'memoryTree.status.retryFailedCount': '{count} lavoro/i in coda per una nuova esecuzione.',
+  'memoryTree.status.retryFailedError': 'Impossibile rimettere in coda i lavori non riusciti',
   'memoryTree.status.toggleFailed':
     'Impossibile attivare/disattivare la sincronizzazione automatica',
   'memoryTree.status.justNow': 'proprio adesso',
