@@ -104,6 +104,13 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
   // Hidden <input type="file"> driven by the "Upload image" button, so the
   // button can reuse the shared <Button> styling instead of a bare file input.
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  // Monotonically-bumped avatar-write id, same shape as `previewRequestIdRef`
+  // below. Reading a file is async, so a user who picks an image and then hits
+  // Reset / Save / picks a manifest mascot before the read finishes would have
+  // the slower read land *after* their newer choice — restoring the upload and
+  // wiping the mascot selection the reducer had just applied. Every avatar
+  // write bumps this, and a resolved read bails if it is no longer current.
+  const avatarWriteIdRef = useRef(0);
 
   // Voice picker state — paste-mode is sticky because we can't derive it
   // from the stored value alone (a curated preset id and "user is
@@ -135,6 +142,7 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
   }, []);
 
   const handleSelectMascot = (id: string | null) => {
+    avatarWriteIdRef.current += 1;
     dispatch(setSelectedMascotId(id));
     setCustomGifError(null);
     setCustomGifDraft('');
@@ -160,6 +168,7 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
   };
 
   const onSaveCustomGif = () => {
+    avatarWriteIdRef.current += 1;
     const trimmed = customGifDraft.trim();
     setCustomGifDraft(trimmed);
     if (trimmed.length === 0) {
@@ -176,12 +185,13 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
   };
 
   const onResetCustomGif = () => {
+    avatarWriteIdRef.current += 1;
     setCustomGifDraft('');
     setCustomGifError(null);
     dispatch(setCustomMascotGifUrl(null));
   };
 
-  // Upload a local image (PNG/GIF/JPEG/WebP) as the custom avatar (issue
+  // Upload a local image (PNG/GIF/JPEG/WebP/BMP) as the custom avatar (issue
   // #5360). The file is inlined as a base64 data URL and stored on the same
   // `customMascotGifUrl` field the URL box writes, so the render path is
   // unchanged. Type + size are checked *before* dispatch: an oversize blob
@@ -199,14 +209,26 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
       setCustomGifError(t('settings.mascot.customGifTooLarge'));
       return;
     }
+    avatarWriteIdRef.current += 1;
+    const writeId = avatarWriteIdRef.current;
     try {
       const dataUri = await fileToDataUri(file);
+      // Anything the user did while the read was in flight (Reset, Save, or
+      // picking a manifest mascot) bumped the id and wins — dropping this
+      // result is the whole point, so it is not an error path.
+      if (writeId !== avatarWriteIdRef.current) {
+        console.debug('[mascot-avatar] upload superseded, discarding', file.type, file.size);
+        return;
+      }
       console.debug('[mascot-avatar] upload accepted', file.type, file.size);
       setCustomGifError(null);
       setCustomGifDraft('');
       dispatch(setCustomMascotGifUrl(dataUri));
-    } catch (err) {
-      console.debug('[mascot-avatar] upload read failed', err);
+    } catch {
+      // The read error carries `File.name`, which can be personal — log the
+      // failure as a fixed event and keep the filename out of diagnostics.
+      console.debug('[mascot-avatar] upload read failed', file.type, file.size);
+      if (writeId !== avatarWriteIdRef.current) return;
       setCustomGifError(t('settings.mascot.customGifReadError'));
     }
   };

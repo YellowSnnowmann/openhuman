@@ -5947,13 +5947,13 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Bozza',
   'settings.mascot.characterHeading': 'Intestazione personaggio',
   'settings.mascot.customGifError':
-    'Inserisci un URL immagine HTTPS, file:// o locale (PNG, GIF, JPEG o WebP), oppure carica un file.',
+    'Inserisci un URL immagine HTTPS, file:// o locale (PNG, GIF, JPEG, WebP o BMP), oppure carica un file.',
   'settings.mascot.customGifHeading': 'Avatar immagine personalizzato',
   'settings.mascot.customGifLabel': 'URL dell’avatar immagine personalizzato',
   'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
   'settings.mascot.customGifUpload': 'Carica immagine',
   'settings.mascot.customGifInvalidType':
-    'Tipo di file non supportato. Carica un’immagine PNG, GIF, JPEG o WebP.',
+    'Tipo di file non supportato. Carica un’immagine PNG, GIF, JPEG, WebP o BMP.',
   'settings.mascot.customGifTooLarge': 'Immagine troppo grande. Carica un file fino a 1,5 MB.',
   'settings.mascot.customGifReadError': 'Impossibile leggere l’immagine. Prova con un altro file.',
   'settings.mascot.characterPreview': 'Anteprima',
@@ -6065,7 +6065,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Caloroso, amichevole, adatto a tutte le età',
   'settings.persona.appearanceHeading': 'Avatar e Voce',
   'settings.persona.appearanceDesc':
-    "Il colore della mascotte, l'avatar personalizzato GIF e la voce di risposta sono configurati nelle impostazioni della mascotte.",
+    "Il colore della mascotte, l'avatar immagine personalizzato e la voce di risposta sono configurati nelle impostazioni della mascotte.",
   'settings.persona.openMascotSettings': 'Apri le impostazioni del Mascotte',
   'settings.memoryWindow.balanced.badge': 'Consigliato',
   'settings.memoryWindow.balanced.hint':

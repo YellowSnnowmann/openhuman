@@ -255,6 +255,29 @@ describe('mascotSlice', () => {
       expect(state.customMascotGifUrl).toBe(png);
     });
 
+    it('rejects data URLs whose base64 payload is structurally invalid', () => {
+      // Base64 encodes whole 4-character quartets, optionally ending in one
+      // padded group. A payload that can't decode would persist an avatar no
+      // decoder can render, so it is rejected at the reducer boundary too.
+      const malformed = [
+        'data:image/png;base64,', // empty payload
+        'data:image/png;base64,A', // 1 char — never a whole group
+        'data:image/png;base64,A=', // 1 char + 1 pad
+        'data:image/png;base64,AAAAA', // 5 chars — a stray trailing char
+        'data:image/png;base64,AAAA=', // padding on a complete quartet
+        'data:image/png;base64,A===', // over-padded
+        'data:image/png;base64,AA=A', // padding mid-payload
+        'data:image/png;base64,AA*A', // outside the base64 alphabet
+      ];
+      for (const value of malformed) {
+        expect(isCustomMascotGifUrl(value)).toBe(false);
+        expect(reducer(undefined, setCustomMascotGifUrl(value)).customMascotGifUrl).toBeNull();
+      }
+      // Both padded tail lengths stay valid.
+      expect(isCustomMascotGifUrl('data:image/png;base64,QQ==')).toBe(true);
+      expect(isCustomMascotGifUrl('data:image/png;base64,QUE=')).toBe(true);
+    });
+
     it('rejects unsafe avatar sources', () => {
       expect(isCustomMascotGifUrl('javascript:alert(1)')).toBe(false);
       // Non-loopback plain HTTP is still refused (no transport security).

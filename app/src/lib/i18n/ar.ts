@@ -5718,13 +5718,13 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'مسودة',
   'settings.mascot.characterHeading': 'عنوان الشخصية',
   'settings.mascot.customGifError':
-    'أدخل رابط صورة HTTPS أو file:// أو رابطًا محليًا (PNG أو GIF أو JPEG أو WebP)، أو ارفع ملفًا.',
+    'أدخل رابط صورة HTTPS أو file:// أو رابطًا محليًا (PNG أو GIF أو JPEG أو WebP أو BMP)، أو ارفع ملفًا.',
   'settings.mascot.customGifHeading': 'صورة رمزية مخصصة',
   'settings.mascot.customGifLabel': 'رابط الصورة الرمزية المخصصة',
   'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
   'settings.mascot.customGifUpload': 'رفع صورة',
   'settings.mascot.customGifInvalidType':
-    'نوع الملف غير مدعوم. ارفع صورة PNG أو GIF أو JPEG أو WebP.',
+    'نوع الملف غير مدعوم. ارفع صورة PNG أو GIF أو JPEG أو WebP أو BMP.',
   'settings.mascot.customGifTooLarge': 'الصورة كبيرة جدًا. ارفع ملفًا حتى 1.5 ميغابايت.',
   'settings.mascot.customGifReadError': 'تعذّر قراءة الصورة. جرّب ملفًا آخر.',
   'settings.mascot.characterPreview': 'معاينة',

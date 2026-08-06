@@ -6011,13 +6011,13 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Entwurf',
   'settings.mascot.characterHeading': 'Zeichenüberschrift',
   'settings.mascot.customGifError':
-    'Gib eine HTTPS-, file:// oder lokale Bild-URL (PNG, GIF, JPEG oder WebP) ein oder lade eine Datei hoch.',
+    'Gib eine HTTPS-, file:// oder lokale Bild-URL (PNG, GIF, JPEG, WebP oder BMP) ein oder lade eine Datei hoch.',
   'settings.mascot.customGifHeading': 'Benutzerdefinierter Bild-Avatar',
   'settings.mascot.customGifLabel': 'URL für benutzerdefinierten Bild-Avatar',
   'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
   'settings.mascot.customGifUpload': 'Bild hochladen',
   'settings.mascot.customGifInvalidType':
-    'Nicht unterstützter Dateityp. Lade ein PNG-, GIF-, JPEG- oder WebP-Bild hoch.',
+    'Nicht unterstützter Dateityp. Lade ein PNG-, GIF-, JPEG-, WebP- oder BMP-Bild hoch.',
   'settings.mascot.customGifTooLarge': 'Bild ist zu groß. Lade eine Datei bis 1,5 MB hoch.',
   'settings.mascot.customGifReadError':
     'Bild konnte nicht gelesen werden. Bitte versuche eine andere Datei.',
@@ -6131,7 +6131,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Herzlich, freundlich, für alle Altersgruppen geeignet',
   'settings.persona.appearanceHeading': 'Avatar und Stimme',
   'settings.persona.appearanceDesc':
-    'Maskottchenfarbe, benutzerdefinierter GIF-Avatar und Antwortstimme werden in den Maskottcheneinstellungen konfiguriert.',
+    'Maskottchenfarbe, benutzerdefinierter Bild-Avatar und Antwortstimme werden in den Maskottcheneinstellungen konfiguriert.',
   'settings.persona.openMascotSettings': 'Öffnen Sie die Maskottchen-Einstellungen',
   'settings.memoryWindow.balanced.badge': 'Empfohlen',
   'settings.memoryWindow.balanced.hint':

@@ -5907,13 +5907,13 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Черновик',
   'settings.mascot.characterHeading': 'Персонаж',
   'settings.mascot.customGifError':
-    'Введите HTTPS, file:// или локальный URL изображения (PNG, GIF, JPEG или WebP) либо загрузите файл.',
+    'Введите HTTPS, file:// или локальный URL изображения (PNG, GIF, JPEG, WebP или BMP) либо загрузите файл.',
   'settings.mascot.customGifHeading': 'Пользовательский аватар-изображение',
   'settings.mascot.customGifLabel': 'URL пользовательского аватара-изображения',
   'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
   'settings.mascot.customGifUpload': 'Загрузить изображение',
   'settings.mascot.customGifInvalidType':
-    'Неподдерживаемый тип файла. Загрузите изображение PNG, GIF, JPEG или WebP.',
+    'Неподдерживаемый тип файла. Загрузите изображение PNG, GIF, JPEG, WebP или BMP.',
   'settings.mascot.customGifTooLarge': 'Изображение слишком большое. Загрузите файл до 1,5 МБ.',
   'settings.mascot.customGifReadError': 'Не удалось прочитать изображение. Попробуйте другой файл.',
   'settings.mascot.characterPreview': 'Предварительный просмотр',
@@ -6025,7 +6025,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Тёплый, дружелюбный, подходит для всех возрастов',
   'settings.persona.appearanceHeading': 'Аватар и голос',
   'settings.persona.appearanceDesc':
-    'Цвет талисмана, пользовательский аватар GIF и голос ответа настраиваются в настройках талисмана.',
+    'Цвет талисмана, пользовательский аватар-изображение и голос ответа настраиваются в настройках талисмана.',
   'settings.persona.openMascotSettings': 'Открыть настройки талисмана',
   'settings.memoryWindow.balanced.badge': 'Рекомендуется',
   'settings.memoryWindow.balanced.hint':

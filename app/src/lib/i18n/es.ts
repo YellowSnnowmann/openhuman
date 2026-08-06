@@ -5959,13 +5959,13 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Borrador',
   'settings.mascot.characterHeading': 'Encabezado del personaje',
   'settings.mascot.customGifError':
-    'Introduce una URL de imagen HTTPS, file:// o local (PNG, GIF, JPEG o WebP), o sube un archivo.',
+    'Introduce una URL de imagen HTTPS, file:// o local (PNG, GIF, JPEG, WebP o BMP), o sube un archivo.',
   'settings.mascot.customGifHeading': 'Avatar de imagen personalizado',
   'settings.mascot.customGifLabel': 'URL del avatar de imagen personalizado',
   'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
   'settings.mascot.customGifUpload': 'Subir imagen',
   'settings.mascot.customGifInvalidType':
-    'Tipo de archivo no compatible. Sube una imagen PNG, GIF, JPEG o WebP.',
+    'Tipo de archivo no compatible. Sube una imagen PNG, GIF, JPEG, WebP o BMP.',
   'settings.mascot.customGifTooLarge':
     'La imagen es demasiado grande. Sube un archivo de hasta 1,5 MB.',
   'settings.mascot.customGifReadError': 'No se pudo leer la imagen. Prueba con otro archivo.',
@@ -6077,7 +6077,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Cálido, amable, seguro para todas las edades',
   'settings.persona.appearanceHeading': 'Avatar y Voz',
   'settings.persona.appearanceDesc':
-    'El color de la mascota, el avatar personalizado GIF y la voz de respuesta se configuran en los ajustes de la mascota.',
+    'El color de la mascota, el avatar de imagen personalizado y la voz de respuesta se configuran en los ajustes de la mascota.',
   'settings.persona.openMascotSettings': 'Abrir la configuración de Mascota',
   'settings.memoryWindow.balanced.badge': 'Recomendado',
   'settings.memoryWindow.balanced.hint':

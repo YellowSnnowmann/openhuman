@@ -97,10 +97,21 @@ function isMascotVoiceId(value: unknown): value is string {
 const CUSTOM_MASCOT_AVATAR_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'];
 
 // Matches a base64-encoded raster image data URL. `image/svg+xml` is excluded
-// for the same script-injection reason. The `[A-Za-z0-9+/]+={0,2}$` body has no
-// nested quantifier (no ReDoS), and callers gate on length before testing it.
+// for the same script-injection reason.
+//
+// The payload requires *structurally valid* base64, not merely base64-ish
+// characters: a run of whole 4-character quartets, optionally ending in one
+// padded group (`xx==` or `xxx=`). A looser `[A-Za-z0-9+/]+={0,2}` would accept
+// truncated payloads like `A=` — the reducer would then persist an avatar no
+// image decoder can render, so the user sees a silently broken mascot rather
+// than a rejection. The empty payload (`data:image/png;base64,`) is rejected
+// too: every branch consumes at least one group.
+//
+// No ReDoS: the two top-level branches are disjoint (one ends in padding, one
+// cannot), and each quantified group has a fixed 4-character width, so a
+// failing match backtracks linearly. Callers still gate on length first.
 const CUSTOM_MASCOT_AVATAR_DATA_URL_RE =
-  /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,[A-Za-z0-9+/]+={0,2}$/;
+  /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,(?:(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)|(?:[A-Za-z0-9+/]{4})+)$/;
 
 function hasImagePath(value: string): boolean {
   const [path = ''] = value.split(/[?#]/, 1);
@@ -113,6 +124,21 @@ function isCustomMascotAvatarDataUrl(value: string): boolean {
     value.length <= MAX_CUSTOM_MASCOT_AVATAR_DATA_URL_LEN &&
     CUSTOM_MASCOT_AVATAR_DATA_URL_RE.test(value)
   );
+}
+
+/**
+ * Coarse, privacy-safe label for where an avatar value came from, for logging.
+ * Deliberately derived from the value's *prefix* only — never its content — so
+ * a diagnostic can never leak a filename, a local path, or image bytes.
+ */
+function customMascotAvatarSourceCategory(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('data:')) return 'data-url';
+  if (trimmed.startsWith('https:')) return 'https';
+  if (trimmed.startsWith('http:')) return 'http-loopback';
+  if (trimmed.startsWith('file:')) return 'file-url';
+  if (trimmed.startsWith('/') || trimmed.startsWith('~/')) return 'local-path';
+  return 'other';
 }
 
 /**
@@ -330,14 +356,27 @@ const mascotSlice = createSlice({
     },
     setCustomMascotGifUrl(state, action: PayloadAction<string | null>) {
       if (action.payload == null) {
+        console.debug('[mascot-avatar] store: cleared');
         state.customMascotGifUrl = null;
         return;
       }
-      if (isCustomMascotGifUrl(action.payload)) {
-        state.customMascotGifUrl = action.payload.trim();
+      // Diagnostics carry the source *category* and length only — never the URL,
+      // local path, or data URL itself, any of which can hold a filename or
+      // the image bytes. A silent reject here is otherwise invisible: the
+      // reducer's failure mode is a cleared avatar, not an error.
+      const trimmed = action.payload.trim();
+      const category = customMascotAvatarSourceCategory(trimmed);
+      // Read the length up front: `isCustomMascotGifUrl` is a `value is string`
+      // predicate, so the else-branch narrows an already-`string` argument to
+      // `never` and no property access survives there.
+      const length = trimmed.length;
+      if (isCustomMascotGifUrl(trimmed)) {
+        console.debug('[mascot-avatar] store: accepted', category, length);
+        state.customMascotGifUrl = trimmed;
         state.selectedMascotId = null;
         state.secondaryMascotId = null;
       } else {
+        console.debug('[mascot-avatar] store: rejected', category, length);
         state.customMascotGifUrl = null;
       }
     },

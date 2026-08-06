@@ -1,5 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { REHYDRATE } from 'redux-persist';
@@ -329,6 +329,46 @@ describe('MascotPanel — mascotSlice rehydrate guard', () => {
       expect(store.getState().mascot.customMascotGifUrl).toBe('data:image/png;base64,AAAA');
       expect(preview).toHaveAttribute('src', 'data:image/png;base64,AAAA');
       expect(mockFileToDataUri).toHaveBeenCalledTimes(1);
+    });
+
+    it('uploads a BMP file as a data-URL avatar (issue #5360)', async () => {
+      mockFileToDataUri.mockResolvedValue('data:image/bmp;base64,AAAA');
+      const { store } = renderPanel();
+      const file = new File(['x'], 'avatar.bmp', { type: 'image/bmp' });
+      fireEvent.change(screen.getByTestId('mascot-custom-image-input'), {
+        target: { files: [file] },
+      });
+
+      const preview = await screen.findByTestId('custom-gif-mascot');
+      expect(store.getState().mascot.customMascotGifUrl).toBe('data:image/bmp;base64,AAAA');
+      expect(preview).toHaveAttribute('src', 'data:image/bmp;base64,AAAA');
+    });
+
+    it('discards an upload superseded by Reset while the file was still reading', async () => {
+      // Hold the read open so Reset lands between the pick and the resolve —
+      // the slower read must not resurrect the avatar the user just cleared.
+      let resolveRead: (uri: string) => void = () => {};
+      mockFileToDataUri.mockReturnValue(
+        new Promise<string>(resolve => {
+          resolveRead = resolve;
+        })
+      );
+      const store = buildStore();
+      store.dispatch(setCustomMascotGifUrl('https://example.com/old.gif'));
+      renderPanel(store);
+
+      const file = new File(['x'], 'avatar.png', { type: 'image/png' });
+      fireEvent.change(screen.getByTestId('mascot-custom-image-input'), {
+        target: { files: [file] },
+      });
+      fireEvent.click(screen.getByTestId('mascot-custom-gif-reset'));
+      expect(store.getState().mascot.customMascotGifUrl).toBeNull();
+
+      await act(async () => {
+        resolveRead('data:image/png;base64,AAAA');
+      });
+
+      expect(store.getState().mascot.customMascotGifUrl).toBeNull();
     });
 
     it('rejects an oversize upload without reading it', async () => {

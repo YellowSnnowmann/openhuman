@@ -5850,13 +5850,13 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'খসড়া',
   'settings.mascot.characterHeading': 'চরিত্রের শিরোনাম',
   'settings.mascot.customGifError':
-    'একটি HTTPS, file://, বা স্থানীয় ইমেজ URL (PNG, GIF, JPEG, বা WebP) লিখুন, অথবা একটি ফাইল আপলোড করুন।',
+    'একটি HTTPS, file://, বা স্থানীয় ইমেজ URL (PNG, GIF, JPEG, WebP, বা BMP) লিখুন, অথবা একটি ফাইল আপলোড করুন।',
   'settings.mascot.customGifHeading': 'কাস্টম ইমেজ অবতার',
   'settings.mascot.customGifLabel': 'কাস্টম ইমেজ অবতার URL',
   'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
   'settings.mascot.customGifUpload': 'ইমেজ আপলোড করুন',
   'settings.mascot.customGifInvalidType':
-    'অসমর্থিত ফাইলের ধরন। একটি PNG, GIF, JPEG, বা WebP ইমেজ আপলোড করুন।',
+    'অসমর্থিত ফাইলের ধরন। একটি PNG, GIF, JPEG, WebP, বা BMP ইমেজ আপলোড করুন।',
   'settings.mascot.customGifTooLarge': 'ইমেজটি খুব বড়। ১.৫ MB পর্যন্ত একটি ফাইল আপলোড করুন।',
   'settings.mascot.customGifReadError': 'ইমেজটি পড়া যায়নি। অন্য একটি ফাইল চেষ্টা করুন।',
   'settings.mascot.characterPreview': 'পূর্বরূপ',
