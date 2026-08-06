@@ -637,12 +637,21 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
           </label>
           {/* Upload a local image file (issue #5360). The hidden input is
               driven by the styled button; its value is cleared after each pick
-              so choosing the same file twice still fires onChange. */}
+              so choosing the same file twice still fires onChange.
+
+              `accept` lists explicit extensions alongside the MIME types (the
+              same pairing the JSON importers use). The CEF native file panel
+              only greys-in the formats it can map, and it resolves the
+              extension list reliably where a bare `image/webp` / `image/gif`
+              MIME can end up unmapped — MIME-only left every non-PNG file
+              unselectable. `isAllowedMimeType` still gates the actual read, so
+              the extension list widens the picker without widening what we
+              accept. */}
           <div className="flex items-center gap-2">
             <input
               ref={avatarFileInputRef}
               type="file"
-              accept="image/png,image/gif,image/jpeg,image/webp"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,.png,.jpg,.jpeg,.gif,.webp,.bmp"
               className="sr-only"
               data-testid="mascot-custom-image-input"
               aria-label={t('settings.mascot.customGifUpload')}
