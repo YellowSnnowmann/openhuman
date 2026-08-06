@@ -661,19 +661,24 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
               driven by the styled button; its value is cleared after each pick
               so choosing the same file twice still fires onChange.
 
-              `accept` lists explicit extensions alongside the MIME types (the
-              same pairing the JSON importers use). The CEF native file panel
-              only greys-in the formats it can map, and it resolves the
-              extension list reliably where a bare `image/webp` / `image/gif`
-              MIME can end up unmapped — MIME-only left every non-PNG file
-              unselectable. `isAllowedMimeType` still gates the actual read, so
-              the extension list widens the picker without widening what we
-              accept. */}
+              `accept` is the `image/*` wildcard rather than an explicit type
+              list. This app runs on CEF, whose built-in file-dialog runner
+              (there is no CefDialogHandler in the shell) does not expand an
+              enumerated accept list into selectable macOS file types: with
+              either `image/png,image/jpeg,…` or those MIMEs paired with
+              `.png,.jpg,…`, the native panel left every non-PNG image greyed
+              out and unselectable. The wildcard goes through CEF's
+              mime-table expansion instead and offers every known image type.
+
+              The widened picker is not a widened contract: `isAllowedMimeType`
+              still gates the read, so a type outside the allowlist (SVG, most
+              importantly — it can carry inline scripts) is rejected with a
+              visible error rather than silently accepted. */}
           <div className="flex items-center gap-2">
             <input
               ref={avatarFileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,.png,.jpg,.jpeg,.gif,.webp,.bmp"
+              accept="image/*"
               className="sr-only"
               data-testid="mascot-custom-image-input"
               aria-label={t('settings.mascot.customGifUpload')}
