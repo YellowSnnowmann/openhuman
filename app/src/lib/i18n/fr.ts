@@ -5990,10 +5990,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Brouillon',
   'settings.mascot.characterHeading': 'Titre du personnage',
   'settings.mascot.customGifError':
-    'Entrez un HTTPS .gif URL, un bouclage HTTP .gif URL, un fichier:// .gif URL ou un chemin local .gif.',
-  'settings.mascot.customGifHeading': 'Avatar GIF personnalisé',
-  'settings.mascot.customGifLabel': 'Avatar GIF personnalisé URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Saisissez une URL d’image HTTPS, file:// ou locale (PNG, GIF, JPEG ou WebP), ou importez un fichier.',
+  'settings.mascot.customGifHeading': 'Avatar image personnalisé',
+  'settings.mascot.customGifLabel': 'URL de l’avatar image personnalisé',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Importer une image',
+  'settings.mascot.customGifInvalidType':
+    'Type de fichier non pris en charge. Importez une image PNG, GIF, JPEG ou WebP.',
+  'settings.mascot.customGifTooLarge':
+    'L’image est trop volumineuse. Importez un fichier de 1,5 Mo maximum.',
+  'settings.mascot.customGifReadError': 'Impossible de lire cette image. Essayez un autre fichier.',
   'settings.mascot.characterPreview': 'Aperçu',
   'settings.mascot.characterStates': 'états',
   'settings.mascot.characterVisemes': 'visèmes',

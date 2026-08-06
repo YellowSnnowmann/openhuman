@@ -41,6 +41,28 @@ export const MAX_MASCOT_VOICE_ID_LEN = 128;
 export const MAX_CUSTOM_MASCOT_GIF_URL_LEN = 2048;
 
 /**
+ * Upper bound on the *source file* a user may upload as a custom image avatar
+ * (issue #5360). Uploaded avatars are inlined as base64 `data:image/…` strings
+ * inside the persisted `mascot` slice, which lives in the localStorage-backed
+ * `userScopedStorage`. localStorage is a shared, few-megabyte budget, so the
+ * cap is deliberately small — a large avatar would bloat the blob and, because
+ * `userScopedStorage.setItem` silently swallows QuotaExceededError, an oversize
+ * write drops the *entire* mascot slice (colour, voice, selection) rather than
+ * failing loudly. The UI enforces this before dispatch so the user sees a clear
+ * "too large" error instead of losing their settings.
+ */
+export const MAX_CUSTOM_MASCOT_AVATAR_UPLOAD_BYTES = Math.floor(1.5 * 1024 * 1024);
+
+/**
+ * Reducer-boundary backstop on an inlined base64 image data URL. base64
+ * inflates the raw file by ~4/3, so a 1.5 MB upload yields ~2.1 MB of string;
+ * this cap (~2.2 MB) leaves headroom while still rejecting a hand-pasted or
+ * tampered data URL that skipped the UI's byte check. Plain http/https/file
+ * URLs keep the far tighter MAX_CUSTOM_MASCOT_GIF_URL_LEN.
+ */
+export const MAX_CUSTOM_MASCOT_AVATAR_DATA_URL_LEN = 2_200_000;
+
+/**
  * Upper bound on how many per-mascot voice overrides we persist (issue
  * #4277). A user only ever drives two mascots in a meeting, but they may
  * try several before settling; the cap keeps the persisted map bounded
@@ -69,24 +91,56 @@ function isMascotVoiceId(value: unknown): value is string {
   );
 }
 
-function hasGifPath(value: string): boolean {
+// Raster image extensions accepted for a custom avatar (issue #5360). `.svg`
+// is deliberately absent — an SVG can carry inline scripts, so it stays a
+// rejected avatar source even though the render path is a plain <img>.
+const CUSTOM_MASCOT_AVATAR_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'];
+
+// Matches a base64-encoded raster image data URL. `image/svg+xml` is excluded
+// for the same script-injection reason. The `[A-Za-z0-9+/]+={0,2}$` body has no
+// nested quantifier (no ReDoS), and callers gate on length before testing it.
+const CUSTOM_MASCOT_AVATAR_DATA_URL_RE =
+  /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+function hasImagePath(value: string): boolean {
   const [path = ''] = value.split(/[?#]/, 1);
-  return path.toLowerCase().endsWith('.gif');
+  const lower = path.toLowerCase();
+  return CUSTOM_MASCOT_AVATAR_EXTENSIONS.some(ext => lower.endsWith(ext));
 }
 
+function isCustomMascotAvatarDataUrl(value: string): boolean {
+  return (
+    value.length <= MAX_CUSTOM_MASCOT_AVATAR_DATA_URL_LEN &&
+    CUSTOM_MASCOT_AVATAR_DATA_URL_RE.test(value)
+  );
+}
+
+/**
+ * Accepts a custom mascot avatar source: a base64 raster-image data URL (from
+ * an uploaded PNG/GIF/JPEG/WebP/BMP, issue #5360), or an http(s)/file/relative
+ * URL pointing at one of those image types. The field name keeps its legacy
+ * `Gif` spelling for persistence compatibility — the stored value survives
+ * rehydrate — but the accepted set is now any safe raster image, not GIF only.
+ */
 export function isCustomMascotGifUrl(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
-  if (trimmed.length === 0 || trimmed.length > MAX_CUSTOM_MASCOT_GIF_URL_LEN) return false;
+  if (trimmed.length === 0) return false;
+
+  // Uploaded avatars are inlined as base64 data URLs; they get their own
+  // (much larger) length cap and a strict raster-only allowlist.
+  if (trimmed.startsWith('data:')) return isCustomMascotAvatarDataUrl(trimmed);
+
+  if (trimmed.length > MAX_CUSTOM_MASCOT_GIF_URL_LEN) return false;
 
   try {
     const parsed = new URL(trimmed);
-    if (!hasGifPath(parsed.pathname)) return false;
+    if (!hasImagePath(parsed.pathname)) return false;
     if (parsed.protocol === 'https:' || parsed.protocol === 'file:') return true;
     if (parsed.protocol !== 'http:') return false;
     return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname);
   } catch {
-    return hasGifPath(trimmed) && (trimmed.startsWith('/') || trimmed.startsWith('~/'));
+    return hasImagePath(trimmed) && (trimmed.startsWith('/') || trimmed.startsWith('~/'));
   }
 }
 

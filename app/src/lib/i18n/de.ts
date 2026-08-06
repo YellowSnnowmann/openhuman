@@ -6011,10 +6011,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Entwurf',
   'settings.mascot.characterHeading': 'Zeichenüberschrift',
   'settings.mascot.customGifError':
-    'GIF konnte nicht geladen werden. Bitte überprüfe die URL und versuche es erneut.',
-  'settings.mascot.customGifHeading': 'Benutzerdefinierter GIF-Avatar',
-  'settings.mascot.customGifLabel': 'URL für benutzerdefinierten GIF-Avatar',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Gib eine HTTPS-, file:// oder lokale Bild-URL (PNG, GIF, JPEG oder WebP) ein oder lade eine Datei hoch.',
+  'settings.mascot.customGifHeading': 'Benutzerdefinierter Bild-Avatar',
+  'settings.mascot.customGifLabel': 'URL für benutzerdefinierten Bild-Avatar',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Bild hochladen',
+  'settings.mascot.customGifInvalidType':
+    'Nicht unterstützter Dateityp. Lade ein PNG-, GIF-, JPEG- oder WebP-Bild hoch.',
+  'settings.mascot.customGifTooLarge': 'Bild ist zu groß. Lade eine Datei bis 1,5 MB hoch.',
+  'settings.mascot.customGifReadError':
+    'Bild konnte nicht gelesen werden. Bitte versuche eine andere Datei.',
   'settings.mascot.characterPreview': 'Vorschau',
   'settings.mascot.characterStates': 'Staaten',
   'settings.mascot.characterVisemes': 'Mundbilder',

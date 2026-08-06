@@ -8,12 +8,14 @@ import {
   type MascotColor,
 } from '../../../features/human/Mascot/mascotPalette';
 import { synthesizeSpeech } from '../../../features/human/voice/ttsClient';
+import { fileToDataUri, isAllowedMimeType } from '../../../lib/attachments';
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import {
   DEFAULT_MASCOT_COLOR,
   isCustomMascotGifUrl,
   type MascotVoiceGender,
+  MAX_CUSTOM_MASCOT_AVATAR_UPLOAD_BYTES,
   selectCustomMascotGifUrl,
   selectCustomPrimaryColor,
   selectCustomSecondaryColor,
@@ -90,8 +92,18 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
     loading: manifestLoading,
     error: manifestError,
   } = useMascotManifest();
-  const [customGifDraft, setCustomGifDraft] = useState<string>(customMascotGifUrl ?? '');
+  // An uploaded avatar is stored as a base64 data URL on the same field the URL
+  // box writes. That string isn't meaningful or editable as text, so keep the
+  // URL box blank for it rather than dumping ~2 MB of base64 into the input on
+  // mount (issue #5360). Clearing an uploaded avatar is done via Reset.
+  const storedIsUploadedAvatar = customMascotGifUrl?.startsWith('data:') ?? false;
+  const [customGifDraft, setCustomGifDraft] = useState<string>(
+    storedIsUploadedAvatar ? '' : (customMascotGifUrl ?? '')
+  );
   const [customGifError, setCustomGifError] = useState<string | null>(null);
+  // Hidden <input type="file"> driven by the "Upload image" button, so the
+  // button can reuse the shared <Button> styling instead of a bare file input.
+  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Voice picker state — paste-mode is sticky because we can't derive it
   // from the stored value alone (a curated preset id and "user is
@@ -167,6 +179,36 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
     setCustomGifDraft('');
     setCustomGifError(null);
     dispatch(setCustomMascotGifUrl(null));
+  };
+
+  // Upload a local image (PNG/GIF/JPEG/WebP) as the custom avatar (issue
+  // #5360). The file is inlined as a base64 data URL and stored on the same
+  // `customMascotGifUrl` field the URL box writes, so the render path is
+  // unchanged. Type + size are checked *before* dispatch: an oversize blob
+  // would silently fail to persist (localStorage quota is swallowed) and take
+  // the rest of the mascot slice with it, so we reject it with a visible error.
+  const onUploadAvatarFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!isAllowedMimeType(file.type)) {
+      console.debug('[mascot-avatar] rejected upload: unsupported type', file.type);
+      setCustomGifError(t('settings.mascot.customGifInvalidType'));
+      return;
+    }
+    if (file.size > MAX_CUSTOM_MASCOT_AVATAR_UPLOAD_BYTES) {
+      console.debug('[mascot-avatar] rejected upload: too large', file.size);
+      setCustomGifError(t('settings.mascot.customGifTooLarge'));
+      return;
+    }
+    try {
+      const dataUri = await fileToDataUri(file);
+      console.debug('[mascot-avatar] upload accepted', file.type, file.size);
+      setCustomGifError(null);
+      setCustomGifDraft('');
+      dispatch(setCustomMascotGifUrl(dataUri));
+    } catch (err) {
+      console.debug('[mascot-avatar] upload read failed', err);
+      setCustomGifError(t('settings.mascot.customGifReadError'));
+    }
   };
 
   // Filter the menu to colors the asset pipeline currently supports — guards
@@ -572,7 +614,14 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
                 size="xs"
                 data-testid="mascot-custom-gif-save"
                 onClick={onSaveCustomGif}
-                disabled={customGifDraft.trim() === (customMascotGifUrl ?? '').trim()}>
+                disabled={
+                  // For an uploaded (data-URL) avatar the box is intentionally
+                  // blank, so an empty box means "no URL change", not "clear"
+                  // (that would drop the upload). Only a typed URL enables Save.
+                  storedIsUploadedAvatar
+                    ? customGifDraft.trim().length === 0
+                    : customGifDraft.trim() === (customMascotGifUrl ?? '').trim()
+                }>
                 {t('common.save')}
               </Button>
               <Button
@@ -586,6 +635,31 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
               </Button>
             </div>
           </label>
+          {/* Upload a local image file (issue #5360). The hidden input is
+              driven by the styled button; its value is cleared after each pick
+              so choosing the same file twice still fires onChange. */}
+          <div className="flex items-center gap-2">
+            <input
+              ref={avatarFileInputRef}
+              type="file"
+              accept="image/png,image/gif,image/jpeg,image/webp"
+              className="sr-only"
+              data-testid="mascot-custom-image-input"
+              aria-label={t('settings.mascot.customGifUpload')}
+              onChange={e => {
+                void onUploadAvatarFile(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="xs"
+              data-testid="mascot-custom-image-upload"
+              onClick={() => avatarFileInputRef.current?.click()}>
+              {t('settings.mascot.customGifUpload')}
+            </Button>
+          </div>
           {customGifError && (
             <p
               data-testid="mascot-custom-gif-error"
