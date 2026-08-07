@@ -6,31 +6,17 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import { trackEvent } from '../../../services/analytics';
 import { purgeWebviewAccount } from '../../../services/webviewAccountService';
 import {
-  addAccount,
   removeAccount,
   setAccountsOverlayOpen,
   setActiveAccount,
   setLastActiveAccount,
 } from '../../../store/accountsSlice';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
-import type { Account, AccountProvider, ProviderDescriptor } from '../../../types/accounts';
+import type { Account } from '../../../types/accounts';
 import { AGENT_ACCOUNT_ID as AGENT_ID } from '../../../utils/accountsFullscreen';
-import AddAccountModal from '../../accounts/AddAccountModal';
 import { AgentIcon, ProviderIcon } from '../../accounts/providerIcons';
 
 const debug = debugFactory('layout:sidebar-app-rail');
-
-function makeAccountId(): string {
-  const c = globalThis.crypto;
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
-  if (c && typeof c.getRandomValues === 'function') {
-    const bytes = new Uint8Array(4);
-    c.getRandomValues(bytes);
-    const suffix = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-    return `acct-${Date.now().toString(36)}-${suffix}`;
-  }
-  return `acct-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 interface RailButtonProps {
   active: boolean;
@@ -82,11 +68,19 @@ interface ContextMenuState {
 }
 
 /**
- * The persistent app rail (agent + connected provider apps + add button),
- * rendered directly in {@link AppSidebar} so it sticks regardless of the active
- * route. Selecting an app sets the active account in Redux and navigates to the
- * chat surface, where the provider webview is composited; the rail itself never
- * unmounts as the user moves between pages.
+ * The persistent app rail (agent + connected provider apps), rendered directly
+ * in {@link AppSidebar} so it sticks regardless of the active route. Selecting
+ * an app sets the active account in Redux and navigates to the chat surface,
+ * where the provider webview is composited; the rail itself never unmounts as
+ * the user moves between pages.
+ *
+ * Issue #5423 — the in-app web-apps feature is being removed from the app after
+ * 31 August 2026. New connections are no longer offered (the "Add apps" button
+ * is gone), so the rail only ever shows apps a user already connected. A user
+ * with none connected sees just the agent tile — no trace of the feature. Apps
+ * already connected keep working and can be reconnected (select the tile) or
+ * disconnected (right-click). The removal notice lives in {@link
+ * WebAppsSunsetNotice}, mounted in the shell.
  */
 export default function SidebarAppRail() {
   const { t } = useT();
@@ -97,7 +91,6 @@ export default function SidebarAppRail() {
   const order = useAppSelector(state => state.accounts.order);
   const activeAccountId = useAppSelector(state => state.accounts.activeAccountId);
   const unreadByAccount = useAppSelector(state => state.accounts.unread);
-  const [addOpen, setAddOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null);
 
   const accounts: Account[] = useMemo(
@@ -105,25 +98,14 @@ export default function SidebarAppRail() {
     [order, accountsById]
   );
 
-  const connectedProviders = useMemo(
-    () => new Set<AccountProvider>(accounts.map(a => a.provider)),
-    [accounts]
-  );
-
   const selectedId = activeAccountId ?? AGENT_ID;
   const isAgentSelected = selectedId === AGENT_ID;
 
-  // New-user affordance: when no provider apps are connected yet, the lone
-  // dashed "+" tile reads as ambiguous. Expand it into a labelled "Add apps"
-  // pill so first-run users understand they can connect more apps; once at
-  // least one app is connected, collapse back to the compact icon to reclaim
-  // horizontal space in the rail.
-  const showAddLabel = accounts.length === 0;
-
-  // The chat page hides its active provider webview while a rail overlay is
-  // open (the native CEF view composites above HTML, so React overlays would be
-  // painted over). Mirror local overlay state into Redux for it to read.
-  const overlayOpen = addOpen || ctxMenu !== null;
+  // The chat page hides its active provider webview while a rail overlay (the
+  // right-click context menu) is open — the native CEF view composites above
+  // HTML, so React overlays would be painted over. Mirror overlay state into
+  // Redux for it to read.
+  const overlayOpen = ctxMenu !== null;
   useEffect(() => {
     dispatch(setAccountsOverlayOpen(overlayOpen));
   }, [overlayOpen, dispatch]);
@@ -136,24 +118,6 @@ export default function SidebarAppRail() {
     if (!onChat) {
       navigate('/chat');
     }
-  };
-
-  const handlePickProvider = (p: ProviderDescriptor) => {
-    setAddOpen(false);
-    trackEvent('account_connect_start', { provider: p.id });
-    const id = makeAccountId();
-    const acct: Account = {
-      id,
-      provider: p.id,
-      label: p.label,
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-    };
-    dispatch(addAccount(acct));
-    dispatch(setActiveAccount(id));
-    // Issue #1233 — record this real-account selection in the persisted MRU
-    // pointer so the next session can prewarm it.
-    dispatch(setLastActiveAccount(id));
   };
 
   const selectAgent = () => {
@@ -256,39 +220,7 @@ export default function SidebarAppRail() {
             <ProviderIcon provider={acct.provider} className="h-5 w-5 rounded" />
           </RailButton>
         ))}
-
-        <button
-          type="button"
-          onClick={() => {
-            trackEvent('tauri_browser_click', {
-              surface: 'sidebar_app_rail',
-              action: 'open_add_account',
-              provider: 'none',
-            });
-            setAddOpen(true);
-          }}
-          data-analytics-id="sidebar-app-rail-add-account"
-          data-testid="accounts-add-button"
-          className={`group relative flex h-9 flex-none items-center justify-center gap-1.5 rounded-xl border border-dashed border-line-strong text-content-faint transition-colors hover:bg-surface-hover hover:text-content-secondary ${
-            showAddLabel ? 'w-auto px-2.5' : 'w-9'
-          }`}
-          aria-label={t('accounts.addApps')}
-          title={t('accounts.addApps')}>
-          <svg className="h-4 w-4 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          {showAddLabel && (
-            <span className="whitespace-nowrap text-xs font-medium">{t('accounts.addApps')}</span>
-          )}
-        </button>
       </div>
-
-      <AddAccountModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onPick={handlePickProvider}
-        connectedProviders={connectedProviders}
-      />
 
       {ctxMenu && (
         <div

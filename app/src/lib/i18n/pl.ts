@@ -7303,6 +7303,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Twój budżet osadzeń został wyczerpany, więc nowe treści nie są już dodawane do pamięci. Skonfiguruj lokalne osadzenia lub dodaj własny klucz API, aby wznowić.',
   'memoryBudget.cta': 'Skonfiguruj osadzenia',
+  'webAppsSunset.title': 'Aplikacje internetowe w aplikacji zostaną wycofane',
+  'webAppsSunset.message':
+    'Twoje połączone aplikacje internetowe zostaną usunięte z aplikacji po 31 sierpnia 2026 r. Przepraszamy za niedogodności.',
   'userErrors.scope.memory': 'Pamięć',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Kwota',

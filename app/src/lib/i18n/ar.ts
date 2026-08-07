@@ -7039,6 +7039,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
   'memoryBudget.cta': 'إعداد التضمينات',
+  'webAppsSunset.title': 'يتم إيقاف تطبيقات الويب داخل التطبيق',
+  'webAppsSunset.message':
+    'ستتم إزالة تطبيقات الويب المتصلة من التطبيق بعد 31 أغسطس 2026. نعتذر عن الإزعاج.',
   'userErrors.scope.memory': 'الذاكرة',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'المبلغ',

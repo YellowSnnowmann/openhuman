@@ -7600,6 +7600,9 @@ const en: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
   'memoryBudget.cta': 'Set up embeddings',
+  'webAppsSunset.title': 'In-app web apps are being retired',
+  'webAppsSunset.message':
+    'Your connected web apps will be removed from the app after 31 August 2026. Sorry for the inconvenience.',
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',

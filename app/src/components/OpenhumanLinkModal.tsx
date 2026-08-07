@@ -21,7 +21,7 @@ import {
   showNativeNotification,
 } from '../lib/nativeNotifications/tauriBridge';
 import { isTauri, purgeWebviewAccount } from '../services/webviewAccountService';
-import { addAccount, removeAccount, setActiveAccount } from '../store/accountsSlice';
+import { removeAccount } from '../store/accountsSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   type Account,
@@ -408,18 +408,6 @@ const ACCOUNTS_SETUP_PROVIDERS: readonly AccountProvider[] = [
   'linkedin',
 ];
 
-function makeAccountId(): string {
-  const c = globalThis.crypto;
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
-  if (c && typeof c.getRandomValues === 'function') {
-    const bytes = new Uint8Array(4);
-    c.getRandomValues(bytes);
-    const suffix = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-    return `acct-${Date.now().toString(36)}-${suffix}`;
-  }
-  return `acct-${Date.now().toString(36)}`;
-}
-
 /**
  * Translation key + color for a given account lifecycle status. Returns a
  * `labelKey` (not a literal) so the caller can localize it via `useT()` —
@@ -448,10 +436,6 @@ const AccountsSetupBody = ({ close }: { close: () => void }) => {
   const accountsById = useAppSelector(s => s.accounts.accounts);
   const order = useAppSelector(s => s.accounts.order);
 
-  // Track accounts added during this modal session so "Done" can navigate.
-  // Uses state (not ref) so the CTA label re-renders when toggles change.
-  const [newlyAdded, setNewlyAdded] = useState<Map<string, string>>(new Map());
-
   // Map provider → first existing account (one provider, one row).
   const accountByProvider = useMemo(() => {
     const map = new Map<AccountProvider, Account>();
@@ -462,103 +446,79 @@ const AccountsSetupBody = ({ close }: { close: () => void }) => {
     return map;
   }, [accountsById, order]);
 
-  const providerDescriptors = useMemo(
+  // #5423 — the in-app web-apps feature is being removed after 31 August 2026.
+  // Only apps the user already connected are listed here; connecting a new one
+  // is no longer offered. A user with none connected sees just the removal
+  // notice below.
+  const connectedDescriptors = useMemo(
     () =>
       ACCOUNTS_SETUP_PROVIDERS.map(id => PROVIDERS.find(p => p.id === id)).filter(
-        Boolean
-      ) as typeof PROVIDERS,
-    []
+        (p): p is (typeof PROVIDERS)[number] => p !== undefined && accountByProvider.has(p.id)
+      ),
+    [accountByProvider]
   );
 
-  const handleToggle = (providerId: AccountProvider, label: string, currentlyOn: boolean) => {
-    if (currentlyOn) {
-      const existing = accountByProvider.get(providerId);
-      if (!existing) return;
-      void purgeWebviewAccount(existing.id).catch(() => {});
-      setNewlyAdded(prev => {
-        const next = new Map(prev);
-        next.delete(existing.id);
-        return next;
-      });
-      dispatch(removeAccount({ accountId: existing.id }));
-      return;
-    }
-    const acct: Account = {
-      id: makeAccountId(),
-      provider: providerId,
-      label,
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-    };
-    setNewlyAdded(prev => new Map(prev).set(acct.id, label));
-    dispatch(addAccount(acct));
+  const handleDisconnect = (providerId: AccountProvider) => {
+    const existing = accountByProvider.get(providerId);
+    if (!existing) return;
+    void purgeWebviewAccount(existing.id).catch(() => {});
+    dispatch(removeAccount({ accountId: existing.id }));
   };
 
-  const handleDone = () => {
-    close();
-    // Activate the first newly-added account so the shell-level WebviewHost
-    // opens the auth flow immediately without mutating the current route.
-    const firstNew = [...newlyAdded.keys()][0];
-    if (firstNew) {
-      dispatch(setActiveAccount(firstNew));
-    }
-  };
-
-  // Dynamic CTA based on what's been toggled on
-  const firstNewLabel = [...newlyAdded.values()][0];
-  const doneLabel = firstNewLabel
-    ? t('app.openhumanLink.accounts.continueWith').replace('{label}', firstNewLabel)
-    : t('app.openhumanLink.accounts.done');
+  const doneLabel = t('app.openhumanLink.accounts.done');
 
   return (
     <div className="space-y-4 text-sm text-content-secondary">
-      <p>{t('app.openhumanLink.accounts.intro')}</p>
-      <div className="space-y-2">
-        {providerDescriptors.map(p => {
-          const acct = accountByProvider.get(p.id);
-          const on = !!acct;
-          const status = acct?.status;
-          return (
-            <div
-              key={p.id}
-              className="flex items-center gap-3 rounded-xl border border-line-subtle bg-surface p-3">
-              <ProviderIcon provider={p.id} className="h-5 w-5 flex-none" />
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-content">{p.label}</div>
-                {on && status ? (
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`inline-block h-1.5 w-1.5 rounded-full ${statusDisplay(status).dotClass}`}
-                    />
-                    <span className="text-xs text-content-muted">
-                      {t(statusDisplay(status).labelKey)}
-                    </span>
-                  </div>
-                ) : (
-                  <p className="line-clamp-1 text-xs text-content-muted">{p.description}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={on}
-                aria-label={`${on ? t('skills.disconnect') : t('skills.connect')} ${p.label}`}
-                onClick={() => handleToggle(p.id, p.label, on)}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                  on ? 'bg-primary-500' : 'bg-surface-strong'
-                }`}>
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform ${
-                    on ? 'translate-x-5' : 'translate-x-0.5'
-                  }`}
-                />
-              </button>
-            </div>
-          );
-        })}
+      <div
+        data-testid="openhuman-link-webapps-sunset"
+        className="rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-500/15">
+        <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
+          {t('webAppsSunset.title')}
+        </p>
+        <p className="text-xs text-blue-600 dark:text-blue-300">{t('webAppsSunset.message')}</p>
       </div>
+      {connectedDescriptors.length > 0 && (
+        <div className="space-y-2">
+          {connectedDescriptors.map(p => {
+            const status = accountByProvider.get(p.id)?.status;
+            return (
+              <div
+                key={p.id}
+                className="flex items-center gap-3 rounded-xl border border-line-subtle bg-surface p-3">
+                <ProviderIcon provider={p.id} className="h-5 w-5 flex-none" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-content">{p.label}</div>
+                  {status ? (
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`inline-block h-1.5 w-1.5 rounded-full ${statusDisplay(status).dotClass}`}
+                      />
+                      <span className="text-xs text-content-muted">
+                        {t(statusDisplay(status).labelKey)}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="line-clamp-1 text-xs text-content-muted">{p.description}</p>
+                  )}
+                </div>
+                {/* Only disconnect is offered — the feature is being removed, so
+                    re-adding a service is intentionally not possible here. */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={true}
+                  aria-label={`${t('skills.disconnect')} ${p.label}`}
+                  onClick={() => handleDisconnect(p.id)}
+                  className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-primary-500 transition-colors">
+                  <span className="inline-block h-5 w-5 translate-x-5 transform rounded-full bg-surface shadow transition-transform" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <p className="text-xs text-content-faint">{t('app.openhumanLink.accounts.webviewNote')}</p>
-      <DoneFooter close={close} onDone={handleDone} doneLabel={doneLabel} />
+      <DoneFooter close={close} onDone={close} doneLabel={doneLabel} />
     </div>
   );
 };

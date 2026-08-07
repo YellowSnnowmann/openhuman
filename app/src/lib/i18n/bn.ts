@@ -7198,6 +7198,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'আপনার এমবেডিং বাজেট শেষ, তাই নতুন কনটেন্ট আর মেমরিতে যুক্ত হচ্ছে না। আবার শুরু করতে লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
   'memoryBudget.cta': 'এমবেডিং সেট আপ করুন',
+  'webAppsSunset.title': 'অ্যাপের ভেতরের ওয়েব অ্যাপগুলো সরিয়ে নেওয়া হচ্ছে',
+  'webAppsSunset.message':
+    'আপনার সংযুক্ত ওয়েব অ্যাপগুলো ৩১ আগস্ট ২০২৬-এর পর অ্যাপ থেকে সরিয়ে ফেলা হবে। অসুবিধার জন্য দুঃখিত।',
   'userErrors.scope.memory': 'মেমরি',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'পরিমাণ',

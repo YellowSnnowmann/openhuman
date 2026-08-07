@@ -81,21 +81,38 @@ describe('SidebarAppRail', () => {
     });
   });
 
-  it('shows the "Add apps" label when no provider apps are connected', () => {
-    setAccounts([]);
-    renderRail('/chat');
-
-    const addButton = screen.getByTestId('accounts-add-button');
-    expect(addButton).toHaveTextContent('accounts.addApps');
-  });
-
-  it('collapses the add button to an icon once an app is connected', () => {
+  it('offers no way to add a new app — the feature is being removed (#5423)', () => {
     setAccounts(['acct-whatsapp']);
     renderRail('/chat');
 
-    const addButton = screen.getByTestId('accounts-add-button');
-    expect(addButton).not.toHaveTextContent('accounts.addApps');
-    expect(addButton).toHaveAttribute('aria-label', 'accounts.addApps');
+    // The "Add apps" button and its label are gone: a user can no longer pick
+    // up a service they were not already using.
+    expect(screen.queryByTestId('accounts-add-button')).toBeNull();
+    expect(screen.queryByText('accounts.addApps')).toBeNull();
+  });
+
+  it('shows only the agent tile when no apps are connected — no trace of the feature (#5423)', () => {
+    setAccounts([]);
+    renderRail('/chat');
+
+    // The agent tile is core chat and stays; there are no provider tiles and no
+    // add affordance, so a user who never connected an app sees nothing of it.
+    expect(screen.getByRole('button', { name: 'accounts.agent' })).toBeInTheDocument();
+    expect(screen.queryByTestId('accounts-add-button')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'WhatsApp' })).toBeNull();
+  });
+
+  it('still lets a connected app be reconnected by selecting its tile (#5423)', () => {
+    setAccounts(['acct-whatsapp']);
+    renderRail('/chat');
+
+    // Selecting an already-connected app re-activates it (reconnect path), which
+    // must keep working after the add path is removed.
+    fireEvent.click(screen.getByRole('button', { name: 'WhatsApp' }));
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: 'accounts/setActiveAccount',
+      payload: 'acct-whatsapp',
+    });
   });
 
   it('drops the account from state synchronously on disconnect, before the async purge (#4695)', () => {

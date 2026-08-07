@@ -7196,6 +7196,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'आपका एम्बेडिंग बजट खत्म हो गया है, इसलिए नई सामग्री अब मेमोरी में नहीं जुड़ रही। दोबारा शुरू करने के लिए लोकल एम्बेडिंग सेट करें या अपनी API कुंजी जोड़ें।',
   'memoryBudget.cta': 'एम्बेडिंग सेट करें',
+  'webAppsSunset.title': 'ऐप के अंदर की वेब ऐप्स हटाई जा रही हैं',
+  'webAppsSunset.message':
+    'आपकी कनेक्ट की गई वेब ऐप्स 31 अगस्त 2026 के बाद ऐप से हटा दी जाएंगी। असुविधा के लिए क्षमा करें।',
   'userErrors.scope.memory': 'मेमोरी',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'राशि',

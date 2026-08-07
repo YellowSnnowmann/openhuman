@@ -10,6 +10,7 @@ import {
 import { PersistGate } from 'redux-persist/integration/react';
 
 import AppRoutes from './AppRoutes';
+import WebAppsSunsetNotice from './components/accounts/WebAppsSunsetNotice';
 import WebviewHost from './components/accounts/WebviewHost';
 import { AnalyticsPageTracker } from './components/analytics';
 import AnnouncementGate from './components/Announcement/AnnouncementGate';
@@ -299,6 +300,9 @@ export function AppShellDesktop() {
           Only renders for users whose embeddings actually bill against the
           managed budget. */}
       <MemoryEmbeddingBudgetBanner />
+      {/* #5423: in-app web apps are being removed after 31 August 2026. The
+          notice shows only to users who already connected at least one app. */}
+      <WebAppsSunsetNotice />
       <AppRoutes location={baseLocation} />
       {activeProviderAccount && !accountsOverlayOpen && (
         <div className="absolute inset-0 z-30">

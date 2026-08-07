@@ -7117,6 +7117,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',
   'memoryBudget.cta': '임베딩 설정',
+  'webAppsSunset.title': '앱 내 웹 앱 기능이 종료됩니다',
+  'webAppsSunset.message':
+    '연결된 웹 앱은 2026년 8월 31일 이후 앱에서 제거됩니다. 불편을 드려 죄송합니다.',
   'userErrors.scope.memory': '메모리',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '금액',

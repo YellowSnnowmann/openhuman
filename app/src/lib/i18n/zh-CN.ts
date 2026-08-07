@@ -6812,6 +6812,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     '你的嵌入额度已用尽，新内容不会再加入记忆。设置本地嵌入或添加你自己的 API 密钥即可恢复。',
   'memoryBudget.cta': '设置嵌入',
+  'webAppsSunset.title': '应用内网页应用即将下线',
+  'webAppsSunset.message':
+    '你已连接的网页应用将在 2026 年 8 月 31 日后从应用中移除。给你带来不便，敬请谅解。',
   'userErrors.scope.memory': '记忆',
   // Agent World：Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '金额',

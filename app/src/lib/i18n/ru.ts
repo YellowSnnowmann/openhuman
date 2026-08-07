@@ -7276,6 +7276,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
   'memoryBudget.cta': 'Настроить эмбеддинги',
+  'webAppsSunset.title': 'Встроенные веб-приложения отключаются',
+  'webAppsSunset.message':
+    'Подключённые веб-приложения будут удалены из приложения после 31 августа 2026 года. Приносим извинения за неудобства.',
   'userErrors.scope.memory': 'Память',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Сумма',

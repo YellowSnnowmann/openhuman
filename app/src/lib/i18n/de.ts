@@ -7401,6 +7401,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
   'memoryBudget.cta': 'Embeddings einrichten',
+  'webAppsSunset.title': 'In-App-Web-Apps werden eingestellt',
+  'webAppsSunset.message':
+    'Deine verbundenen Web-Apps werden nach dem 31. August 2026 aus der App entfernt. Entschuldige die Unannehmlichkeiten.',
   'userErrors.scope.memory': 'Speicher',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Betrag',

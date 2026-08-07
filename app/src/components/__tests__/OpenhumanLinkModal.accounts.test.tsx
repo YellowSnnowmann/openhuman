@@ -35,6 +35,18 @@ function createStore() {
   });
 }
 
+function seedAccount(
+  store: ReturnType<typeof createStore>,
+  provider: string,
+  status: string,
+  id = `test-${provider}`
+) {
+  store.dispatch({
+    type: 'accounts/addAccount',
+    payload: { id, provider, label: provider, createdAt: new Date().toISOString(), status },
+  });
+}
+
 function renderModal(store = createStore()) {
   return {
     store,
@@ -56,77 +68,68 @@ function openAccountsModal() {
   });
 }
 
-describe('OpenhumanLinkModal accounts setup', () => {
+describe('OpenhumanLinkModal accounts setup (sunset, #5423)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders provider toggles when accounts/setup path is opened', () => {
+  it('shows the removal notice when the accounts step opens', () => {
     renderModal();
     openAccountsModal();
 
-    expect(screen.getByLabelText('Connect WhatsApp Web')).toBeInTheDocument();
-    expect(screen.getByLabelText('Connect WeChat Web')).toBeInTheDocument();
-    expect(screen.getByLabelText('Connect Telegram Web')).toBeInTheDocument();
-    expect(screen.getByLabelText('Connect Slack')).toBeInTheDocument();
-    expect(screen.getByLabelText('Connect Discord')).toBeInTheDocument();
-    expect(screen.getByLabelText('Connect LinkedIn')).toBeInTheDocument();
+    expect(screen.getByTestId('openhuman-link-webapps-sunset')).toBeInTheDocument();
   });
 
-  it('toggle ON adds account to Redux store', () => {
-    const { store } = renderModal();
+  it('does not offer to connect a provider the user has not already connected', () => {
+    renderModal();
     openAccountsModal();
 
-    fireEvent.click(screen.getByLabelText('Connect Telegram Web'));
-
-    const state = store.getState().accounts;
-    const telegramAccount = Object.values(state.accounts).find(a => a.provider === 'telegram');
-    expect(telegramAccount).toBeDefined();
-    expect(telegramAccount!.status).toBe('pending');
+    // The add path is gone: no "Connect X" toggles for un-connected providers,
+    // so a user cannot pick up a service they were not already using.
+    expect(screen.queryByLabelText('Connect WhatsApp Web')).toBeNull();
+    expect(screen.queryByLabelText('Connect Telegram Web')).toBeNull();
+    expect(screen.queryByLabelText('Connect Discord')).toBeNull();
   });
 
-  it('toggle OFF removes account from Redux store', () => {
-    const { store } = renderModal();
+  it('lists an already-connected app with a disconnect control', () => {
+    const store = createStore();
+    seedAccount(store, 'telegram', 'open');
+    renderModal(store);
     openAccountsModal();
 
-    // Toggle ON
-    fireEvent.click(screen.getByLabelText('Connect Telegram Web'));
-    expect(Object.values(store.getState().accounts.accounts)).toHaveLength(1);
+    // The connected app is shown (by its catalog label) and can be disconnected.
+    expect(screen.getByLabelText('Disconnect Telegram Web')).toBeInTheDocument();
+  });
 
-    // Toggle OFF
+  it('disconnect removes the connected account from the store', () => {
+    const store = createStore();
+    seedAccount(store, 'telegram', 'open');
+    renderModal(store);
+    openAccountsModal();
+
     fireEvent.click(screen.getByLabelText('Disconnect Telegram Web'));
     expect(Object.values(store.getState().accounts.accounts)).toHaveLength(0);
   });
 
-  it('Done button sets first new account as active without navigating', () => {
-    const { store } = renderModal();
+  it('shows a status indicator for a connected account', () => {
+    const store = createStore();
+    seedAccount(store, 'telegram', 'open');
+    renderModal(store);
     openAccountsModal();
 
-    // Toggle two providers ON
-    fireEvent.click(screen.getByLabelText('Connect Telegram Web'));
-    fireEvent.click(screen.getByLabelText('Connect Slack'));
-
-    const accountIds = store.getState().accounts.order;
-    expect(accountIds).toHaveLength(2);
-
-    // Click the CTA (dynamic label: "Continue with Telegram Web sign-in")
-    fireEvent.click(screen.getByRole('button', { name: /Continue with Telegram Web sign-in/ }));
-
-    expect(store.getState().accounts.activeAccountId).toBe(accountIds[0]);
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
   });
 
-  it('Skip button closes modal without navigating', () => {
-    renderModal();
+  it('shows "Needs sign-in" for an account with pending status', () => {
+    const store = createStore();
+    seedAccount(store, 'slack', 'pending');
+    renderModal(store);
     openAccountsModal();
 
-    fireEvent.click(screen.getByLabelText('Connect Telegram Web'));
-    fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }));
-
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText('Needs sign-in')).toBeInTheDocument();
   });
 
-  it('Done without any new toggles does not navigate', () => {
+  it('Done closes the modal without navigating', () => {
     renderModal();
     openAccountsModal();
 
@@ -134,70 +137,11 @@ describe('OpenhumanLinkModal accounts setup', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('shows dynamic CTA label when a provider is toggled on', () => {
+  it('Skip closes the modal without navigating', () => {
     renderModal();
     openAccountsModal();
 
-    // Before toggling, button says "Done"
-    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
-
-    // Toggle Discord on
-    fireEvent.click(screen.getByLabelText('Connect Discord'));
-
-    // CTA should now reference Discord
-    expect(
-      screen.getByRole('button', { name: /Continue with Discord sign-in/ })
-    ).toBeInTheDocument();
-  });
-
-  it('shows status indicator for existing accounts with a status', () => {
-    const store = createStore();
-    // Pre-populate an account with 'open' status
-    store.dispatch({
-      type: 'accounts/addAccount',
-      payload: {
-        id: 'test-acct-1',
-        provider: 'telegram',
-        label: 'Telegram',
-        createdAt: new Date().toISOString(),
-        status: 'open',
-      },
-    });
-
-    render(
-      <Provider store={store}>
-        <MemoryRouter>
-          <OpenhumanLinkModal />
-        </MemoryRouter>
-      </Provider>
-    );
-    openAccountsModal();
-
-    expect(screen.getByText('Connected')).toBeInTheDocument();
-  });
-
-  it('shows "Needs sign-in" for accounts with pending status', () => {
-    const store = createStore();
-    store.dispatch({
-      type: 'accounts/addAccount',
-      payload: {
-        id: 'test-acct-2',
-        provider: 'slack',
-        label: 'Slack',
-        createdAt: new Date().toISOString(),
-        status: 'pending',
-      },
-    });
-
-    render(
-      <Provider store={store}>
-        <MemoryRouter>
-          <OpenhumanLinkModal />
-        </MemoryRouter>
-      </Provider>
-    );
-    openAccountsModal();
-
-    expect(screen.getByText('Needs sign-in')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }));
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

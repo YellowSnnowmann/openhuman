@@ -7234,6 +7234,9 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
   'memoryBudget.cta': 'Siapkan embedding',
+  'webAppsSunset.title': 'Aplikasi web dalam aplikasi akan dihentikan',
+  'webAppsSunset.message':
+    'Aplikasi web yang terhubung akan dihapus dari aplikasi setelah 31 Agustus 2026. Mohon maaf atas ketidaknyamanannya.',
   'userErrors.scope.memory': 'Memori',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',
