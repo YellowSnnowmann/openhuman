@@ -448,8 +448,7 @@ const AccountsSetupBody = ({ close }: { close: () => void }) => {
 
   // #5423 — the in-app web-apps feature is being removed after 31 August 2026.
   // Only apps the user already connected are listed here; connecting a new one
-  // is no longer offered. A user with none connected sees just the removal
-  // notice below.
+  // is no longer offered.
   const connectedDescriptors = useMemo(
     () =>
       ACCOUNTS_SETUP_PROVIDERS.map(id => PROVIDERS.find(p => p.id === id)).filter(
@@ -457,6 +456,15 @@ const AccountsSetupBody = ({ close }: { close: () => void }) => {
       ),
     [accountByProvider]
   );
+
+  // A user with no web apps connected must see no trace of the feature. The
+  // `accounts/setup` deep link stays reachable (old chat/onboarding pills can
+  // still dispatch it), so for a never-connected user this step is a no-op that
+  // simply closes rather than surfacing the removal notice.
+  const hasConnectedApps = order.length > 0;
+  useEffect(() => {
+    if (!hasConnectedApps) close();
+  }, [hasConnectedApps, close]);
 
   const handleDisconnect = (providerId: AccountProvider) => {
     const existing = accountByProvider.get(providerId);
@@ -466,6 +474,8 @@ const AccountsSetupBody = ({ close }: { close: () => void }) => {
   };
 
   const doneLabel = t('app.openhumanLink.accounts.done');
+
+  if (!hasConnectedApps) return null;
 
   return (
     <div className="space-y-4 text-sm text-content-secondary">

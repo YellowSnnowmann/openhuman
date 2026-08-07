@@ -73,21 +73,35 @@ describe('OpenhumanLinkModal accounts setup (sunset, #5423)', () => {
     vi.clearAllMocks();
   });
 
-  it('shows the removal notice when the accounts step opens', () => {
-    renderModal();
+  it('shows the removal notice for a user with connected web apps', () => {
+    const store = createStore();
+    seedAccount(store, 'telegram', 'open');
+    renderModal(store);
     openAccountsModal();
 
     expect(screen.getByTestId('openhuman-link-webapps-sunset')).toBeInTheDocument();
   });
 
-  it('does not offer to connect a provider the user has not already connected', () => {
+  it('renders no trace of the feature for a user with no connected apps (#5423)', () => {
     renderModal();
+    openAccountsModal();
+
+    // The accounts/setup deep link stays reachable (old pills can dispatch it),
+    // but a never-connected user must see nothing of the retired feature — the
+    // step is a no-op with no notice and no controls.
+    expect(screen.queryByTestId('openhuman-link-webapps-sunset')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+  });
+
+  it('does not offer to connect a provider the user has not already connected', () => {
+    const store = createStore();
+    seedAccount(store, 'telegram', 'open');
+    renderModal(store);
     openAccountsModal();
 
     // The add path is gone: no "Connect X" toggles for un-connected providers,
     // so a user cannot pick up a service they were not already using.
     expect(screen.queryByLabelText('Connect WhatsApp Web')).toBeNull();
-    expect(screen.queryByLabelText('Connect Telegram Web')).toBeNull();
     expect(screen.queryByLabelText('Connect Discord')).toBeNull();
   });
 
@@ -130,7 +144,9 @@ describe('OpenhumanLinkModal accounts setup (sunset, #5423)', () => {
   });
 
   it('Done closes the modal without navigating', () => {
-    renderModal();
+    const store = createStore();
+    seedAccount(store, 'telegram', 'open');
+    renderModal(store);
     openAccountsModal();
 
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -138,7 +154,9 @@ describe('OpenhumanLinkModal accounts setup (sunset, #5423)', () => {
   });
 
   it('Skip closes the modal without navigating', () => {
-    renderModal();
+    const store = createStore();
+    seedAccount(store, 'telegram', 'open');
+    renderModal(store);
     openAccountsModal();
 
     fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }));
