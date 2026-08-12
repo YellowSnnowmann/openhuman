@@ -13,6 +13,16 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   307/284/2  2026-08-12  tinymemory-core added to the always-on memory engine
+#                      (6bf080266 "add tinymemory-core dependency and patch
+#                      tinycortex-api"): +2 packages / +2 names in the `flows`
+#                      host profile. `tinymemory-core` is the SQLite/vector
+#                      store + ingestion/queue engine the mandatory memory
+#                      families require, so it is a deliberate always-on
+#                      dependency, not accidental growth — the same rationale as
+#                      the 2026-08-10 entry, which predated this crate. Written
+#                      back to the CI (Linux) measurement; the ratchet fails on a
+#                      shed not written back, so this only records reality.
 #   305/282/2  2026-08-10  tinymemory engine-neutral memory layer (+3 packages
 #                      / +3 names). `tinymemory`, `tinymemory-api`, and
 #                      `tinymemory-tinycortex` are deliberate always-on
@@ -229,4 +239,4 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:305:282:2
+flows:307:284:2
