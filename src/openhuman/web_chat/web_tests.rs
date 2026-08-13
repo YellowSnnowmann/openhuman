@@ -477,6 +477,45 @@ fn classify_inference_error_transient_model_unavailable_without_5xx_status_uses_
     }
 }
 
+#[test]
+fn classify_inference_error_transient_outage_without_model_wording_hits_fallthrough_arm() {
+    // #5503: the *late* `is_transient_unavailability_text` fallthrough arm
+    // (tinysweeper #5528) catches a transient outage that carries a marker like
+    // "overloaded" / "please retry" but does NOT contain "model" + "unavailable"
+    // (so it skips the model-availability split arm) and has no 5xx status (so
+    // the 5xx arm doesn't claim it). Without this arm such a body would fall to
+    // the non-retryable `inference` catch-all; the arm rescues it to a retryable
+    // `provider_error`. Removing the arm makes this test fail.
+    for raw in [
+        r#"custom_openai API error: {"error":{"message":"The service is currently overloaded, please retry shortly."}}"#,
+        r#"openrouter API error: {"error":{"message":"Upstream is busy right now, please try again later."}}"#,
+    ] {
+        let ClassifiedError {
+            error_type,
+            message,
+            retryable,
+            source,
+            ..
+        } = classify_inference_error(raw);
+        assert_eq!(
+            error_type, "provider_error",
+            "a transient outage with no model wording must reach the fallthrough arm as provider_error: {raw}"
+        );
+        assert!(
+            retryable,
+            "the fallthrough transient arm must stay retryable: {raw}"
+        );
+        assert_eq!(
+            source, "provider",
+            "transient outage is a provider fault: {raw}"
+        );
+        assert!(
+            message.contains("temporarily unavailable"),
+            "must use the temporarily-unavailable provider copy: {message}"
+        );
+    }
+}
+
 // ── #2364: rate-limit classification + retry-after surfacing ────
 
 #[test]
