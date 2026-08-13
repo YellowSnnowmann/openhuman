@@ -988,10 +988,14 @@ pub(crate) fn classify_inference_error(err: &str) -> ClassifiedError {
         // "please retry later") is a temporary provider outage — surface the
         // retryable "temporarily unavailable" provider copy rather than the flat
         // inference bucket, so the user gets an accurate, retryable error (#5503).
+        // Mirror the sibling provider_error arms and keep the scrubbed upstream
+        // detail via `with_provider_detail` (CodeRabbit #5528).
         ClassifiedError {
             error_type: "provider_error",
-            message: "The AI provider is temporarily unavailable. Please try again later."
-                .to_string(),
+            message: with_provider_detail(
+                "The AI provider is temporarily unavailable. Please try again later.",
+                err,
+            ),
             source: "provider",
             retryable: true,
             retry_after_ms: None,

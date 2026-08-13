@@ -430,9 +430,11 @@ fn classify_inference_error_genuine_model_rejection_stays_nonretryable_config() 
 #[test]
 fn classify_inference_error_transient_model_unavailable_without_5xx_status_uses_split_arm() {
     // #5503 coverage guard for the split's *own* true branch. The two fixtures
-    // in `..._is_retryable_not_config` above each carry a `503`/`529` status, so
-    // they are already claimed by the generic 5xx arm and never reach the
-    // model-unavailable split. A transient outage reported with NO 5xx status —
+    // in `..._is_retryable_not_config` above do not reach the model-unavailable
+    // split: the `503` bodies are claimed by the generic 5xx arm, and the `529`
+    // overloaded body is claimed by the late transient-fallback arm (the 5xx arm
+    // matches `503`/`service unavailable`, not `529`). A transient outage
+    // reported with NO status —
     // a bare provider body that only says the model is temporarily unavailable /
     // currently unavailable — can be rescued from the non-retryable "check your
     // model settings" verdict *only* by the split arm itself. So this exercises
