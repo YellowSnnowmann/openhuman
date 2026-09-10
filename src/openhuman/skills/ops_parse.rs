@@ -198,9 +198,9 @@ pub(crate) fn load_from_workflow_md(
         frontmatter.description.clone()
     };
 
-    let version = extract_version(&frontmatter, &mut warnings);
-    let author = extract_author(&frontmatter, &mut warnings);
-    let tags = extract_tags(&frontmatter, &mut warnings);
+    let version = extract_version(&frontmatter, &name, &mut warnings);
+    let author = extract_author(&frontmatter, &name, &mut warnings);
+    let tags = extract_tags(&frontmatter, &name, &mut warnings);
     let platforms = frontmatter.platforms.clone();
     let related_skills = extract_related_skills(&frontmatter);
     let source_format = detect_source_format(&frontmatter);

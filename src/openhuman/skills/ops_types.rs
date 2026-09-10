@@ -126,12 +126,22 @@ pub(crate) fn metadata_string_seq(value: &serde_yaml::Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub(crate) fn extract_version(fm: &WorkflowFrontmatter, warnings: &mut Vec<String>) -> String {
+pub(crate) fn extract_version(
+    fm: &WorkflowFrontmatter,
+    name: &str,
+    warnings: &mut Vec<String>,
+) -> String {
     if let Some(v) = metadata_string(fm, "version") {
         return v;
     }
     if let Some(v) = fm.extra.get("version").and_then(|v| v.as_str()) {
-        log::warn!("[skills] top-level 'version' is deprecated; move under 'metadata.version'");
+        // The actionable, skill-named surface is the `warnings` vec below, which
+        // the Skills Explorer renders per skill. Keep the log line at debug (and
+        // name the skill) so it stays in a support dump without drowning cold
+        // starts and cron ticks, where discovery re-parses every skill (#6155).
+        log::debug!(
+            "[skills] skill '{name}': top-level 'version' is deprecated; move under 'metadata.version'"
+        );
         warnings
             .push("top-level 'version' is deprecated; move under 'metadata.version'".to_string());
         return v.to_string();
@@ -141,20 +151,27 @@ pub(crate) fn extract_version(fm: &WorkflowFrontmatter, warnings: &mut Vec<Strin
 
 pub(crate) fn extract_author(
     fm: &WorkflowFrontmatter,
+    name: &str,
     warnings: &mut Vec<String>,
 ) -> Option<String> {
     if let Some(v) = metadata_string(fm, "author") {
         return Some(v);
     }
     if let Some(v) = fm.extra.get("author").and_then(|v| v.as_str()) {
-        log::warn!("[skills] top-level 'author' is deprecated; move under 'metadata.author'");
+        log::debug!(
+            "[skills] skill '{name}': top-level 'author' is deprecated; move under 'metadata.author'"
+        );
         warnings.push("top-level 'author' is deprecated; move under 'metadata.author'".to_string());
         return Some(v.to_string());
     }
     None
 }
 
-pub(crate) fn extract_tags(fm: &WorkflowFrontmatter, warnings: &mut Vec<String>) -> Vec<String> {
+pub(crate) fn extract_tags(
+    fm: &WorkflowFrontmatter,
+    name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<String> {
     let mut tags = Vec::new();
     if let Some(v) = fm.metadata.get("tags") {
         tags.extend(metadata_string_seq(v));
@@ -168,7 +185,9 @@ pub(crate) fn extract_tags(fm: &WorkflowFrontmatter, warnings: &mut Vec<String>)
         tags.extend(metadata_string_seq(hermes_tags));
     }
     if let Some(v) = fm.extra.get("tags") {
-        log::warn!("[skills] top-level 'tags' is deprecated; move under 'metadata.tags'");
+        log::debug!(
+            "[skills] skill '{name}': top-level 'tags' is deprecated; move under 'metadata.tags'"
+        );
         warnings.push("top-level 'tags' is deprecated; move under 'metadata.tags'".to_string());
         tags.extend(metadata_string_seq(v));
     }
