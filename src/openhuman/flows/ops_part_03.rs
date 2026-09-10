@@ -455,6 +455,34 @@ pub(crate) async fn validate_tool_contracts(config: &Config, graph: &WorkflowGra
         let Some(toolkit) = toolkit_from_slug(slug) else {
             continue;
         };
+
+        // Local authoritative arg check, run BEFORE the live-catalog fetch below
+        // so it holds offline and when Composio's schema is silent about a field.
+        // This is the same pure pre-dispatch validator the runtime path runs
+        // (`prepare_execute_arguments`), which encodes OpenHuman's own required
+        // fields — e.g. GMAIL_SEND_EMAIL needs a recipient under any of the
+        // `to`/`recipient_email`/`recipientEmail` aliases. Every earlier gate
+        // delegates that question to the live catalog and skips when it is silent
+        // or unreachable, which is how a `to`-less email node reached dispatch
+        // (#6154). A required arg wired to an `=`-expression is a non-empty string
+        // and passes; a missing or empty literal is rejected here at author time.
+        if let Err(err) =
+            crate::openhuman::integrations::composio::execute_prepare::prepare_execute_arguments(
+                slug,
+                Some(node.config.get("args").cloned().unwrap_or(Value::Null)),
+            )
+        {
+            tracing::warn!(
+                target: "flows",
+                node = %node.id,
+                %slug,
+                %err,
+                "[flows] tool-contract check: local required-arg check failed — rejecting"
+            );
+            errors.push(format!("Node '{}': {err}", node.id));
+            continue;
+        }
+
         let Some(catalog) = fetch_live_toolkit_catalog(config, &toolkit).await else {
             tracing::debug!(
                 target: "flows",

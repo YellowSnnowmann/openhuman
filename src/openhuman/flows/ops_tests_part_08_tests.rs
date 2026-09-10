@@ -133,6 +133,48 @@ async fn validate_tool_contracts_passes_a_fully_wired_real_slug() {
     assert!(errors.is_empty(), "{errors:?}");
 }
 
+// #6154: the recipient-required rule for GMAIL_SEND_EMAIL lives in OpenHuman's
+// own `prepare_execute_arguments`, not in the live Composio schema. These two
+// seed NO catalog, so `fetch_live_toolkit_catalog` returns `None` and every
+// catalog-backed check is skipped — proving the local authoritative check runs
+// before that guard and holds offline.
+#[tokio::test]
+async fn validate_tool_contracts_rejects_gmail_missing_recipient_offline() {
+    let config = Config::default();
+    let g = graph(json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "notify", "kind": "tool_call", "name": "Notify",
+              "config": { "slug": "GMAIL_SEND_EMAIL",
+                "args": { "subject": "hi", "body": "there" } } }
+        ],
+        "edges": [ { "from_node": "t", "to_node": "notify" } ]
+    }));
+    let errors = validate_tool_contracts(&config, &g).await;
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("GMAIL_SEND_EMAIL"), "{}", errors[0]);
+    assert!(errors[0].contains("recipient"), "{}", errors[0]);
+    assert!(errors[0].contains("notify"), "{}", errors[0]);
+}
+
+#[tokio::test]
+async fn validate_tool_contracts_accepts_gmail_with_recipient_offline() {
+    let config = Config::default();
+    let g = graph(json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "notify", "kind": "tool_call", "name": "Notify",
+              "config": { "slug": "GMAIL_SEND_EMAIL",
+                "args": { "to": "a@b.com", "body": "there" } } }
+        ],
+        "edges": [ { "from_node": "t", "to_node": "notify" } ]
+    }));
+    // A wired recipient passes the local check; the catalog-backed checks then
+    // skip offline, so the node raises no error.
+    let errors = validate_tool_contracts(&config, &g).await;
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
 #[test]
 fn connection_refs_reject_the_transcript_wrong_id_naming_the_right_ref() {
     // Twitter node carrying the TIKTOK connection id: toolkit segment matches

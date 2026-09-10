@@ -367,6 +367,37 @@ async fn preflight_fails_before_dispatch_naming_the_missing_field() {
     .expect("wired args must pass preflight");
 }
 
+// #6154: GMAIL_SEND_EMAIL's recipient rule is OpenHuman's own
+// (`prepare_execute_arguments`), not the live Composio schema. With NO catalog
+// seeded the schema-backed check below can only skip, so this proves the local
+// authoritative check still fails a recipient-less send before dispatch. It
+// never seeds the `"gmail"` cache entry, so it is safe under this file's shared
+// process-global `LIVE_CATALOG_CACHE`.
+#[tokio::test]
+async fn preflight_fails_offline_on_gmail_missing_recipient() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let err = super::super::caps::preflight_composio_args(
+        &config,
+        "GMAIL_SEND_EMAIL",
+        &json!({ "subject": "hi", "body": "text" }),
+    )
+    .await
+    .expect_err("recipient-less GMAIL_SEND_EMAIL must fail preflight offline");
+    let msg = err.to_string();
+    assert!(msg.contains("GMAIL_SEND_EMAIL"), "{msg}");
+    assert!(msg.contains("recipient"), "{msg}");
+
+    // A wired recipient passes the local check (and then skips offline).
+    super::super::caps::preflight_composio_args(
+        &config,
+        "GMAIL_SEND_EMAIL",
+        &json!({ "to": "a@b.com", "subject": "hi", "body": "text" }),
+    )
+    .await
+    .expect("wired recipient must pass preflight");
+}
+
 #[tokio::test]
 async fn preflight_skips_when_no_schema_is_available() {
     let tmp = TempDir::new().unwrap();

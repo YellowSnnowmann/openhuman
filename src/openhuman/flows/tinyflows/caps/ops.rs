@@ -414,6 +414,24 @@ pub(crate) async fn preflight_composio_args(
     slug: &str,
     args: &Value,
 ) -> Result<()> {
+    // Local authoritative pre-flight: `prepare_execute_arguments` is the same
+    // pure check the Composio dispatch path runs, and it knows OpenHuman's own
+    // required fields (e.g. GMAIL_SEND_EMAIL's recipient under any of the
+    // `to`/`recipient_email`/`recipientEmail` aliases) even when the live schema
+    // is silent or the catalog is unreachable — the two cases where the
+    // `composio_required_args` check below degrades to a skip and lets a
+    // structurally-invalid call reach dispatch (#6154). Surface it here, at the
+    // named pre-flight seam, before dispatch.
+    if let Err(err) =
+        crate::openhuman::integrations::composio::execute_prepare::prepare_execute_arguments(
+            slug,
+            Some(args.clone()),
+        )
+    {
+        tracing::warn!(target: "flows", %slug, %err, "[flows] preflight: local required-arg check failed — failing before dispatch");
+        return Err(EngineError::Capability(err));
+    }
+
     let Some(required) = composio_required_args(config, slug).await else {
         tracing::debug!(target: "flows", %slug, "[flows] preflight: no schema for action — skipping required-arg check");
         return Ok(());
