@@ -10,7 +10,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.22.1";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.22.2";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -56,11 +56,12 @@ pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.22.1";
 /// crates/tinymemory-bus/src/names.rs` is empty. The release fixes the hosted
 /// wire's episodic import (tinymemory#179), which the module does not serve,
 /// so the advertised families stay the same.
-/// Re-read at `v1.22.1`: `git diff v1.21.1..v1.22.1 --
+/// Re-read at `v1.22.2`: `git diff v1.21.1..v1.22.2 --
 /// crates/tinymemory-api/src/capabilities.rs crates/tinymemory-bus/src/capabilities.rs
 /// crates/tinymemory-bus/src/names.rs` is empty. v1.22.0 drops the unread
-/// usage plumbing and v1.22.1 fixes the copy's documents step
-/// (tinymemory#182); neither adds or removes a family.
+/// usage plumbing, v1.22.1 fixes the copy's documents step (tinymemory#182),
+/// and v1.22.2 fixes hosted search across synced sources and a hosted copy
+/// run again (tinymemory#183, #184). None adds or removes a family.
 ///
 /// Read at tag `v1.3.0`. Unchanged from v1.2.0 — the release added members
 /// within existing families (`retry_failed`, the diagnostics trio,

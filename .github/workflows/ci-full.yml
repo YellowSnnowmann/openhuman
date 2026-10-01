@@ -132,8 +132,8 @@ jobs:
           # and leave a stale digest that only fails after the download. Both values
           # are the ubuntu-22.04-x86_64 row of `crates/openhuman-core/src/modules/registry.rs`,
           # which is the authoritative pin — copy them from there, never recompute.
-          memory_version="1.22.1"
-          memory_sha256="93071ee81e99502b25e293ed164c481126cb6e7bc4597e8c8e8c6964c90aa5f0"
+          memory_version="1.22.2"
+          memory_sha256="89f1da9f53e939263f3a7d9f4c6c19b52951bde308a9beb6efedc2b6c272163e"
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           juice_dir="$module_root/tinyjuice"
@@ -333,8 +333,8 @@ jobs:
           # tinybus validates every directory ancestor. GitHub mounts the
           # checkout as the host runner uid while this container runs as root,
           # so keep native fixtures in a root-owned, ephemeral tree.
-          memory_version="1.22.1"
-          memory_sha256="93071ee81e99502b25e293ed164c481126cb6e7bc4597e8c8e8c6964c90aa5f0"
+          memory_version="1.22.2"
+          memory_sha256="89f1da9f53e939263f3a7d9f4c6c19b52951bde308a9beb6efedc2b6c272163e"
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           juice_dir="$module_root/tinyjuice"
