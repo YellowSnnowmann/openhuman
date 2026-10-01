@@ -465,7 +465,12 @@ impl Tool for LearningRebuildCacheTool {
     async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
         log::debug!("[tool][learning] rebuild_cache invoked");
         let cache = get_cache().await?;
-        let detector = StabilityDetector::new(cache);
+        // The workspace's stored rebuild time, so a one-off rebuild reads
+        // reinforcement as the periodic one does.
+        let config = crate::config::rpc::load_config_with_timeout()
+            .await
+            .map_err(|e| anyhow::anyhow!("learning_rebuild_cache: config unavailable: {e}"))?;
+        let detector = StabilityDetector::new(cache).persisted_in(&config.workspace_dir);
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs_f64())

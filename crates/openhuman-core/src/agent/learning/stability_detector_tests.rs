@@ -10,6 +10,7 @@ fn make_detector() -> StabilityDetector {
         buffer,
         last_rebuild_at: std::sync::Mutex::new(None),
         rewrite_tolerance: REWRITE_TOLERANCE,
+        state_path: None,
     }
 }
 
@@ -579,4 +580,92 @@ fn a_row_is_rewritten_for_what_a_reader_would_see() {
         ..held
     };
     assert!(worth_rewriting(&drifted, &reinforced, REWRITE_TOLERANCE));
+}
+
+// ── the rebuild time across restarts ─────────────────────────────────────────
+
+/// A detector over `profile` that keeps its rebuild time in `workspace`.
+fn persisted_detector(
+    profile: &std::sync::Arc<crate::agent::learning::test_profile::InMemoryProfile>,
+    workspace: &std::path::Path,
+) -> StabilityDetector {
+    StabilityDetector {
+        cache: crate::agent::learning::cache::FacetCache::for_tests(profile.clone()),
+        ..make_detector()
+    }
+    .persisted_in(workspace)
+}
+
+async fn channel_facet(detector: &StabilityDetector) -> Option<ProfileFacet> {
+    detector
+        .cache
+        .list_all()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|f| f.key == "channel/preferred")
+}
+
+/// A detector rebuilt over the same store after a restart keeps the
+/// lifecycle an uninterrupted one gives. The facet's confidence decays below
+/// what the tolerance lets a cycle write, so its row goes weeks without a
+/// write; a restarted detector that lost the rebuild time would read those
+/// weeks as decay at once and drop the facet.
+#[tokio::test]
+async fn a_restarted_detector_keeps_the_lifecycle_of_an_uninterrupted_one() {
+    let start = 1_000_000.0;
+    let step = 6.0 * 3600.0;
+    let restarted_dir = tempfile::tempdir().unwrap();
+    let uninterrupted_dir = tempfile::tempdir().unwrap();
+    let restarted_store =
+        std::sync::Arc::new(crate::agent::learning::test_profile::InMemoryProfile::new());
+    let uninterrupted_store =
+        std::sync::Arc::new(crate::agent::learning::test_profile::InMemoryProfile::new());
+    let mut restarted = persisted_detector(&restarted_store, restarted_dir.path());
+    let uninterrupted = persisted_detector(&uninterrupted_store, uninterrupted_dir.path());
+    for detector in [&restarted, &uninterrupted] {
+        for i in 0..5 {
+            detector.buffer.push(make_candidate(
+                FacetClass::Channel,
+                "preferred",
+                "email",
+                CueFamily::Explicit,
+                start - i as f64 * 10.0,
+            ));
+        }
+        detector.rebuild(start).await.unwrap();
+    }
+
+    let mut at = start;
+    for cycle in 1..=(40 * 4) {
+        at += step;
+        if cycle == 30 * 4 {
+            // The process restarts: a new detector over the same store.
+            restarted = persisted_detector(&restarted_store, restarted_dir.path());
+        }
+        restarted.rebuild(at).await.unwrap();
+        uninterrupted.rebuild(at).await.unwrap();
+        let (r, u) = (
+            channel_facet(&restarted).await,
+            channel_facet(&uninterrupted).await,
+        );
+        let day = (at - start) / 86_400.0;
+        assert_eq!(
+            r.as_ref().map(|f| f.state),
+            u.as_ref().map(|f| f.state),
+            "state on day {day}"
+        );
+        if let (Some(r), Some(u)) = (r, u) {
+            assert!(
+                (r.stability - u.stability).abs() < REWRITE_TOLERANCE,
+                "stability on day {day}: {} vs {}",
+                r.stability,
+                u.stability
+            );
+        }
+    }
+    assert!(
+        restarted_dir.path().join(REBUILD_STATE_FILE).exists(),
+        "the rebuild time is kept in the workspace"
+    );
 }

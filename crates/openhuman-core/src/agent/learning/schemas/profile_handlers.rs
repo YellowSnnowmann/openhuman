@@ -92,7 +92,10 @@ pub(super) fn handle_rebuild_cache(_params: Map<String, Value>) -> ControllerFut
                 .await
                 .map_err(|e| format!("memory unavailable: {e}"))?,
         );
-        let detector = StabilityDetector::new(cache);
+        // The workspace's stored rebuild time, so a one-off rebuild reads
+        // reinforcement as the periodic one does.
+        let config = crate::config::rpc::load_config_with_timeout().await?;
+        let detector = StabilityDetector::new(cache).persisted_in(&config.workspace_dir);
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)

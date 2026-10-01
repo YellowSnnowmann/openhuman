@@ -32,6 +32,8 @@
 //! overflow pool holds up to `BUDGET_OVERFLOW` extra Provisional rows.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
 
 use crate::agent::learning::cache::FacetCache;
 use crate::agent::learning::candidate::{self, CueFamily, FacetClass, LearningCandidate};
@@ -183,6 +185,18 @@ pub struct StabilityDetector {
     /// How far a score may move before its row is written again. A field so a
     /// test can compare against a detector that writes every row every cycle.
     pub(crate) rewrite_tolerance: f64,
+    /// Where `last_rebuild_at` is kept between processes, when set (see
+    /// [`Self::persisted_in`]).
+    pub(crate) state_path: Option<PathBuf>,
+}
+
+/// Where a workspace keeps the time of its last rebuild.
+pub const REBUILD_STATE_FILE: &str = "state/learning/rebuild.json";
+
+/// The time of a workspace's last rebuild, as [`REBUILD_STATE_FILE`] holds it.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct RebuildState {
+    last_rebuild_at: f64,
 }
 
 impl StabilityDetector {
@@ -195,6 +209,71 @@ impl StabilityDetector {
             buffer: candidate::global(),
             last_rebuild_at: std::sync::Mutex::new(None),
             rewrite_tolerance: REWRITE_TOLERANCE,
+            state_path: None,
+        }
+    }
+
+    /// Keeps the time of the last rebuild in `workspace_dir`
+    /// ([`REBUILD_STATE_FILE`]), and starts from the one stored there.
+    ///
+    /// A row a rebuild skipped can keep an old `last_seen_at` for weeks — a
+    /// low-confidence row moves less than the tolerance per cycle — while the
+    /// rebuild time stands in for its reinforcement. A detector that started
+    /// without that time, after a restart or for a one-off rebuild, would read
+    /// those weeks as decay all at once and could demote or evict a facet an
+    /// uninterrupted detector keeps. Every detector over a workspace's facets
+    /// therefore reads and writes the same stored time.
+    ///
+    /// A missing or unreadable file is a detector with no previous rebuild:
+    /// the first one reads reinforcement from the rows alone, as before.
+    #[must_use]
+    pub fn persisted_in(mut self, workspace_dir: &Path) -> Self {
+        let path = workspace_dir.join(REBUILD_STATE_FILE);
+        let stored = std::fs::read(&path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<RebuildState>(&bytes).ok())
+            .map(|state| state.last_rebuild_at);
+        tracing::debug!(
+            path = %path.display(),
+            stored = ?stored,
+            "[learning::stability] rebuild time restored"
+        );
+        *self
+            .last_rebuild_at
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner) = stored;
+        self.state_path = Some(path);
+        self
+    }
+
+    /// Records `at` as the last rebuild, in memory and, when persisted, on
+    /// disk. A write that fails is logged: the next rebuild records again.
+    fn record_rebuild(&self, at: f64) {
+        *self
+            .last_rebuild_at
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(at);
+        let Some(path) = &self.state_path else {
+            return;
+        };
+        let write = || -> std::io::Result<()> {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let tmp = path.with_extension("json.tmp");
+            std::fs::write(
+                &tmp,
+                serde_json::to_vec(&RebuildState {
+                    last_rebuild_at: at,
+                })?,
+            )?;
+            std::fs::rename(&tmp, path)
+        };
+        if let Err(error) = write() {
+            tracing::warn!(
+                path = %path.display(),
+                "[learning::stability] could not record the rebuild time: {error}"
+            );
         }
     }
 
@@ -225,7 +304,7 @@ impl StabilityDetector {
         let refreshed_at = *self
             .last_rebuild_at
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(PoisonError::into_inner);
 
         // Step 2 — load existing facets.
         let existing_facets = self.cache.list_all().await?;
@@ -437,10 +516,7 @@ impl StabilityDetector {
             "[learning::stability] rebuild added={added} evicted={evicted} kept={kept} total={total_size}"
         );
 
-        *self
-            .last_rebuild_at
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(now);
+        self.record_rebuild(now);
 
         // Step 8 — publish CacheRebuilt event.
         BUS.publish(DomainEvent::CacheRebuilt {

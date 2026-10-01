@@ -211,7 +211,7 @@ fn register_with_memory(
         let Some(cache) = facet_cache_for(workspace_dir) else {
             return (None, None);
         };
-        let detector = Arc::new(StabilityDetector::new(cache));
+        let detector = Arc::new(StabilityDetector::new(cache).persisted_in(workspace_dir));
         // Also spawn the periodic rebuild loop (30-minute cadence).
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
         // Leak the sender so the loop never receives a shutdown signal until the
